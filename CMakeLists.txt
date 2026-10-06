@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 4.2)
+project(KT_Forge LANGUAGES CXX)
+add_executable(KT_Forge Source/main.cpp)
+target_compile_features(KT_Forge PRIVATE cxx_std_20)
+target_compile_options(KT_Forge PRIVATE /W4 /utf-8)
