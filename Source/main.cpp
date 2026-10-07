@@ -1,32 +1,40 @@
-#include <iostream>
-using namespace std;
+#include <GLFW/glfw3.h>
 
-#include "Renderer/Graph/RenderGraphTypes.h"
-#include "Renderer/Graph/RenderGraph.h"
+#include <Core/Log.h>
+
 
 int main() 
 {
-	// 練習用RenderGraphの作成
-	KT::Renderer::RenderGraph graph(1);
-
-	// リソースの登録
-	KT::Renderer::GraphResourceHandle newHandle = graph.RegisterResource("Output");
-	if (!graph.Contains(newHandle))
+	// GLFWの初期化
+	int result = glfwInit();
+	if (result == GLFW_TRUE)
 	{
-		cout << "Graph does not contain the registered resource." << endl;
-		return 1;
+		(void)KT::Core::Log(KT::Core::LogLevel::Info, "GLFWの初期化に成功しました");
+	}
+	else
+	{
+		(void)KT::Core::Log(KT::Core::LogLevel::Error, "GLFWの初期化に失敗しました");
+		return -1;
 	}
 
-	// 練習用Desc
-	KT::Renderer::GraphPassDesc desc;
-	desc.name = "Output";
+	// OpenGLの描画機能を作らない設定
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-	// 画面クリアのUseを追加
-	KT::Renderer::GraphResourceUse use;
-	use.resource = newHandle;
-	use.access = KT::Renderer::GraphResourceAccess::Write;
-	
-	desc.resources.push_back(use);
+	// ウィンドウの作成
+	GLFWwindow* window = glfwCreateWindow(1280, 720, "KT_Forge", nullptr, nullptr);
+	if (!window)
+	{
+		(void)KT::Core::Log(KT::Core::LogLevel::Error, "GLFWのウィンドウの作成に失敗しました");
+		glfwTerminate();
+		return -1;
+	}
+
+	// 練習
+	// Windowの破棄
+	glfwDestroyWindow(window);
+
+	// GLFWの終了
+	glfwTerminate();
 
 	return 0;
 }
