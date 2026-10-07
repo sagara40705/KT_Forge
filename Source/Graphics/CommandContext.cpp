@@ -84,4 +84,45 @@ namespace KT::Graphics
 		}
 		return commandList_.Get();
 	}
+
+	void CommandContext::Transition(ID3D12Resource* resource, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after)
+	{
+		if (!resource)
+		{
+			throw std::invalid_argument("resourceがnullptrです。");
+		}
+		if (before == after)
+		{
+			return;
+		}
+
+		// 記録中のListを取得する
+		auto* list = GetRecordingList();
+
+		// リソースバリアを作成
+		D3D12_RESOURCE_BARRIER barrier{};
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		barrier.Transition.pResource = resource;
+		barrier.Transition.StateBefore = before;
+		barrier.Transition.StateAfter = after;
+		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+		// リソースバリアを設定
+		list->ResourceBarrier(1, &barrier);
+	}
+
+	void CommandContext::ClearRenderTarget(D3D12_CPU_DESCRIPTOR_HANDLE rtv, const std::array<float, 4>& color)
+	{
+		if (rtv.ptr == 0)
+		{
+			throw std::invalid_argument("rtvが無効です。");
+		}
+
+		// 記録中のListを取得する
+		auto* list = GetRecordingList();
+
+		// レンダーターゲットをクリア
+		list->ClearRenderTargetView(rtv, color.data(), 0, nullptr);
+	}
 }

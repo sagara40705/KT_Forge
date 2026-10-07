@@ -1,6 +1,7 @@
 #pragma once
 #include <Core/Utility/NonCopyable.h>
 #include<Graphics/GraphicsDevice.h>
+#include <array>
 
 namespace KT::Graphics
 {
@@ -32,5 +33,12 @@ namespace KT::Graphics
 		ID3D12GraphicsCommandList* GetRecordingList() const;
 		// 実行可能なCommandListを取得
 		ID3D12CommandList* GetExecutableList() const;
+
+	public:
+		// リソースの状態を遷移する
+		void Transition(ID3D12Resource* resource, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after);
+
+		// レンダーターゲットをクリアする
+		void ClearRenderTarget(D3D12_CPU_DESCRIPTOR_HANDLE rtv, const std::array<float, 4>& color);
 	};
 }
