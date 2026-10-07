@@ -79,4 +79,37 @@ namespace KT::Graphics
 			rtvHandle.ptr += rtvDescriptorSize_;
 		}
 	}
+
+	UINT Swapchain::GetCurrentBackBufferIndex() const
+	{
+		return swapchain_->GetCurrentBackBufferIndex();
+	}
+
+	ID3D12Resource* Swapchain::GetBackBuffer(UINT index) const
+	{
+		if (index >= BufferCount)
+		{
+			throw std::out_of_range("バックバッファのインデックスが範囲外です。");
+		}
+		return backBuffers_[index].Get();
+	}
+
+	D3D12_CPU_DESCRIPTOR_HANDLE Swapchain::GetRtv(UINT index) const
+	{
+		if (index >= BufferCount)
+		{
+			throw std::out_of_range("レンダーターゲットビューのインデックスが範囲外です。");
+		}
+		D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = rtvHeap_->GetCPUDescriptorHandleForHeapStart();
+		rtvHandle.ptr += static_cast<SIZE_T>(index) * rtvDescriptorSize_;
+		return rtvHandle;
+	}
+
+	void Swapchain::Present()
+	{
+		if (FAILED(swapchain_->Present(1, 0)))
+		{
+			throw std::runtime_error("SwapchainのPresentに失敗しました。");
+		}
+	}
 }

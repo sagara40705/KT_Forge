@@ -34,5 +34,17 @@ namespace KT::Graphics
 
 		// レンダーターゲットビューのヒープのサイズ
 		UINT rtvDescriptorSize_ = 0;
+
+	public:
+		// 現在のバックバッファのインデックスを取得
+		UINT GetCurrentBackBufferIndex() const;
+		// バックバッファのリソースを取得
+		ID3D12Resource* GetBackBuffer(UINT index) const;
+		// レンダーターゲットビューのヒープを取得
+		D3D12_CPU_DESCRIPTOR_HANDLE GetRtv(UINT index) const;
+
+	public:
+		// Present(1, 0)を呼ぶ
+		void Present();
 	};
 }
