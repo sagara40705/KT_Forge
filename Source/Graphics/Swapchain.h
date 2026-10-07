@@ -32,7 +32,7 @@ namespace KT::Graphics
 		// レンダーターゲットビューのヒープ
 		ComPtr<ID3D12DescriptorHeap> rtvHeap_{};
 
-		// レンダーターゲットビューのヒープのサイズ
+		// RTV descriptor間のバイト間隔
 		UINT rtvDescriptorSize_ = 0;
 
 	public:
@@ -40,7 +40,7 @@ namespace KT::Graphics
 		UINT GetCurrentBackBufferIndex() const;
 		// バックバッファのリソースを取得
 		ID3D12Resource* GetBackBuffer(UINT index) const;
-		// レンダーターゲットビューのヒープを取得
+		// 指定したバックバッファのRTVのCPUハンドルを取得
 		D3D12_CPU_DESCRIPTOR_HANDLE GetRtv(UINT index) const;
 
 	public:

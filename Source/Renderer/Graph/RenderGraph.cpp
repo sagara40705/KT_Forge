@@ -1,4 +1,5 @@
 #include "RenderGraph.h"
+#include <cstddef>
 #include <utility>
 
 namespace KT::Renderer
@@ -82,7 +83,7 @@ namespace KT::Renderer
 		std::vector<bool> resourceDefined(resourceCount, false);
 
 		//resources_のうち、importedTextureがあるものはcontentsDefinedをresourceDefinedにコピーする
-		for (auto index = 0; index < resources_.size(); ++index)
+		for (std::size_t index = 0; index < resources_.size(); ++index)
 		{
 			if (resources_[index].importedTexture.has_value())
 			{

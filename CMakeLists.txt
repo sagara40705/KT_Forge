@@ -44,6 +44,8 @@ set(KT_FORGE_SOURCES
     Source/Graphics/CommandQueue.cpp
     Source/Graphics/CommandContext.h
     Source/Graphics/CommandContext.cpp
+    Source/Graphics/Swapchain.h
+    Source/Graphics/Swapchain.cpp
     Source/Platform/GlfwContext.h
     Source/Platform/GlfwContext.cpp
     Source/Platform/Window.h
@@ -51,6 +53,7 @@ set(KT_FORGE_SOURCES
     Source/Renderer/Graph/RenderGraph.cpp
     Source/Renderer/Graph/RenderGraph.h
     Source/Renderer/Graph/RenderGraphTypes.h
+    Source/Renderer/Graph/GraphImportedTexture.h
 )
 
 add_executable(KT_Forge ${KT_FORGE_SOURCES})

@@ -13,12 +13,12 @@ namespace KT::Renderer
         std::uint64_t graphid = 0;
 
         // Graph内のリソース番号。最大値は無効
-        std::uint32_t index = std::numeric_limits<std::uint32_t>::max();
+        std::uint32_t index = (std::numeric_limits<std::uint32_t>::max)();
 
         // Graph側で別途、graphidの一致とindexの範囲を検査する
         bool IsValid() const
         {
-            return graphid != 0 && index != std::numeric_limits<std::uint32_t>::max();
+            return graphid != 0 && index != (std::numeric_limits<std::uint32_t>::max)();
         }
     };
 
@@ -26,13 +26,13 @@ namespace KT::Renderer
     enum class GraphResourceAccess
     {
         Read,       // 既存の内容を読む
-        Write,      // 内容を書き込む
+        Write,      // 論理リソース全体の内容を定義するという宣言
         ReadWrite,  // 既存の内容を読み、それを使って書き込む
     };
     // 何の用途で使うか
 	enum class GraphResourceUsage
 	{
-		Unspecified,    // 用途未指定
+		Unspecified,    // CPU宣言では用途未指定を許可する
 		RenderTarget,   // レンダーターゲットとして使う
 	};
 

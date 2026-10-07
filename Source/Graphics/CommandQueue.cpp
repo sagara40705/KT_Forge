@@ -73,7 +73,7 @@ namespace KT::Graphics
 		auto completedValue = fence_->GetCompletedValue();
 		if (completedValue == (std::numeric_limits<std::uint64_t>::max)())
 		{
-			throw std::overflow_error("Deviceが失われたため、Fenceの完了を確認できません。");
+			throw std::runtime_error("Deviceが失われたため、Fenceの完了を確認できません。");
 		}
 
 		return completedValue >= fenceValue;
