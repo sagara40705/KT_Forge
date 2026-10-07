@@ -4,14 +4,16 @@
 
 namespace KT::Core::Detail
 {
-	// Developer invariant failure: best-effort diagnostic, then abort (no exception).
+	// プログラム内部の前提が崩れた場合の終了処理。
+	// 診断の出力に失敗してもabortで停止する。例外による復帰は想定しない。
 	[[noreturn]] void AssertFailure(std::string_view expression,
 		std::source_location location) noexcept;
 }
 
-// Internal invariants only. Required input/runtime checks must use normal code.
-// Debug: condition is evaluated once. NDEBUG: it is not evaluated at all.
-// Never put required side effects (initialization/API calls) inside KT_ASSERT.
+// 開発中に「ここでは必ず成り立つはずの条件」を確認するために使う。
+// NDEBUGが未定義なら条件を1回評価し、偽なら診断を出して停止する。
+// NDEBUGが定義されたReleaseでは条件式ごと無効になるため、初期化やAPI呼出しを入れない。
+// 入力不正やファイル読込失敗など、Releaseでも必要な検査は通常の分岐や例外で扱う。
 #ifndef NDEBUG
 #define KT_ASSERT(condition) do { \
 	if (!static_cast<bool>(condition)) { \

@@ -38,6 +38,8 @@ set(KT_FORGE_SOURCES
     Source/Core/Timer.h
     Source/Core/File.h
     Source/Core/File.cpp
+    Source/Graphics/GraphicsDevice.h
+    Source/Graphics/GraphicsDevice.cpp
     Source/Platform/GlfwContext.h
     Source/Platform/GlfwContext.cpp
     Source/Platform/Window.h
@@ -53,7 +55,7 @@ target_compile_features(KT_Forge PRIVATE cxx_std_20)
 target_include_directories(KT_Forge PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 target_compile_options(KT_Forge PRIVATE /W4 /utf-8)
 target_compile_definitions(KT_Forge PRIVATE GLFW_INCLUDE_NONE)
-target_link_libraries(KT_Forge PRIVATE glfw)
+target_link_libraries(KT_Forge PRIVATE glfw d3d12 dxgi)
 
 set_target_properties(KT_Forge PROPERTIES
     CXX_EXTENSIONS OFF

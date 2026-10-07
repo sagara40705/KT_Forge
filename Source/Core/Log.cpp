@@ -34,7 +34,8 @@ bool KT::Core::Log(LogLevel level, std::string_view message,
 		DWORD consoleMode = 0;
 		if (GetConsoleMode(output, &consoleMode))
 		{
-			// WriteConsoleW bypasses the console's legacy code page. No global setting.
+			// 日本語の表示がコンソールのコードページに左右されないよう、
+			// ログ全体をUTF-8からUTF-16へ変換してWriteConsoleWへ渡す。OS設定は変えない。
 			std::ostringstream record;
 			record << '[' << label << "] " << location.file_name() << ':'
 				<< location.line() << " (" << location.function_name() << ") ";

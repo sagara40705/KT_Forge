@@ -41,6 +41,8 @@ namespace KT::Graphics
 		{
 			throw std::runtime_error("Deviceの作成に失敗");
 		}
+
+		KT_LOG_INFO("GraphicsDeviceを作成");
 	}
 
 	void GraphicsDevice::SelectAdapter()
@@ -86,3 +88,4 @@ namespace KT::Graphics
 
 		throw std::runtime_error("利用可能なD3D12 Adapterが見つかりませんでした");
 	}
+}

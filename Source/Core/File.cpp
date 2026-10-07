@@ -26,12 +26,14 @@ namespace
 		if (error) ReadFailure(path, error.message());
 		if (!std::filesystem::is_regular_file(status)) ReadFailure(path, "not a regular file");
 
+		// Textも改行などを変換せず読むためbinaryを使い、最初に末尾位置からサイズを調べる。
 		std::ifstream stream(path, std::ios::binary | std::ios::ate);
 		if (!stream) ReadFailure(path, "cannot open file for reading");
 		const std::streamoff end = stream.tellg();
 		if (end < 0) ReadFailure(path, "cannot determine file size");
 		const auto size = static_cast<std::uintmax_t>(end);
 		Buffer result;
+		// 確保可能な要素数と1回のreadで扱えるサイズを確認してから、各型へ変換する。
 		if (size > result.max_size() ||
 			size > static_cast<std::uintmax_t>((std::numeric_limits<std::streamsize>::max)()))
 		{
@@ -53,6 +55,8 @@ namespace
 			stream.read(reinterpret_cast<char*>(result.data()), count);
 			if (!stream || stream.gcount() != count) ReadFailure(path, "read failed or file became shorter");
 		}
+		// 調べたサイズの後にデータがあれば、読込中の増大として失敗させる。
+		// 同じサイズでの書換えまでは検出できないので、内容の一貫性を保証する検査ではない。
 		if (stream.peek() != std::ifstream::traits_type::eof()) ReadFailure(path, "file grew while reading");
 		if (stream.bad() || !stream.eof()) ReadFailure(path, "cannot verify end of file");
 		return result;
