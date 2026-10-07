@@ -28,6 +28,8 @@ FetchContent_MakeAvailable(glfw)
 # Add new .cpp and .h files here so the build inputs stay explicit.
 set(KT_FORGE_SOURCES
     Source/main.cpp
+    Source/Application/Application.h
+    Source/Application/Application.cpp
     Source/Core/Utility/NonCopyable.h
     Source/Core/Log.h
     Source/Core/Log.cpp
@@ -36,6 +38,10 @@ set(KT_FORGE_SOURCES
     Source/Core/Timer.h
     Source/Core/File.h
     Source/Core/File.cpp
+    Source/Platform/GlfwContext.h
+    Source/Platform/GlfwContext.cpp
+    Source/Platform/Window.h
+    Source/Platform/Window.cpp
     Source/Renderer/Graph/RenderGraph.cpp
     Source/Renderer/Graph/RenderGraph.h
     Source/Renderer/Graph/RenderGraphTypes.h
