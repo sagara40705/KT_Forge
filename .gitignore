@@ -4,5 +4,4 @@
 /local-tests/
 CMakeUserPresets.json
 
-AI_ASSISTANCE.md
-/.md/
+*.md
