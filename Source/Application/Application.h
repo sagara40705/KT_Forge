@@ -3,6 +3,8 @@
 #include <Platform/GlfwContext.h>
 #include <Platform/Window.h>
 #include <Graphics/GraphicsDevice.h>
+#include <Graphics/CommandQueue.h>
+#include <Graphics/CommandContext.h>
 
 namespace KT::Application
 {
@@ -25,5 +27,11 @@ namespace KT::Application
 
 		// GraphicsDevice
 		KT::Graphics::GraphicsDevice graphicsDevice_{};
+
+		// CommandQueue
+		KT::Graphics::CommandQueue commandQueue_;
+
+		// CommandContext
+		KT::Graphics::CommandContext commandContext_;
 	};
 }

@@ -3,7 +3,10 @@
 namespace KT::Application
 {
 	Application::Application(int width, int height, const char* title)
-		: window_(width, height, title)
+		: window_(width, height, title), 
+		graphicsDevice_(), 
+		commandQueue_(graphicsDevice_),
+		commandContext_(graphicsDevice_)
 	{
 	}
 

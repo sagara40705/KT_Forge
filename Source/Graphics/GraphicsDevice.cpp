@@ -88,4 +88,9 @@ namespace KT::Graphics
 
 		throw std::runtime_error("利用可能なD3D12 Adapterが見つかりませんでした");
 	}
+
+	ID3D12Device* GraphicsDevice::GetDevice() const noexcept
+	{
+		return device_.Get();
+	}
 }
