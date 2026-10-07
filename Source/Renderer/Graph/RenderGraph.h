@@ -1,9 +1,11 @@
 #pragma once
-#include "RenderGraphTypes.h"
-#include "../../Core/Utility/NonCopyable.h"
+#include <Core/Utility/NonCopyable.h>
+#include <Renderer/Graph/RenderGraphTypes.h>
+#include <Renderer/Graph/GraphImportedTexture.h>
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <optional>
 
 namespace KT::Renderer
 {
@@ -41,5 +43,21 @@ namespace KT::Renderer
 
 		// Graphの検査
 		void Validate() const;
+
+	private:
+		// リソースの情報
+		struct ResourceRecord
+		{
+			// リソース名
+			std::string name;
+			// インポートされたテクスチャの情報
+			std::optional<GraphImportedTextureDesc> importedTexture;
+		};
+
+		// 登録したリソースの情報
+		std::vector<ResourceRecord> resources_;
+
+	public:
+		GraphResourceHandle ImportTexture(GraphImportedTextureDesc desc);
 	};
 }

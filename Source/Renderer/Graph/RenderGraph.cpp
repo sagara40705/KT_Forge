@@ -1,107 +1,170 @@
 #include "RenderGraph.h"
 #include <utility>
 
-// GraphResourceHandleの検査(IsValid・graphidの一致・indexの範囲)
-bool KT::Renderer::RenderGraph::Contains(GraphResourceHandle handle) const
+namespace KT::Renderer
 {
-	if (!handle.IsValid()) return false;
-	if (handle.graphid != graphid_) return false;
-	if (handle.index >= resourceNames_.size()) return false;
-
-	return true;
-}
-
-// リソースを登録し、GraphResourceHandleを返す
-KT::Renderer::GraphResourceHandle KT::Renderer::RenderGraph::RegisterResource(std::string name)
-{
-	// 登録数が最大に達していないか
-	if (resourceNames_.size() >= std::numeric_limits<std::uint32_t>::max())
+	// GraphResourceHandleの検査(IsValid・graphidの一致・indexの範囲)
+	bool RenderGraph::Contains(GraphResourceHandle handle) const
 	{
-		throw std::runtime_error("リソースの登録数が最大に達しました。");
+		if (!handle.IsValid()) return false;
+		if (handle.graphid != graphid_) return false;
+		if (handle.index >= resources_.size()) return false;
+		return true;
 	}
 
-	// 追加前のsizeを、新しいリソースのindexとして覚える
-	std::uint32_t index = static_cast<std::uint32_t>(resourceNames_.size());
-
-	// リソース名を登録
-	resourceNames_.push_back(std::move(name));
-
-	// GraphResourceHandleを作成して返す
-	GraphResourceHandle handle;
-	handle.graphid = graphid_;
-	handle.index = index;
-
-	return handle;
-}
-
-// パスを追加する
-void KT::Renderer::RenderGraph::AddPass(GraphPassDesc desc)
-{
-	if (desc.name.empty())
+	// リソースを登録し、GraphResourceHandleを返す
+	GraphResourceHandle RenderGraph::RegisterResource(std::string name)
 	{
-		throw std::invalid_argument("パス名が空です。");
+		// 登録数が最大に達していないか
+		if (resources_.size() >= (std::numeric_limits<std::uint32_t>::max)())
+		{
+			throw std::runtime_error("リソースの登録数が最大に達しました。");
+		}
+
+		// 追加前のsizeを、新しいリソースのindexとして覚える
+		std::uint32_t index = static_cast<std::uint32_t>(resources_.size());
+
+		ResourceRecord record{};
+		record.name = name;
+
+		// リソースを登録
+		resources_.push_back(std::move(record));
+
+		// GraphResourceHandleを作成して返す
+		GraphResourceHandle handle;
+		handle.graphid = graphid_;
+		handle.index = index;
+
+		return handle;
 	}
 
-	// 同じリソースの重複指定を拒否する
-	std::vector<bool> checkedIndex(resourceNames_.size(), false);
-
-	for (const auto& use : desc.resources)
+	// パスを追加する
+	void RenderGraph::AddPass(GraphPassDesc desc)
 	{
-		if (!Contains(use.resource))
+		if (desc.name.empty())
 		{
-			throw std::invalid_argument("パスに登録されたリソースが無効です。");
-		}
-		if (use.access != GraphResourceAccess::Read &&
-			use.access != GraphResourceAccess::Write &&
-			use.access != GraphResourceAccess::ReadWrite)
-		{
-			throw std::invalid_argument("パスに登録されたリソースのアクセス種別が無効です。");
+			throw std::invalid_argument("パス名が空です。");
 		}
 
-		// 重複チェック
-		const auto index = use.resource.index;
-		if (checkedIndex[index])
+		// 同じリソースの重複指定を拒否する
+		std::vector<bool> checkedIndex(resources_.size(), false);
+
+		for (const auto& use : desc.resources)
 		{
-			throw std::invalid_argument("パスに登録されたリソースが重複しています。");
-		}
-		checkedIndex[index] = true;
-	}
-	
-	passes_.push_back(std::move(desc));
-}
-
-// Graphの検査
-void KT::Renderer::RenderGraph::Validate() const
-{
-	//登録リソース数と同じ長さの「内容が定義済みか」の配列を、全部falseで作る
-	const auto resourceCount = resourceNames_.size();
-	std::vector<bool> resourceDefined(resourceCount, false);
-
-	//passes_を登録順に調べる
-
-	//各パスのresourcesを調べ、
-	//ReadかReadWriteなのに対応する値がfalseならstd::runtime_errorをthrowする
-	//WriteかReadWriteなら対応する値をtrueにする
-	for (const auto& pass : passes_)
-	{
-		for (const auto& use : pass.resources)
-		{
-			const auto index = use.resource.index;
-			if (index >= resourceCount)
+			if (!Contains(use.resource))
 			{
-				throw std::runtime_error("パスに登録されたリソースのインデックスが無効です。");
+				throw std::invalid_argument("パスに登録されたリソースが無効です。");
 			}
-			if (use.access == GraphResourceAccess::Read || use.access == GraphResourceAccess::ReadWrite)
+			if (use.access != GraphResourceAccess::Read &&
+				use.access != GraphResourceAccess::Write &&
+				use.access != GraphResourceAccess::ReadWrite)
 			{
-				if (!resourceDefined[index])
+				throw std::invalid_argument("パスに登録されたリソースのアクセス種別が無効です。");
+			}
+
+			// 重複チェック
+			const auto index = use.resource.index;
+			if (checkedIndex[index])
+			{
+				throw std::invalid_argument("パスに登録されたリソースが重複しています。");
+			}
+			checkedIndex[index] = true;
+		}
+
+		passes_.push_back(std::move(desc));
+	}
+
+	// Graphの検査
+	void RenderGraph::Validate() const
+	{
+		//登録リソース数と同じ長さの「内容が定義済みか」の配列を、全部falseで作る
+		const auto resourceCount = resources_.size();
+		std::vector<bool> resourceDefined(resourceCount, false);
+
+		//resources_のうち、importedTextureがあるものはcontentsDefinedをresourceDefinedにコピーする
+		for (auto index = 0; index < resources_.size(); ++index)
+		{
+			if (resources_[index].importedTexture.has_value())
+			{
+				resourceDefined[index] = resources_[index].importedTexture->contentsDefined;
+			}
+		}
+
+		//passes_を登録順に調べる
+
+		//各パスのresourcesを調べ、
+		//ReadかReadWriteなのに対応する値がfalseならstd::runtime_errorをthrowする
+		//WriteかReadWriteなら対応する値をtrueにする
+		for (const auto& pass : passes_)
+		{
+			for (const auto& use : pass.resources)
+			{
+				const auto index = use.resource.index;
+				if (index >= resourceCount)
 				{
-					throw std::runtime_error("パス '" + pass.name +"' で読み込まれるリソース '" + resourceNames_[index] + "' が未定義です。");
+					throw std::runtime_error("パスに登録されたリソースのインデックスが無効です。");
+				}
+				if (use.access == GraphResourceAccess::Read || use.access == GraphResourceAccess::ReadWrite)
+				{
+					if (!resourceDefined[index])
+					{
+						throw std::runtime_error("パス '" + pass.name + "' で読み込まれるリソース '" + resources_[index].name + "' が未定義です。");
+					}
+				}
+				if (use.access == GraphResourceAccess::Write || use.access == GraphResourceAccess::ReadWrite)
+				{
+					resourceDefined[index] = true;
 				}
 			}
-			if (use.access == GraphResourceAccess::Write || use.access == GraphResourceAccess::ReadWrite)
-			{
-				resourceDefined[index] = true;
-			}
 		}
 	}
+
+	GraphResourceHandle RenderGraph::ImportTexture(GraphImportedTextureDesc desc)
+	{
+		if (desc.name.empty())
+		{
+			throw std::invalid_argument("インポートするテクスチャの名前が空です。");
+		}
+		if (!desc.resource)
+		{
+			throw std::invalid_argument("インポートするテクスチャのリソースがnullptrです。");
+		}
+		if (desc.rtv.ptr == 0)
+		{
+			throw std::invalid_argument("インポートするテクスチャのRTVが無効です。");
+		}
+		if (resources_.size() >= ((std::numeric_limits<std::uint32_t>::max)()))
+		{
+			throw std::overflow_error("リソースの登録数が最大です。");
+		}
+
+		//　同じ画像の二重登録を拒否する
+		for (const auto& record : resources_)
+		{
+			if (record.importedTexture.has_value() && record.importedTexture->resource == desc.resource)
+			{
+				throw std::invalid_argument("同じ画像の二重登録はできません。");
+			}
+		}
+
+		//追加前のresources_.size()をuint32_tへ変換し、indexとして保存する
+		const auto index = static_cast<std::uint32_t>(resources_.size());
+
+		// ResourceRecordを作成してresources_に追加する
+		ResourceRecord record{};
+		record.name = desc.name;
+		record.importedTexture = std::move(desc);
+		resources_.push_back(std::move(record));
+
+		// GraphResourceHandleを作成して返す
+		GraphResourceHandle handle;
+		handle.graphid = graphid_;
+		handle.index = index;
+
+		return handle;
+	}
 }
+
+
+
+

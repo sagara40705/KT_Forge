@@ -29,12 +29,19 @@ namespace KT::Renderer
         Write,      // 内容を書き込む
         ReadWrite,  // 既存の内容を読み、それを使って書き込む
     };
+    // 何の用途で使うか
+	enum class GraphResourceUsage
+	{
+		Unspecified,    // 用途未指定
+		RenderTarget,   // レンダーターゲットとして使う
+	};
 
     // どのリソースをどう使うか
     struct GraphResourceUse
     {
         GraphResourceHandle resource;
         GraphResourceAccess access = GraphResourceAccess::Read;
+		GraphResourceUsage usage = GraphResourceUsage::Unspecified;
     };
 
     // GraphのパスのDesc。
