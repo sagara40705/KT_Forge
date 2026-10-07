@@ -18,7 +18,7 @@ namespace KT::Platform
 		}
 		if (glfwInit() != GLFW_TRUE)
 		{
-			throw std::logic_error("GLFWの初期化に失敗しました。");
+			throw std::runtime_error("GLFWの初期化に失敗しました。");
 		}
 		contextActive = true;
 	}
