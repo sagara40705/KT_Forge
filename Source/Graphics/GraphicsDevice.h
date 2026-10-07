@@ -28,5 +28,7 @@ namespace KT::Graphics
 	public:
 		// デバイスを取得する
 		ID3D12Device* GetDevice() const noexcept;
+		// DXGIファクトリを取得する
+		IDXGIFactory6* GetFactory() const noexcept;
 	};
 }

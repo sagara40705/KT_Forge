@@ -1,5 +1,7 @@
 #include "Window.h"
 #include <GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
 #include <stdexcept>
 
 namespace KT::Platform
@@ -39,5 +41,15 @@ namespace KT::Platform
 	void Window::GetFramebufferSize(int& width, int& height) const
 	{
 		glfwGetFramebufferSize(window_, &width, &height);
+	}
+
+	HWND Window::GetNativeHandle() const
+	{
+		HWND hwnd = glfwGetWin32Window(window_);
+		if (!hwnd)
+		{
+			throw std::runtime_error("GLFWのネイティブハンドルの取得に失敗しました。");
+		}
+		return hwnd;
 	}
 }

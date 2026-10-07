@@ -93,4 +93,8 @@ namespace KT::Graphics
 	{
 		return device_.Get();
 	}
+	IDXGIFactory6* GraphicsDevice::GetFactory() const noexcept
+	{
+		return factory_.Get();
+	}
 }

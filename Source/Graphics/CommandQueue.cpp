@@ -32,6 +32,11 @@ namespace KT::Graphics
 		}
 	}
 
+	ID3D12CommandQueue* CommandQueue::GetCommandQueue() const noexcept
+	{
+		return queue_.Get();
+	}
+
 	std::uint64_t CommandQueue::Signal()
 	{
 		// 最大値チェック

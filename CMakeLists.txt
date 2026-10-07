@@ -40,6 +40,10 @@ set(KT_FORGE_SOURCES
     Source/Core/File.cpp
     Source/Graphics/GraphicsDevice.h
     Source/Graphics/GraphicsDevice.cpp
+    Source/Graphics/CommandQueue.h
+    Source/Graphics/CommandQueue.cpp
+    Source/Graphics/CommandContext.h
+    Source/Graphics/CommandContext.cpp
     Source/Platform/GlfwContext.h
     Source/Platform/GlfwContext.cpp
     Source/Platform/Window.h

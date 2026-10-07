@@ -1,5 +1,6 @@
 #pragma once
 #include <Core/Utility/NonCopyable.h>
+#include <Windows.h>
 
 //　前方宣言
 struct GLFWwindow;
@@ -26,5 +27,9 @@ namespace KT::Platform
 	private:
 		// GLFWのウィンドウポインタ
 		GLFWwindow* window_ = nullptr;
+
+	public:
+		// Windowsのネイティブハンドルを取得する
+		HWND GetNativeHandle() const;
 	};
 }

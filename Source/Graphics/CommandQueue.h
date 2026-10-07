@@ -26,6 +26,9 @@ namespace KT::Graphics
 		ComPtr<ID3D12Fence> fence_{};
 
 	public:
+		// コマンドキューを取得する
+		ID3D12CommandQueue* GetCommandQueue() const noexcept;
+
 		// Fenceの値を進める
 		std::uint64_t Signal();
 
@@ -34,10 +37,10 @@ namespace KT::Graphics
 
 		// 指定した目印までGPUが完了するまで待つ
 		void Wait(std::uint64_t fenceValue) const;
+
 	private:
 		// 次のFenceの値
 		std::uint64_t nextFenceValue_ = 1;
-
 	public:
 		// CommandContextの記録済みCommandListを実行する
 		void Execute(CommandContext& context);
