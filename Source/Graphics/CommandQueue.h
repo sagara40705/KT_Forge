@@ -5,6 +5,9 @@
 
 namespace KT::Graphics
 {
+	// 前方宣言
+	class CommandContext;
+
 	// コマンドキューを管理するクラス
 	class CommandQueue : private KT::Core::NonCopyable
 	{
@@ -34,5 +37,9 @@ namespace KT::Graphics
 	private:
 		// 次のFenceの値
 		std::uint64_t nextFenceValue_ = 1;
+
+	public:
+		// CommandContextの記録済みCommandListを実行する
+		void Execute(CommandContext& context);
 	};
 }

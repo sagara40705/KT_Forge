@@ -1,4 +1,5 @@
 #include <Graphics/CommandQueue.h>
+#include <Graphics/CommandContext.h>
 #include <Core/Log.h>
 #include <stdexcept>
 #include <limits>
@@ -92,5 +93,11 @@ namespace KT::Graphics
 		{
 			throw std::runtime_error("Fenceの完了を待つことができませんでした。");
 		}
+	}
+
+	void CommandQueue::Execute(CommandContext& context)
+	{
+		ID3D12CommandList* lists[] = { context.GetExecutableList() };
+		queue_->ExecuteCommandLists(_countof(lists), lists);
 	}
 }

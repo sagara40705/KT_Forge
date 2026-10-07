@@ -28,4 +28,60 @@ namespace KT::Graphics
 			throw std::runtime_error("CommandListのCloseに失敗");
 		}
 	}
+
+	void CommandContext::Begin()
+	{
+		if (recording_)
+		{
+			throw std::logic_error("CommandContextは既に記録中です。");
+		}
+
+		// CommandAllocatorをリセット
+		if (FAILED(commandAllocator_->Reset()))
+		{
+			throw std::runtime_error("CommandAllocatorのResetに失敗");
+		}
+
+		// CommandListをリセット
+		if (FAILED(commandList_->Reset(commandAllocator_.Get(), nullptr)))
+		{
+			throw std::runtime_error("CommandListのResetに失敗");
+		}
+
+		recording_ = true;
+	}
+
+	void CommandContext::End()
+	{
+		if (!recording_)
+		{
+			throw std::logic_error("CommandContextは記録中ではありません。");
+		}
+
+		// CommandListを閉じる
+		if (FAILED(commandList_->Close()))
+		{
+			throw std::runtime_error("CommandListのCloseに失敗");
+		}
+
+		recording_ = false;
+	}
+
+	ID3D12GraphicsCommandList* CommandContext::GetRecordingList() const
+	{
+		if (!recording_)
+		{
+			throw std::logic_error("CommandContextは記録中ではありません。");
+		}
+		return commandList_.Get();
+	}
+
+	ID3D12CommandList* CommandContext::GetExecutableList() const
+	{
+		if (recording_)
+		{
+			throw std::logic_error("CommandContextは記録中です。");
+		}
+		return commandList_.Get();
+	}
 }
