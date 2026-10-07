@@ -5,6 +5,8 @@
 #include <Graphics/GraphicsDevice.h>
 #include <Graphics/CommandQueue.h>
 #include <Graphics/CommandContext.h>
+#include <Graphics/Swapchain.h>
+#include <memory>
 
 namespace KT::Application
 {
@@ -33,5 +35,8 @@ namespace KT::Application
 
 		// CommandContext
 		KT::Graphics::CommandContext commandContext_;
+
+		// Swapchain
+		std::unique_ptr<KT::Graphics::Swapchain> swapchain_{};
 	};
 }

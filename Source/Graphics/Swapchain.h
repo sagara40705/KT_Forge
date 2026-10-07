@@ -2,6 +2,7 @@
 #include <Core/Utility/NonCopyable.h>
 #include <Graphics/GraphicsDevice.h>
 #include <cstdint>
+#include <array>
 
 namespace KT::Graphics
 {
@@ -23,5 +24,15 @@ namespace KT::Graphics
 	public:
 		// バックバッファの数
 		static constexpr std::uint32_t BufferCount = 2;
+
+	private:
+		// バックバッファのリソース
+		std::array<ComPtr<ID3D12Resource>, BufferCount> backBuffers_{};
+
+		// レンダーターゲットビューのヒープ
+		ComPtr<ID3D12DescriptorHeap> rtvHeap_{};
+
+		// レンダーターゲットビューのヒープのサイズ
+		UINT rtvDescriptorSize_ = 0;
 	};
 }

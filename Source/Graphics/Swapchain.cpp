@@ -41,5 +41,42 @@ namespace KT::Graphics
 		{
 			throw std::runtime_error("SwapChain3のインターフェースの取得に失敗しました。");
 		}
+
+		// ウィンドウの関連付けを行う（Alt+Enterによるフルスクリーン切り替えを無効化）
+		if (FAILED(device.GetFactory()->MakeWindowAssociation(window, DXGI_MWA_NO_ALT_ENTER)))
+		{
+			throw std::runtime_error("ウィンドウの関連付けに失敗しました。");
+		}
+
+		// バックバッファの取得
+		for (std::uint32_t index = 0; index < BufferCount; ++index)
+		{
+			if (FAILED(swapchain_->GetBuffer(index, IID_PPV_ARGS(&backBuffers_[index]))))
+			{
+				throw std::runtime_error("バックバッファの取得に失敗しました。");
+			}
+		}
+
+		// レンダーターゲットビューのヒープの作成
+		D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc{};
+		rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+		rtvHeapDesc.NumDescriptors = BufferCount;
+		rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+		rtvHeapDesc.NodeMask = 0;
+		if (FAILED(device.GetDevice()->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&rtvHeap_))))
+		{
+			throw std::runtime_error("レンダーターゲットビューのヒープの作成に失敗しました。");
+		}
+
+		// RTVの間隔を取得
+		rtvDescriptorSize_ = device.GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+		// バックバッファに対してレンダーターゲットビューを作成
+		auto rtvHandle = rtvHeap_->GetCPUDescriptorHandleForHeapStart();
+		for (std::uint32_t index = 0; index < BufferCount; ++index)
+		{
+			device.GetDevice()->CreateRenderTargetView(backBuffers_[index].Get(), nullptr, rtvHandle);
+			rtvHandle.ptr += rtvDescriptorSize_;
+		}
 	}
 }
