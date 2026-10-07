@@ -23,3 +23,14 @@ namespace KT::Core
 	[[nodiscard]] bool Log(LogLevel level, std::string_view message,
 		std::source_location location = std::source_location::current()) noexcept;
 }
+
+// Convenience macros: evaluate the message once and intentionally discard output status.
+// Caller location is preserved; logging remains enabled in Release.
+#define KT_LOG_INFO(message) \
+	((void)::KT::Core::Log(::KT::Core::LogLevel::Info, (message)))
+
+#define KT_LOG_WARNING(message) \
+	((void)::KT::Core::Log(::KT::Core::LogLevel::Warning, (message)))
+
+#define KT_LOG_ERROR(message) \
+	((void)::KT::Core::Log(::KT::Core::LogLevel::Error, (message)))
