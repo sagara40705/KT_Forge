@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 4.2)
 
-project(KT_Forge LANGUAGES CXX)
+project(KT_Forge LANGUAGES C CXX)
 
 if(NOT WIN32 OR NOT MSVC)
     message(FATAL_ERROR "KT_Forge requires Windows and MSVC.")
@@ -8,6 +8,22 @@ endif()
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "KT_Forge requires a 64-bit build. Use the vs2026-x64 preset.")
 endif()
+
+include(FetchContent)
+
+# GLFW 3.5.1: official release pinned to its immutable commit.
+# FetchContent keeps dependency sources and outputs in build/_deps.
+set(GLFW_LIBRARY_TYPE STATIC CACHE STRING "GLFW library type" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "Build GLFW examples" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "Build GLFW tests" FORCE)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "Build GLFW documentation" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "Generate GLFW install rules" FORCE)
+FetchContent_Declare(glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG d9d6f0f1f967807ffade6598ea9a631ebaf37a56
+    EXCLUDE_FROM_ALL
+)
+FetchContent_MakeAvailable(glfw)
 
 # Add new .cpp and .h files here so the build inputs stay explicit.
 set(KT_FORGE_SOURCES
@@ -30,6 +46,8 @@ add_executable(KT_Forge ${KT_FORGE_SOURCES})
 target_compile_features(KT_Forge PRIVATE cxx_std_20)
 target_include_directories(KT_Forge PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 target_compile_options(KT_Forge PRIVATE /W4 /utf-8)
+target_compile_definitions(KT_Forge PRIVATE GLFW_INCLUDE_NONE)
+target_link_libraries(KT_Forge PRIVATE glfw)
 
 set_target_properties(KT_Forge PROPERTIES
     CXX_EXTENSIONS OFF
