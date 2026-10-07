@@ -41,5 +41,8 @@ namespace KT::Graphics
 	public:
 		// CommandContextの記録済みCommandListを実行する
 		void Execute(CommandContext& context);
+
+		// CommandContextの記録済みCommandListを実行し、完了まで待つ
+		void ExecuteAndWait(CommandContext& context);
 	};
 }

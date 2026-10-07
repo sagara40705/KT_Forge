@@ -15,7 +15,7 @@ namespace KT::Application
 		// コンストラクタ(幅・高さ・タイトル)
 		Application(int width, int height, const char* title);
 
-		// メインループを開始する
+		// アプリケーションの実行
 		void Run();
 
 	private:

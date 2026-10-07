@@ -3,6 +3,7 @@
 #include <Core/Log.h>
 #include <stdexcept>
 #include <limits>
+#include <execution>
 
 namespace KT::Graphics
 {
@@ -99,5 +100,26 @@ namespace KT::Graphics
 	{
 		ID3D12CommandList* lists[] = { context.GetExecutableList() };
 		queue_->ExecuteCommandLists(_countof(lists), lists);
+	}
+
+	void CommandQueue::ExecuteAndWait(CommandContext& context)
+	{
+		try
+		{
+			Execute(context);
+			auto fenceValue = Signal();
+			Wait(fenceValue);
+		}
+		catch (const std::exception& error)
+		{
+			KT_LOG_ERROR("CommandQueue::ExecuteAndWaitで例外が発生");
+			KT_LOG_ERROR(error.what());
+			std::terminate();
+		}
+		catch (...)
+		{
+			KT_LOG_ERROR("CommandQueue::ExecuteAndWaitで不明な例外が発生");
+			std::terminate();
+		}
 	}
 }
