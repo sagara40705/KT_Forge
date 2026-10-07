@@ -1,0 +1,34 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 2,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "vs2026-x64",
+      "displayName": "Visual Studio 2026 x64",
+      "description": "Configure in the existing build directory; choose Debug or Release when building.",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "displayName": "KT_Forge Debug",
+      "configurePreset": "vs2026-x64",
+      "configuration": "Debug",
+      "targets": ["KT_Forge"]
+    },
+    {
+      "name": "release",
+      "displayName": "KT_Forge Release",
+      "configurePreset": "vs2026-x64",
+      "configuration": "Release",
+      "targets": ["KT_Forge"]
+    }
+  ]
+}

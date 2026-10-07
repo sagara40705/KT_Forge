@@ -38,5 +38,8 @@ namespace KT::Renderer
 
 		// パスを追加する
 		void AddPass(GraphPassDesc desc);
+
+		// Graphの検査
+		void Validate() const;
 	};
 }
