@@ -2,6 +2,7 @@
 #include <Core/Utility/NonCopyable.h>
 #include <Platform/GlfwContext.h>
 #include <Platform/Window.h>
+#include <Graphics/GraphicsDevice.h>
 
 namespace KT::Application
 {
@@ -21,5 +22,8 @@ namespace KT::Application
 
 		// ウィンドウの所有
 		KT::Platform::Window window_;
+
+		// GraphicsDevice
+		KT::Graphics::GraphicsDevice graphicsDevice_{};
 	};
 }
