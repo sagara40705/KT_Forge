@@ -1,0 +1,14 @@
+#pragma once
+// 互換・学習用umbrella。製品コードは必要な型のheaderを直接includeする。
+#include <Core/Math/Constants.h>
+#include <Core/Math/Scalar.h>
+#include <Core/Math/Angle.h>
+#include <Core/Math/Vector2.h>
+#include <Core/Math/Vector3.h>
+#include <Core/Math/Vector4.h>
+#include <Core/Math/Quaternion.h>
+#include <Core/Math/Matrix4.h>
+#include <Core/Math/AABB.h>
+#include <Core/Math/Plane.h>
+#include <Core/Math/Ray.h>
+#include <Core/Math/Frustum.h>

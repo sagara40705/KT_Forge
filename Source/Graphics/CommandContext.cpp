@@ -1,4 +1,5 @@
 #include "CommandContext.h"
+#include <Graphics/TriangleRenderer.h>
 #include <stdexcept>
 
 namespace KT::Graphics
@@ -143,6 +144,18 @@ namespace KT::Graphics
 
 		// レンダーターゲットをクリア
 		list->ClearRenderTargetView(rtv, color.data(), 0, nullptr);
+	}
+
+	void CommandContext::DrawTriangle(const TriangleRenderer& renderer, D3D12_CPU_DESCRIPTOR_HANDLE rtv,
+		UINT width, UINT height)
+	{
+		if (rtv.ptr == 0)
+			throw std::invalid_argument("三角形描画先のRTVが無効です。");
+		// DX12の2Dテクスチャ上限内ならfloat/LONGへの変換も安全。
+		if (width == 0 || height == 0 || width > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
+			height > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION)
+			throw std::invalid_argument("三角形描画先のサイズが範囲外です。");
+		renderer.Record(GetRecordingList(), rtv, width, height);
 	}
 
 	// 記録失敗時にContextを使用禁止にする。GPU待機や命令の取り消しは行わない

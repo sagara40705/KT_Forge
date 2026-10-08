@@ -5,6 +5,8 @@
 
 namespace KT::Graphics
 {
+	class TriangleRenderer;
+
 	// AllocatorとListを所有。「命令の記録」を担当する
 	class CommandContext : private KT::Core::NonCopyable
 	{
@@ -42,6 +44,12 @@ namespace KT::Graphics
 
 		// 全域Clearを記録する。呼出側は対象がRENDER_TARGET状態であることを保証する
 		void ClearRenderTarget(D3D12_CPU_DESCRIPTOR_HANDLE rtv, const std::array<float, 4>& color);
+
+		// 三角形を記録する。RTVはRendererと同じformat、MSAAなし、指定サイズの
+		// RENDER_TARGET状態であることを呼出側が保証する。Clear・遷移・提出はしない。
+		// RendererとRTV heap/画像はGPU完了まで保持する。Listの描画状態は復元しない。
+		void DrawTriangle(const TriangleRenderer& renderer, D3D12_CPU_DESCRIPTOR_HANDLE rtv,
+			UINT width, UINT height);
 
 		// 記録失敗時にContextを使用禁止にする。GPU待機や命令の取り消しは行わない
 		void Invalidate() noexcept;
