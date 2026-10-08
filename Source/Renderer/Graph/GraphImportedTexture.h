@@ -24,5 +24,8 @@ namespace KT::Renderer
 
 		// 最初から読み取り可能な内容があるか
 		bool contentsDefined = false;
+
+		// Graph終了時に画像全体の内容が定義済みであることを要求する
+		bool requireDefineAtEnd = false;
 	};
 }

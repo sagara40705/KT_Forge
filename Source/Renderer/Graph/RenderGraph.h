@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <optional>
 #include <functional>
+#include <cstddef>
 
 namespace KT::Renderer
 {
@@ -23,9 +24,6 @@ namespace KT::Renderer
 		// 自分のGraphID。0は無効
 		std::uint64_t graphid_ = 0;
 
-		// 登録したリソース名の一覧
-		std::vector<std::string> resourceNames_;
-
 	private:
 		// リソースの情報
 		struct ResourceRecord
@@ -37,6 +35,7 @@ namespace KT::Renderer
 		};
 		// 登録したリソースの情報
 		std::vector<ResourceRecord> resources_;
+
 	private:
 		// パスをまとめて保持するための内部構造体
 		struct PassRecord
@@ -48,6 +47,44 @@ namespace KT::Renderer
 		};
 		// 登録したパスの一覧
 		std::vector<PassRecord> passes_;
+
+	private:
+		// Graphの状態
+		enum class State
+		{
+			Building,	// リソースとパスを登録できる
+			Completed,	// 検証・計画作成が完了し、登録内容が固定された
+			Recording,	// CommandListへ命令を記録している途中
+			Recorded,	// Graphの命令記録が完了した
+			Failed,		// 記録に失敗し、このGraphを再利用できない
+		};
+		// Graphの現在の状態
+		State state_ = State::Building;
+		// Building状態であることを検査し、違う場合はstd::logic_errorをthrowする
+		void RequireBuilding() const;
+
+	private:
+		// 状態遷移1件の計画
+		struct PlannedTransition
+		{
+			GraphResourceHandle resource;	// どの画像を
+			D3D12_RESOURCE_STATES before;	// どの状態から
+			D3D12_RESOURCE_STATES after;	// どの状態へ変えるか
+		};
+		// パス1件の計画
+		struct PlannedPass
+		{
+			std::size_t passIndex = 0;						// passes_の何番目のパスか
+			std::vector<PlannedTransition> transitions{};	// このパスで行う状態遷移の一覧
+		};
+		// Graph全体の計画
+		struct CompiledPlan
+		{
+			std::vector<PlannedPass> passes{};					// パスの計画一覧
+			std::vector<PlannedTransition> finalTransitions{};	// Import時のfinalStateへ戻すための遷移
+		};
+
+		std::optional<CompiledPlan> compiledPlan_ = std::nullopt;	// 計画が作成されていれば保持する
 
 	public:
 		// コンストラクタ
@@ -73,5 +110,8 @@ namespace KT::Renderer
 
 		// 外部からインポートされたテクスチャを登録し、GraphResourceHandleを返す
 		GraphResourceHandle ImportTexture(GraphImportedTextureDesc desc);
+
+		// Graphの計画を作成する
+		void Compile();
 	};
 }

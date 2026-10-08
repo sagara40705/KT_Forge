@@ -4,6 +4,14 @@
 
 namespace KT::Renderer
 {
+	void RenderGraph::RequireBuilding() const
+	{
+		if (state_ != State::Building)
+		{
+			throw std::logic_error("GraphはBuilding状態ではありません。");
+		}
+	}
+
 	// GraphResourceHandleの検査(IsValid・graphidの一致・indexの範囲)
 	bool RenderGraph::Contains(GraphResourceHandle handle) const
 	{
@@ -16,11 +24,13 @@ namespace KT::Renderer
 	// リソースを登録し、GraphResourceHandleを返す
 	GraphResourceHandle RenderGraph::RegisterResource(std::string name)
 	{
-		// 登録数が最大に達していないか
+		// 前検査
+		RequireBuilding();
 		if (resources_.size() >= (std::numeric_limits<std::uint32_t>::max)())
 		{
 			throw std::runtime_error("リソースの登録数が最大に達しました。");
 		}
+
 
 		// 追加前のsizeを、新しいリソースのindexとして覚える
 		std::uint32_t index = static_cast<std::uint32_t>(resources_.size());
@@ -42,13 +52,11 @@ namespace KT::Renderer
 	// パスを追加する
 	void RenderGraph::AddPass(GraphPassDesc desc, GraphRecordFn record)
 	{
+		// 前検査
+		RequireBuilding();
 		if (desc.name.empty())
 		{
 			throw std::invalid_argument("パス名が空です。");
-		}
-		if (desc.resources.empty())
-		{
-			throw std::invalid_argument("パスに登録されたリソースが空です。");
 		}
 		if (!record)
 		{
@@ -82,6 +90,7 @@ namespace KT::Renderer
 			{
 				throw std::invalid_argument("パスに登録されたリソースが重複しています。");
 			}
+
 			checkedIndex[index] = true;
 		}
 
@@ -137,10 +146,25 @@ namespace KT::Renderer
 				}
 			}
 		}
+
+		// 
+		for (std::size_t index = 0; index < resources_.size(); ++index)
+		{
+			if (!resources_[index].importedTexture.has_value())
+			{
+				throw std::runtime_error("リソース '" + resources_[index].name + "' がインポートされていません。");
+			}
+			if (resources_[index].importedTexture->requireDefineAtEnd && !resourceDefined[index])
+			{
+				throw std::runtime_error("リソース '" + resources_[index].name + "' はGraph終了時に必要な画像内容が定義されていません。");
+			}
+		}
 	}
 
 	GraphResourceHandle RenderGraph::ImportTexture(GraphImportedTextureDesc desc)
 	{
+		// 前検査
+		RequireBuilding();
 		if (desc.name.empty())
 		{
 			throw std::invalid_argument("インポートするテクスチャの名前が空です。");
@@ -182,6 +206,151 @@ namespace KT::Renderer
 		handle.index = index;
 
 		return handle;
+	}
+
+	void RenderGraph::Compile()
+	{
+		// 前検査
+		RequireBuilding();
+		Validate();
+
+		// resources_を走査する
+		for (const auto& record : resources_)
+		{
+			if (!record.importedTexture.has_value())
+			{
+				throw std::runtime_error("インポートされていないリソースがあります。");
+			}
+
+			const auto& imported = record.importedTexture;
+			const auto imageDesc = imported->resource->GetDesc();
+
+			// 2Dテクスチャであることを検査する
+			if (imageDesc.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D)
+			{
+				throw std::runtime_error("インポートされたリソース '" + record.name + "' は2Dテクスチャではありません。");
+			}
+			if (imageDesc.Width == 0 || imageDesc.Height == 0)
+			{
+				throw std::runtime_error("インポートされたリソース '" + record.name + "' の幅または高さが0です。");
+			}
+			if (imageDesc.DepthOrArraySize != 1)
+			{
+				throw std::runtime_error("インポートされたリソース '" + record.name + "' は2Dテクスチャではありません。");
+			}
+			if (imageDesc.MipLevels == 0)
+			{
+				throw std::runtime_error("インポートされたリソース '" + record.name + "' のミップレベルが0です。");
+			}
+			if (imageDesc.SampleDesc.Count != 1 || imageDesc.SampleDesc.Quality != 0)
+			{
+				throw std::runtime_error("インポートされたリソース '" + record.name + "' はマルチサンプルテクスチャです。");
+			}
+			if ((imageDesc.Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) == 0)
+			{
+				throw std::runtime_error("インポートされたリソース '" + record.name + "' はレンダーターゲットとして使えません。");
+			}
+
+			// initalStateの検査
+			if (imported->initialState != D3D12_RESOURCE_STATE_RENDER_TARGET &&
+				imported->initialState != D3D12_RESOURCE_STATE_COMMON)
+			{
+				throw std::runtime_error("初版のGraphでは対応していないinitialStateです。");
+			}
+			// finalStateの検査
+			if (imported->finalState != D3D12_RESOURCE_STATE_RENDER_TARGET &&
+				imported->finalState != D3D12_RESOURCE_STATE_COMMON)
+			{
+				throw std::runtime_error("初版のGraphでは対応していないfinalStateです。");
+			}
+		}
+
+		// passes_を走査する
+		for (const auto& pass : passes_)
+		{
+			if (!pass.record)
+			{
+				throw std::runtime_error("パス '" + pass.desc.name + "' のレコードが空です。");
+			}
+			for (const auto& use : pass.desc.resources)
+			{
+				if (!Contains(use.resource))
+				{
+					throw std::runtime_error("パス '" + pass.desc.name + "' のリソース '" + resources_[use.resource.index].name + "' が無効です。");
+				}
+				if (use.usage != GraphResourceUsage::RenderTarget)
+				{
+					throw std::runtime_error("パス '" + pass.desc.name + "' のリソース '" + resources_[use.resource.index].name + "' の用途が無効です。");
+				}
+				if (use.access != GraphResourceAccess::WriteAll &&
+					use.access != GraphResourceAccess::ReadWrite)
+				{
+					throw std::runtime_error("パス '" + pass.desc.name + "' のリソース '" + resources_[use.resource.index].name + "' のアクセス種別が無効です。");
+				}
+			}
+		}
+
+		// 一時的な計画	
+		CompiledPlan plan{};
+		std::vector<D3D12_RESOURCE_STATES> currentStates;
+		currentStates.reserve(resources_.size());
+
+		// 計画上の現在状態
+		for (const auto& record : resources_)
+		{
+			currentStates.push_back(record.importedTexture->initialState);
+		}
+
+		// passes_を登録順に走査する
+		for (std::size_t passIndex = 0; passIndex < passes_.size(); ++passIndex)
+		{
+			const auto& pass = passes_[passIndex];
+			PlannedPass plannedPass;
+			plannedPass.passIndex = passIndex;
+
+			// そのパスが使うリソースを走査する
+			for (const auto& use : pass.desc.resources)
+			{
+				const auto resourceIndex = use.resource.index;
+				const auto before = currentStates[resourceIndex];
+				const auto required = D3D12_RESOURCE_STATE_RENDER_TARGET; // 今回はRenderTargetのみ対応
+
+				// 状態が異なる場合だけ、遷移を追加する
+				if (before != required)
+				{
+					PlannedTransition transition;
+					transition.resource = use.resource;
+					transition.before = before;
+					transition.after = required;
+					plannedPass.transitions.push_back(std::move(transition));
+					// 計画上の現在状態を更新する
+					currentStates[resourceIndex] = required;
+				}
+			}
+
+			// パスの計画を保存する
+			plan.passes.push_back(std::move(plannedPass));
+		}
+
+		// 画像をfinalStateへ戻すための遷移を計画する
+		for (std::size_t resourceIndex = 0; resourceIndex < resources_.size(); ++resourceIndex)
+		{
+			const auto before = currentStates[resourceIndex];
+			const auto after = resources_[resourceIndex].importedTexture->finalState;
+			if (before != after)
+			{
+				PlannedTransition transition;
+				transition.resource.graphid = graphid_;
+				transition.resource.index = static_cast<std::uint32_t>(resourceIndex);
+				transition.before = before;
+				transition.after = after;
+				plan.finalTransitions.push_back(std::move(transition));
+			}
+			
+		}
+
+		compiledPlan_ = std::move(plan);
+		state_ = State::Completed;
 	}
 }
 
