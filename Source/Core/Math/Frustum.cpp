@@ -24,6 +24,7 @@ namespace KT::Core::Math
 		result.planes={combined(0,1),combined(0,-1),combined(1,1),combined(1,-1),
 			combined(2,-1),PlaneFromCoefficients(m(0,2),m(1,2),m(2,2),m(3,2))};
 		// Reverse-Z: Nearはcolumn3-column2（z<=w）、Farはcolumn2（z>=0）。
+		// 列番号は0始まり。column3はclip.w、column2はclip.z。
 		return result;
 	}
 	bool Contains(const Frustum& f, Vector3 point, float tolerance)

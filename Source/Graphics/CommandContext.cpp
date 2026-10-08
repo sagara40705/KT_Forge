@@ -1,5 +1,11 @@
 #include "CommandContext.h"
-#include <Graphics/TriangleRenderer.h>
+#include <Graphics/GraphicsPipelineState.h>
+#include <Graphics/VertexBuffer.h>
+#include <Graphics/IndexBuffer.h>
+#include <Graphics/ColorTargetView.h>
+#include <Graphics/DepthBuffer.h>
+#include <Graphics/ConstantBufferArena.h>
+#include <Graphics/GraphicsValidation.h>
 #include <stdexcept>
 
 namespace KT::Graphics
@@ -32,6 +38,8 @@ namespace KT::Graphics
 
 	void CommandContext::Begin()
 	{
+		if (frameOwned_ && !frameBegin_) throw std::logic_error("Frame-owned Context Begin must go through FrameResources.");
+		frameBegin_ = false;
 		if (recording_)
 		{
 			throw std::logic_error("CommandContextは既に記録中です。");
@@ -94,6 +102,7 @@ namespace KT::Graphics
 
 	ID3D12CommandList* CommandContext::GetExecutableList() const
 	{
+		if (frameOwned_ && !frameSubmit_) throw std::logic_error("Frame-owned Context submission must go through FrameResources.");
 		if (recording_)
 		{
 			throw std::logic_error("CommandContextは記録中です。");
@@ -146,16 +155,57 @@ namespace KT::Graphics
 		list->ClearRenderTargetView(rtv, color.data(), 0, nullptr);
 	}
 
-	void CommandContext::DrawTriangle(const TriangleRenderer& renderer, D3D12_CPU_DESCRIPTOR_HANDLE rtv,
-		UINT width, UINT height)
+	void CommandContext::DrawIndexed(const GraphicsPipelineState& p, const VertexBuffer& vertices, const IndexBuffer& indices,
+		const ColorTargetView& target, const DepthBuffer& depth, const ConstantBufferArena& constants,
+		std::span<const RootConstantBinding> bindings)
 	{
-		if (rtv.ptr == 0)
-			throw std::invalid_argument("三角形描画先のRTVが無効です。");
-		// DX12の2Dテクスチャ上限内ならfloat/LONGへの変換も安全。
-		if (width == 0 || height == 0 || width > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
-			height > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION)
-			throw std::invalid_argument("三角形描画先のサイズが範囲外です。");
-		renderer.Record(GetRecordingList(), rtv, width, height);
+		try
+		{
+			auto* list=GetRecordingList();
+			if (frameConstants_!=&constants) throw std::invalid_argument("Draw constants must belong to this Context's FrameResources.");
+			if (vertices.GetView().StrideInBytes!=p.GetVertexStride() || indices.GetMaximumIndex()>=vertices.GetCount() ||
+				indices.GetCount()%3!=0 || target.GetFormat()!=p.GetTargetFormat() || depth.GetTexture().GetFormat()!=p.GetDepthFormat() ||
+				target.GetWidth()!=depth.GetTexture().GetWidth() || target.GetHeight()!=depth.GetTexture().GetHeight() ||
+				bindings.size()!=p.GetRootParameterCount() || bindings.size()>32)
+				throw std::invalid_argument("Indexed draw layout/index/target/constants mismatch.");
+			ComPtr<ID3D12Device> device;
+			CheckGraphicsResult(list->GetDevice(IID_PPV_ARGS(device.GetAddressOf())),"Recording device query failed.");
+			for (auto* object:std::array<ID3D12DeviceChild*,6>{p.GetState(),vertices.GetResource(),indices.GetResource(),
+				target.GetResource(),depth.GetTexture().GetResource(),constants.GetResource()}) RequireSameDevice(object,device.Get());
+			std::array<D3D12_GPU_VIRTUAL_ADDRESS,32> addresses{};
+			for (std::size_t i=0; i<bindings.size(); ++i)
+			{
+				if (bindings[i].rootParameter>=p.GetRootParameterCount()) throw std::invalid_argument("Root parameter is out of range.");
+				for (std::size_t j=0; j<i; ++j)
+					if (bindings[j].rootParameter==bindings[i].rootParameter) throw std::invalid_argument("Duplicate root parameter.");
+				addresses[i]=constants.GetAddress(bindings[i].slice);
+			}
+			// 全検査完了後だけ記録。GraphicsはView/Object/Materialの意味を知らない。
+			const D3D12_VIEWPORT viewport{0,0,float(target.GetWidth()),float(target.GetHeight()),0,1};
+			const D3D12_RECT scissor{0,0,LONG(target.GetWidth()),LONG(target.GetHeight())};
+			const auto rtv=target.GetRtv(), dsv=depth.GetDsv();
+			list->SetGraphicsRootSignature(p.GetRootSignature()); list->SetPipelineState(p.GetState());
+			list->RSSetViewports(1,&viewport); list->RSSetScissorRects(1,&scissor);
+			list->OMSetRenderTargets(1,&rtv,FALSE,&dsv);
+			list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			const auto& vb=vertices.GetView(); const auto& ib=indices.GetView();
+			list->IASetVertexBuffers(0,1,&vb); list->IASetIndexBuffer(&ib);
+			for (std::size_t i=0; i<bindings.size(); ++i) list->SetGraphicsRootConstantBufferView(bindings[i].rootParameter,addresses[i]);
+			list->DrawIndexedInstanced(indices.GetCount(),1,0,0,0);
+		}
+		catch (...) { Invalidate(); throw; }
+	}
+	void CommandContext::ClearDepth(const DepthBuffer& depth)
+	{
+		try
+		{
+			auto* list=GetRecordingList();
+			ComPtr<ID3D12Device> device;
+			CheckGraphicsResult(list->GetDevice(IID_PPV_ARGS(device.GetAddressOf())),"Recording device query failed.");
+			RequireSameDevice(depth.GetTexture().GetResource(),device.Get());
+			list->ClearDepthStencilView(depth.GetDsv(),D3D12_CLEAR_FLAG_DEPTH,0,0,0,nullptr);
+		}
+		catch (...) { Invalidate(); throw; }
 	}
 
 	// 記録失敗時にContextを使用禁止にする。GPU待機や命令の取り消しは行わない

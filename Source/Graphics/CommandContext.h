@@ -2,10 +2,18 @@
 #include <Core/Utility/NonCopyable.h>
 #include <Graphics/GraphicsDevice.h>
 #include <array>
+#include <span>
 
 namespace KT::Graphics
 {
-	class TriangleRenderer;
+	class FrameResources;
+	class GraphicsPipelineState;
+	class VertexBuffer;
+	class IndexBuffer;
+	class ColorTargetView;
+	class DepthBuffer;
+	class ConstantBufferArena;
+	struct RootConstantBinding;
 
 	// AllocatorとListを所有。「命令の記録」を担当する
 	class CommandContext : private KT::Core::NonCopyable
@@ -31,6 +39,9 @@ namespace KT::Graphics
 		bool recording_ = false;
 		// GPU処理が失敗したか
 		bool failed_ = false;
+		friend class FrameResources;
+		bool frameOwned_ = false, frameBegin_ = false, frameSubmit_ = false;
+		const ConstantBufferArena* frameConstants_ = nullptr;
 
 	public:
 		// 記録中のCommandListを取得
@@ -45,12 +56,14 @@ namespace KT::Graphics
 		// 全域Clearを記録する。呼出側は対象がRENDER_TARGET状態であることを保証する
 		void ClearRenderTarget(D3D12_CPU_DESCRIPTOR_HANDLE rtv, const std::array<float, 4>& color);
 
-		// 三角形を記録する。RTVはRendererと同じformat、MSAAなし、指定サイズの
-		// RENDER_TARGET状態であることを呼出側が保証する。Clear・遷移・提出はしない。
-		// RendererとRTV heap/画像はGPU完了まで保持する。Listの描画状態は復元しない。
-		void DrawTriangle(const TriangleRenderer& renderer, D3D12_CPU_DESCRIPTOR_HANDLE rtv,
-			UINT width, UINT height);
-
+		// 有効なowner-backed画像/同一device/定数tokenを検査し、全indexを記録する。
+		// 呼出側がRT=RENDER_TARGET、depth=DEPTH_WRITEを保証。barrier/clear/submitなし。
+		// 同じFrameResourcesのarenaだけを受理。standalone ContextからのDrawは拒否。
+		// すべての借用部品はGPU完了まで保持。失敗時Invalidate、以後送信禁止。
+		void DrawIndexed(const GraphicsPipelineState& pipeline, const VertexBuffer& vertices, const IndexBuffer& indices,
+			const ColorTargetView& target, const DepthBuffer& depth, const ConstantBufferArena& constants,
+			std::span<const RootConstantBinding> bindings);
+		void ClearDepth(const DepthBuffer& depth); // Reverse-Z全域clear0。DEPTH_WRITEは呼出側。
 		// 記録失敗時にContextを使用禁止にする。GPU待機や命令の取り消しは行わない
 		void Invalidate() noexcept;
 	};

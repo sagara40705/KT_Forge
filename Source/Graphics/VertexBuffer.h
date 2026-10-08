@@ -1,21 +1,19 @@
 #pragma once
-#include <Core/Utility/NonCopyable.h>
-#include <Graphics/GraphicsDevice.h>
-#include <Graphics/TriangleVertex.h>
-#include <span>
+#include <Graphics/GpuBuffer.h>
 
 namespace KT::Graphics
 {
-	// TriangleVertex専用の不変UPLOADバッファ。構築時に入力をコピーする。
-	// GENERIC_READのまま使用する。記録開始からGPU完了まで所有者が保持する。
+	// 頂点型を知らない不変VB。layout/位置値の意味検証はMesh側。
 	class VertexBuffer : private KT::Core::NonCopyable
 	{
 	public:
-		VertexBuffer(GraphicsDevice& device, std::span<const TriangleVertex> vertices);
-		const D3D12_VERTEX_BUFFER_VIEW& GetView() const noexcept;
-
+		VertexBuffer(GraphicsDevice& device, std::span<const std::byte> bytes, UINT stride);
+		const D3D12_VERTEX_BUFFER_VIEW& GetView() const noexcept { return view_; }
+		UINT GetCount() const noexcept { return count_; }
+		ID3D12Resource* GetResource() const noexcept { return buffer_.GetResource(); }
 	private:
-		ComPtr<ID3D12Resource> resource_{};
+		GpuBuffer buffer_;
 		D3D12_VERTEX_BUFFER_VIEW view_{};
+		UINT count_=0;
 	};
 }
