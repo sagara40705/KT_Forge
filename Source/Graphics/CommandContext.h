@@ -1,6 +1,6 @@
 #pragma once
 #include <Core/Utility/NonCopyable.h>
-#include<Graphics/GraphicsDevice.h>
+#include <Graphics/GraphicsDevice.h>
 #include <array>
 
 namespace KT::Graphics

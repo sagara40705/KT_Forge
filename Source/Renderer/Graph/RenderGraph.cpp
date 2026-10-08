@@ -152,7 +152,7 @@ namespace KT::Renderer
 		{
 			if (!resources_[index].importedTexture.has_value())
 			{
-				throw std::runtime_error("リソース '" + resources_[index].name + "' がインポートされていません。");
+				continue;
 			}
 			if (resources_[index].importedTexture->requireDefineAtEnd && !resourceDefined[index])
 			{
@@ -238,9 +238,9 @@ namespace KT::Renderer
 			{
 				throw std::runtime_error("インポートされたリソース '" + record.name + "' は2Dテクスチャではありません。");
 			}
-			if (imageDesc.MipLevels == 0)
+			if (imageDesc.MipLevels != 1)
 			{
-				throw std::runtime_error("インポートされたリソース '" + record.name + "' のミップレベルが0です。");
+				throw std::runtime_error("インポートされたリソース '" + record.name + "' のミップレベルが1ではありません。初版は1のみ");
 			}
 			if (imageDesc.SampleDesc.Count != 1 || imageDesc.SampleDesc.Quality != 0)
 			{

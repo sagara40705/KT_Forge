@@ -21,6 +21,8 @@ namespace KT::Renderer
 	class RenderGraph : private KT::Core::NonCopyable
 	{
 	private:
+		friend class GraphExecutionContext;
+
 		// 自分のGraphID。0は無効
 		std::uint64_t graphid_ = 0;
 
