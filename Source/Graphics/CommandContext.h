@@ -27,6 +27,8 @@ namespace KT::Graphics
 	private:
 		// 記録中か
 		bool recording_ = false;
+		// GPU処理が失敗したか
+		bool failed_ = false;
 
 	public:
 		// 記録中のCommandListを取得
@@ -40,5 +42,8 @@ namespace KT::Graphics
 
 		// 全域Clearを記録する。呼出側は対象がRENDER_TARGET状態であることを保証する
 		void ClearRenderTarget(D3D12_CPU_DESCRIPTOR_HANDLE rtv, const std::array<float, 4>& color);
+
+		// 記録失敗時にContextを使用禁止にする。GPU待機や命令の取り消しは行わない
+		void Invalidate() noexcept;
 	};
 }

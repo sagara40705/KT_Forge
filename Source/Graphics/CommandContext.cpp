@@ -35,16 +35,22 @@ namespace KT::Graphics
 		{
 			throw std::logic_error("CommandContextは既に記録中です。");
 		}
+		if (failed_)
+		{
+			throw std::logic_error("CommandContextは使用禁止状態です。");
+		}
 
 		// CommandAllocatorをリセット
 		if (FAILED(commandAllocator_->Reset()))
 		{
+			Invalidate();
 			throw std::runtime_error("CommandAllocatorのResetに失敗");
 		}
 
 		// CommandListをリセット
 		if (FAILED(commandList_->Reset(commandAllocator_.Get(), nullptr)))
 		{
+			Invalidate();
 			throw std::runtime_error("CommandListのResetに失敗");
 		}
 
@@ -57,10 +63,15 @@ namespace KT::Graphics
 		{
 			throw std::logic_error("CommandContextは記録中ではありません。");
 		}
+		if (failed_)
+		{
+			throw std::logic_error("CommandContextは使用禁止状態です。");
+		}
 
 		// CommandListを閉じる
 		if (FAILED(commandList_->Close()))
 		{
+			Invalidate();
 			throw std::runtime_error("CommandListのCloseに失敗");
 		}
 
@@ -73,6 +84,10 @@ namespace KT::Graphics
 		{
 			throw std::logic_error("CommandContextは記録中ではありません。");
 		}
+		if (failed_)
+		{
+			throw std::logic_error("CommandContextは使用禁止状態です。");
+		}
 		return commandList_.Get();
 	}
 
@@ -81,6 +96,10 @@ namespace KT::Graphics
 		if (recording_)
 		{
 			throw std::logic_error("CommandContextは記録中です。");
+		}
+		if (failed_)
+		{
+			throw std::logic_error("CommandContextは使用禁止状態です。");
 		}
 		return commandList_.Get();
 	}
@@ -124,5 +143,11 @@ namespace KT::Graphics
 
 		// レンダーターゲットをクリア
 		list->ClearRenderTargetView(rtv, color.data(), 0, nullptr);
+	}
+
+	// 記録失敗時にContextを使用禁止にする。GPU待機や命令の取り消しは行わない
+	void CommandContext::Invalidate() noexcept
+	{
+		failed_ = true;
 	}
 }

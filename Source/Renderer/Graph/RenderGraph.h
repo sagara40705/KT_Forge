@@ -9,6 +9,11 @@
 #include <functional>
 #include <cstddef>
 
+namespace KT::Graphics
+{
+	// 前方宣言
+	class CommandContext;
+}
 namespace KT::Renderer
 {
 	// 前方宣言
@@ -115,5 +120,8 @@ namespace KT::Renderer
 
 		// Graphの計画を作成する
 		void Compile();
+
+		// Compile済みの計画に従い、記録中のCommandContextへ命令を記録する
+		void Record(KT::Graphics::CommandContext& commandContext);
 	};
 }

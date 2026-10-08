@@ -1,4 +1,6 @@
-#include "RenderGraph.h"
+#include "Renderer/Graph/RenderGraph.h"
+#include "Renderer/Graph/GraphExecutionContext.h"
+#include "Graphics/CommandContext.h"
 #include <cstddef>
 #include <utility>
 
@@ -208,6 +210,7 @@ namespace KT::Renderer
 		return handle;
 	}
 
+	// Graphの計画を作成する
 	void RenderGraph::Compile()
 	{
 		// 前検査
@@ -351,6 +354,61 @@ namespace KT::Renderer
 
 		compiledPlan_ = std::move(plan);
 		state_ = State::Completed;
+	}
+
+	// Graphの計画に従い、記録中のCommandContextへ命令を記録する
+	void RenderGraph::Record(KT::Graphics::CommandContext& commandContext)
+	{
+		// 前検査
+		if (state_ != State::Completed)
+		{
+			throw std::logic_error("GraphはCompleted状態ではありません。");
+		}
+		if (!compiledPlan_.has_value())
+		{
+			throw std::logic_error("Graphの計画が作成されていません。");
+		}
+
+		// CommandListが記録中であることを確認する
+		(void)commandContext.GetExecutableList();
+
+		try
+		{
+			// 記録中の状態にする
+			state_ = State::Recording;
+
+			// 計画に従い、各パスの命令を記録する
+			for (const auto& plannedPass : compiledPlan_->passes)
+			{
+				// 各Transitionについて、Import情報を取得する
+				// CommandContextへ記録を依頼する
+				for (const auto& transition : plannedPass.transitions)
+				{
+					const auto& imported = resources_[transition.resource.index].importedTexture;
+					commandContext.Transition(imported->resource, transition.before, transition.after);
+				}
+
+				// パスごとにGraphExecutionContextを作成し、パスのrecord関数を呼び出す
+				GraphExecutionContext context(*this, commandContext, plannedPass.passIndex);
+				passes_[plannedPass.passIndex].record(context);
+			}
+
+			// 最終遷移についても同様にCommandContextへ記録を依頼する
+			for (const auto& transition : compiledPlan_->finalTransitions)
+			{
+				const auto& imported = resources_[transition.resource.index].importedTexture;
+				commandContext.Transition(imported->resource, transition.before, transition.after);
+			}
+
+			// 記録が完了したので、状態をRecordedにする
+			state_ = State::Recorded;
+		}
+		catch (...)
+		{
+			commandContext.Invalidate();
+			state_ = State::Failed;
+			throw;
+		}
 	}
 }
 
