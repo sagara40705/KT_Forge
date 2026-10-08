@@ -35,5 +35,7 @@ namespace KT::Renderer
 			{
 				context.ClearColor(target, color);
 			});
+
+
 	}
 }
