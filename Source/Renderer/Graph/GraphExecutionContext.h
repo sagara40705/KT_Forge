@@ -15,6 +15,7 @@ namespace KT::Renderer
 	class RenderGraph;
 
 	// パスのcallbackへ「そのパスが宣言したリソースに描画命令を記録する窓口」を渡す
+	// callbackの呼び出し中だけ有効。参照・ポインタを保存して後で使用しない。
 	class GraphExecutionContext : private KT::Core::NonCopyable
 	{
 	public:

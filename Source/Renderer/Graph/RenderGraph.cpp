@@ -254,7 +254,7 @@ namespace KT::Renderer
 				throw std::runtime_error("インポートされたリソース '" + record.name + "' はレンダーターゲットとして使えません。");
 			}
 
-			// initalStateの検査
+			// initialStateの検査
 			if (imported->initialState != D3D12_RESOURCE_STATE_RENDER_TARGET &&
 				imported->initialState != D3D12_RESOURCE_STATE_COMMON)
 			{
@@ -279,7 +279,7 @@ namespace KT::Renderer
 			{
 				if (!Contains(use.resource))
 				{
-					throw std::runtime_error("パス '" + pass.desc.name + "' のリソース '" + resources_[use.resource.index].name + "' が無効です。");
+					throw std::runtime_error("パス '" + pass.desc.name + "' のリソースHandleが無効です。");
 				}
 				if (use.usage != GraphResourceUsage::RenderTarget)
 				{
@@ -370,7 +370,7 @@ namespace KT::Renderer
 		}
 
 		// CommandListが記録中であることを確認する
-		(void)commandContext.GetExecutableList();
+		(void)commandContext.GetRecordingList();
 
 		try
 		{

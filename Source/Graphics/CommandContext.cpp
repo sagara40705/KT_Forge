@@ -110,13 +110,13 @@ namespace KT::Graphics
 		{
 			throw std::invalid_argument("resourceがnullptrです。");
 		}
+		// 記録中のListを取得する。同一状態でもContextの使用可否を確認する。
+		auto* list = GetRecordingList();
+
 		if (before == after)
 		{
 			return;
 		}
-
-		// 記録中のListを取得する
-		auto* list = GetRecordingList();
 
 		// リソースバリアを作成
 		D3D12_RESOURCE_BARRIER barrier{};

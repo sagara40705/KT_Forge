@@ -54,6 +54,10 @@ set(KT_FORGE_SOURCES
     Source/Renderer/Graph/RenderGraph.h
     Source/Renderer/Graph/RenderGraphTypes.h
     Source/Renderer/Graph/GraphImportedTexture.h
+    Source/Renderer/Graph/GraphExecutionContext.h
+    Source/Renderer/Graph/GraphExecutionContext.cpp
+    Source/Renderer/Passes/ClearPass.h
+    Source/Renderer/Passes/ClearPass.cpp
 )
 
 add_executable(KT_Forge ${KT_FORGE_SOURCES})

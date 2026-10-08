@@ -26,7 +26,7 @@ namespace KT::Renderer
 		// 現在のパスに宣言されているか調べる
 		const auto& uses = graph_.passes_[passIndex_].desc.resources;
 		const auto it = std::find_if(uses.begin(), uses.end(), [resource](const GraphResourceUse& use) {
-			return use.resource.index == resource.index;
+			return use.resource.graphid == resource.graphid && use.resource.index == resource.index;
 			});
 		if (it == uses.end())
 		{
@@ -50,7 +50,7 @@ namespace KT::Renderer
 			}
 		}
 
-		// Import情報の所得
+		// Import情報の取得
 		const auto& imported = graph_.resources_[resource.index].importedTexture;
 		if (!imported.has_value())
 		{
