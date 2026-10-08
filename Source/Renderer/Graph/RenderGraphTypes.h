@@ -25,9 +25,9 @@ namespace KT::Renderer
     // アクセスの種類
     enum class GraphResourceAccess
     {
-        Read,       // 既存の内容を読む
-        Write,      // 論理リソース全体の内容を定義するという宣言
-        ReadWrite,  // 既存の内容を読み、それを使って書き込む
+        Read,       // 前の内容を読む。定義済みの入力が必要
+        WriteAll,   // 前の内容に依存せず、処理後にリソース全体の内容を定義する
+        ReadWrite,  // 定義済みの内容を保全しながら更新する
     };
     // 何の用途で使うか
 	enum class GraphResourceUsage

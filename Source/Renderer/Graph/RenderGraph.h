@@ -6,9 +6,16 @@
 #include <string>
 #include <stdexcept>
 #include <optional>
+#include <functional>
 
 namespace KT::Renderer
 {
+	// 前方宣言
+	class GraphExecutionContext;
+
+	//「GraphExecutionContextを受け取り、戻り値なしで命令を記録する処理」を保持する
+	using GraphRecordFn = std::function<void(GraphExecutionContext&)>;
+
 	// RenderGraphの本体(コピー禁止)
 	class RenderGraph : private KT::Core::NonCopyable
 	{
@@ -19,8 +26,28 @@ namespace KT::Renderer
 		// 登録したリソース名の一覧
 		std::vector<std::string> resourceNames_;
 
+	private:
+		// リソースの情報
+		struct ResourceRecord
+		{
+			// リソース名
+			std::string name;
+			// インポートされたテクスチャの情報
+			std::optional<GraphImportedTextureDesc> importedTexture;
+		};
+		// 登録したリソースの情報
+		std::vector<ResourceRecord> resources_;
+	private:
+		// パスをまとめて保持するための内部構造体
+		struct PassRecord
+		{
+			// パスのDesc
+			GraphPassDesc desc;
+			// 命令を記録する関数
+			GraphRecordFn record;
+		};
 		// 登録したパスの一覧
-		std::vector<GraphPassDesc> passes_;
+		std::vector<PassRecord> passes_;
 
 	public:
 		// コンストラクタ
@@ -39,25 +66,12 @@ namespace KT::Renderer
 		GraphResourceHandle RegisterResource(std::string name);
 
 		// パスを追加する
-		void AddPass(GraphPassDesc desc);
+		void AddPass(GraphPassDesc desc, GraphRecordFn record);
 
 		// Graphの検査
 		void Validate() const;
 
-	private:
-		// リソースの情報
-		struct ResourceRecord
-		{
-			// リソース名
-			std::string name;
-			// インポートされたテクスチャの情報
-			std::optional<GraphImportedTextureDesc> importedTexture;
-		};
-
-		// 登録したリソースの情報
-		std::vector<ResourceRecord> resources_;
-
-	public:
+		// 外部からインポートされたテクスチャを登録し、GraphResourceHandleを返す
 		GraphResourceHandle ImportTexture(GraphImportedTextureDesc desc);
 	};
 }

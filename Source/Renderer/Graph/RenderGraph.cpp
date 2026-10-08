@@ -40,11 +40,19 @@ namespace KT::Renderer
 	}
 
 	// パスを追加する
-	void RenderGraph::AddPass(GraphPassDesc desc)
+	void RenderGraph::AddPass(GraphPassDesc desc, GraphRecordFn record)
 	{
 		if (desc.name.empty())
 		{
 			throw std::invalid_argument("パス名が空です。");
+		}
+		if (desc.resources.empty())
+		{
+			throw std::invalid_argument("パスに登録されたリソースが空です。");
+		}
+		if (!record)
+		{
+			throw std::invalid_argument("パスに登録された記録関数が空です。");
 		}
 
 		// 同じリソースの重複指定を拒否する
@@ -57,10 +65,15 @@ namespace KT::Renderer
 				throw std::invalid_argument("パスに登録されたリソースが無効です。");
 			}
 			if (use.access != GraphResourceAccess::Read &&
-				use.access != GraphResourceAccess::Write &&
+				use.access != GraphResourceAccess::WriteAll &&
 				use.access != GraphResourceAccess::ReadWrite)
 			{
 				throw std::invalid_argument("パスに登録されたリソースのアクセス種別が無効です。");
+			}
+			if (use.usage != GraphResourceUsage::Unspecified &&
+				use.usage != GraphResourceUsage::RenderTarget)
+			{
+				throw std::invalid_argument("パスに登録されたリソースの用途が無効です。");
 			}
 
 			// 重複チェック
@@ -72,7 +85,11 @@ namespace KT::Renderer
 			checkedIndex[index] = true;
 		}
 
-		passes_.push_back(std::move(desc));
+		// PassRecordを作成してpasses_に追加する
+		PassRecord recordEntry{};
+		recordEntry.desc = std::move(desc);
+		recordEntry.record = std::move(record);
+		passes_.push_back(std::move(recordEntry));
 	}
 
 	// Graphの検査
@@ -95,10 +112,12 @@ namespace KT::Renderer
 
 		//各パスのresourcesを調べ、
 		//ReadかReadWriteなのに対応する値がfalseならstd::runtime_errorをthrowする
-		//WriteかReadWriteなら対応する値をtrueにする
+		//WriteAllかReadWriteなら対応する値をtrueにする
 		for (const auto& pass : passes_)
 		{
-			for (const auto& use : pass.resources)
+			const auto& desc = pass.desc;
+
+			for (const auto& use : desc.resources)
 			{
 				const auto index = use.resource.index;
 				if (index >= resourceCount)
@@ -109,10 +128,10 @@ namespace KT::Renderer
 				{
 					if (!resourceDefined[index])
 					{
-						throw std::runtime_error("パス '" + pass.name + "' で読み込まれるリソース '" + resources_[index].name + "' が未定義です。");
+						throw std::runtime_error("パス '" + desc.name + "' で読み込まれるリソース '" + resources_[index].name + "' が未定義です。");
 					}
 				}
-				if (use.access == GraphResourceAccess::Write || use.access == GraphResourceAccess::ReadWrite)
+				if (use.access == GraphResourceAccess::WriteAll || use.access == GraphResourceAccess::ReadWrite)
 				{
 					resourceDefined[index] = true;
 				}
