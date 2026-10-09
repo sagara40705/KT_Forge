@@ -12,101 +12,101 @@
 
 namespace KT::Renderer
 {
-	// ���̃p�X��WriteAll/RenderTarget�錾���m�F���A�J���[�摜�̑S��Clear���L�^����B
+	// このパスのWriteAll/RenderTarget宣言を確認し、カラー画像の全域Clearを記録する。
 	void GraphExecutionContext::ClearColor(GraphViewHandle target, const std::array<float, 4>& color)
 	{
-		// �O�����F���݃p�X�̐錾�E�p�r�ƁA�ؗpview�̎�ނ��m�F����B
+		// 前検査：現在パスの宣言・用途と、借用viewの種類を確認する。
 		const auto& viewDesc = RequireDeclaredView(target, GraphResourceUsage::RenderTarget);
 		auto* colorView = std::get_if<KT::Graphics::ColorTargetView>(&viewDesc.binding);
 		if (!colorView)
 		{
-			throw std::invalid_argument("GraphViewHandle��ColorTargetView�ł͂���܂���");
+			throw std::invalid_argument("GraphViewHandleはColorTargetViewではありません");
 		}
 
-		// access�����F�S��Clear�͔͈͑S�̂̓��e���`���邽�߁AWriteAll��v������B
+		// access検査：全域Clearは範囲全体の内容を定義するため、WriteAllを要求する。
 		for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
 		{
 			if (declaredView.view.index == target.index && declaredView.view.graphid == target.graphid)
 			{
 				if (declaredView.access != GraphResourceAccess::WriteAll)
 				{
-					throw std::invalid_argument("GraphViewHandle��access��WriteAll�ł͂���܂���");
+					throw std::invalid_argument("GraphViewHandleのaccessがWriteAllではありません");
 				}
 				break;
 			}
 		}
 
-		// �L�^�F�錾��access�̌������Graphics�֓n���B
+		// 記録：宣言とaccessの検査後にGraphicsへ渡す。
 		commands_.ClearRenderTarget(colorView->GetRtv(), color);
 	}
 
-	// ���̃p�X��WriteAll/DepthStencil�錾���m�F���A�[�x�̑S��Clear��Graphics�ֈ˗�����B
+	// このパスのWriteAll/DepthStencil宣言を確認し、深度の全域ClearをGraphicsへ依頼する。
 	void GraphExecutionContext::ClearDepth(GraphViewHandle target)
 	{
-		// �O�����F���݃p�X�̐錾�E�p�r�ƁA�ؗpview�̎�ނ��m�F����B
+		// 前検査：現在パスの宣言・用途と、借用viewの種類を確認する。
 		const auto& viewDesc = RequireDeclaredView(target, GraphResourceUsage::DepthStencil);
 		auto* depthView = std::get_if<KT::Graphics::DepthTargetView>(&viewDesc.binding);
 		if (!depthView)
 		{
-			throw std::invalid_argument("GraphViewHandle��DepthTargetView�ł͂���܂���");
+			throw std::invalid_argument("GraphViewHandleはDepthTargetViewではありません");
 		}
 
-		// access�����F�S��Clear�͔͈͑S�̂̓��e���`���邽�߁AWriteAll��v������B
+		// access検査：全域Clearは範囲全体の内容を定義するため、WriteAllを要求する。
 		for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
 		{
 			if (declaredView.view.index == target.index && declaredView.view.graphid == target.graphid)
 			{
 				if (declaredView.access != GraphResourceAccess::WriteAll)
 				{
-					throw std::invalid_argument("GraphViewHandle��access��WriteAll�ł͂���܂���");
+					throw std::invalid_argument("GraphViewHandleのaccessがWriteAllではありません");
 				}
 				break;
 			}
 		}
 
-		// �L�^�˗��FDepthTargetView�ł�Graphics�����͖������B
+		// 記録依頼：DepthTargetView版のGraphics窓口は未実装。
 		commands_.ClearDepth(*depthView);
 	}
 
-	// TODO: �������BReadWrite�錾�Epacket���@�E����Frame�̒萔���������ADraw���L�^����B
+	// TODO: 未実装。ReadWrite宣言・packet寸法・同じFrameの定数を検査し、Drawを記録する。
 	void GraphExecutionContext::DrawIndexed(GraphViewHandle color, GraphViewHandle depth, const KT::Graphics::IndexedDrawPacket& packet)
 	{
 	}
 
-	// Graph��������������B�����ς݂̃p�Xindex�Ɠ���Frame�̋L�^����Acallback�������؂��B
+	// Graphだけが生成する。検査済みのパスindexと同じFrameの記録先を、callback中だけ借りる。
 	GraphExecutionContext::GraphExecutionContext(
 		const RenderGraph& graph, KT::Graphics::CommandContext& commands, const KT::Graphics::ConstantBufferArena& constants, std::size_t passIndex):
 		graph_(graph), commands_(commands), constants_(constants), passIndex_(passIndex)
 	{
 	}
 
-	// view�̏����E�͈͂ƌ��݃p�X�̗p�r�錾���m�F���A�o�^���ꂽdesc��Ԃ��B
+	// viewの所属・範囲と現在パスの用途宣言を確認し、登録されたdescを返す。
 	const GraphViewDesc& GraphExecutionContext::RequireDeclaredView(GraphViewHandle view, GraphResourceUsage usage) const
 	{
-		// �O�����F�o�^�z����Q�Ƃ���O��handle���m�F����B
+		// 前検査：登録配列を参照する前にhandleを確認する。
 		if (!graph_.Contains(view))
 		{
-			throw std::invalid_argument("GraphViewHandle������Graph�ɑ����Ă��܂���");
+			throw std::invalid_argument("GraphViewHandleがこのGraphに属していません");
 		}
 		if (view.index >= graph_.storage_.views.size())
 		{
-			throw std::out_of_range("GraphViewHandle��index���͈͊O�ł�");
+			throw std::out_of_range("GraphViewHandleのindexが範囲外です");
 		}
 
-		// �錾�ƍ��F����Graph��view�ł��A���݃p�X�ɂȂ��g�p�͋����Ȃ��B
+		// 宣言照合：同じGraphのviewでも、現在パスにない使用は許可しない。
 		for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
 		{
 			if (declaredView.view.index == view.index && declaredView.view.graphid == view.graphid)
 			{
 				if (declaredView.usage != usage)
 				{
-					throw std::invalid_argument("GraphViewHandle�̗p�r���錾�ƈ�v���܂���");
+					throw std::invalid_argument("GraphViewHandleの用途が宣言と一致しません");
 				}
 				return graph_.storage_.views[view.index].desc;
 			}
 		}
 		
-		throw std::invalid_argument("GraphViewHandle�����̃p�X�Ő錾����Ă��܂���");
+		throw std::invalid_argument("GraphViewHandleがこのパスで宣言されていません");
 	}
 
 }
