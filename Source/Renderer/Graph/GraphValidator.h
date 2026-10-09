@@ -13,9 +13,13 @@ namespace KT::Renderer
 	class GraphValidator
 	{
 	public:
+		// 画像の検査
 		void ValidateImportedTexture(const GraphImportedTextureDesc& desc, const GraphStorage& storage) const;
+		// Viewの検査
 		void ValidateView(const GraphViewDesc& desc, const GraphStorage& storage) const;
+		// Passの検査
 		void ValidatePass(const GraphPassDesc& desc, const GraphStorage& storage) const;
+		// 全体の検査
 		void Validate(const GraphStorage& storage, std::span<const GraphResolvedPass> passes) const;
 	};
 }
