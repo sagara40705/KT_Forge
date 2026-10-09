@@ -28,7 +28,7 @@ namespace KT::Renderer
 
 		// 名前を登録してGraphResourceHandleを返す
 		GraphResourceHandle RegisterResource(std::string name);
-
+		// GPU画像をGraphへ登録してGraphResourceHandleを返す
 		GraphResourceHandle ImportTexture(GraphImportedTextureDesc desc);
 
 		GraphViewHandle AddView(GraphViewDesc desc);

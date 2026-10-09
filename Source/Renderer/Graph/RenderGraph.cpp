@@ -87,11 +87,42 @@ namespace KT::Renderer
 		// GraphResourceHandleを返す
 		return GraphResourceHandle{ storage_.graphid, index };
 	}
+	// GPU画像をGraphへ登録してGraphResourceHandleを返す
 	GraphResourceHandle RenderGraph::ImportTexture(GraphImportedTextureDesc desc)
 	{
 		// 前検査
 		RequireBuilding();
-		return GraphResourceHandle();
+		if (desc.name.empty())
+		{
+			throw std::invalid_argument("名前が空です");
+		}
+		if (desc.resource == nullptr)
+		{
+			throw std::invalid_argument("resourceがnullptrです");
+		}
+		if (storage_.resources.size() >= (std::numeric_limits<std::uint32_t>::max)())
+		{
+			throw std::overflow_error("リソースが最大数に達しました");
+		}
+
+		// 同じ画像の二重登録を防ぐ
+		for (const auto& resource : storage_.resources)
+		{
+			if (resource.importedTexture.has_value() && resource.importedTexture->resource == desc.resource)
+			{
+				throw std::invalid_argument("同じGPU画像が既に登録されています");
+			}
+		}
+
+		// 登録データを作成してstorage_に追加
+		const std::uint32_t index = static_cast<std::uint32_t>(storage_.resources.size());
+		GraphResourceRecord resourceRecord{};
+		resourceRecord.name = desc.name;
+		resourceRecord.importedTexture = std::move(desc);
+		storage_.resources.push_back(std::move(resourceRecord));
+
+		// GraphResourceHandleを返す
+		return GraphResourceHandle{ storage_.graphid, index };
 	}
 	GraphViewHandle RenderGraph::AddView(GraphViewDesc desc)
 	{
