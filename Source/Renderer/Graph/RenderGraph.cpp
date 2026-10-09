@@ -158,4 +158,11 @@ namespace KT::Renderer
 			throw std::logic_error("GraphはBuilding状態ではありません。登録操作は許可されません。");
 		}
 	}
+	// 入力を変更せず、Resolver結果をValidatorで再照合する。Resolve本体は未実装。
+	void RenderGraph::Validate() const
+	{
+		const auto resolved = resolver_.Resolve(storage_);
+		validator_.Validate(storage_, resolved);
+	}
+
 }

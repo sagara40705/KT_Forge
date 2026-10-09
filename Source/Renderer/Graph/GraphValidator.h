@@ -13,7 +13,8 @@ namespace KT::Renderer
 	class GraphValidator
 	{
 	public:
-		// 画像の検査
+		// 新規候補の画像検査。登録済み検査はstorage内descそのものを参照で渡す。
+		// そのdesc自身だけを二重import比較から除外し、コピーなら新規候補として扱う。
 		void ValidateImportedTexture(const GraphImportedTextureDesc& desc, const GraphStorage& storage) const;
 		// Viewの検査
 		void ValidateView(const GraphViewDesc& desc, const GraphStorage& storage) const;
