@@ -1,8 +1,11 @@
 #include "Application.h"
 #include <Core/Log.h>
+#include <Graphics/FrameResources.h>
+#include <Graphics/ColorTargetView.h>
 #include <Renderer/Graph/RenderGraph.h>
 #include <Renderer/Graph/GraphImportedTexture.h>
 #include <Renderer/Passes/ClearPass.h>
+#include <Renderer/Graph/GraphView.h>
 #include <exception>
 #include <stdexcept>
 
@@ -55,26 +58,40 @@ namespace KT::Application
 
 		const auto backBufferIndex = swapchain_->GetCurrentBackBufferIndex();
 
+        // FrameResourcesを用意
+        KT::Graphics::FrameResources frame(graphicsDevice_, commandQueue_);
+
 		// TODO: 手動Graph ID・desc.rtv・画像handle Clearを、新しい画像/view分離APIへ移行する。
-		KT::Renderer::RenderGraph graph(1);
+		KT::Renderer::RenderGraph graph;
+
+        // BackBufferのImport
 		KT::Renderer::GraphImportedTextureDesc output{};
 		output.name = "BackBuffer";
 		output.resource = swapchain_->GetBackBuffer(backBufferIndex);
-		output.rtv = swapchain_->GetRtv(backBufferIndex);
 		output.initialState = D3D12_RESOURCE_STATE_PRESENT;
 		output.finalState = D3D12_RESOURCE_STATE_PRESENT;
 		output.contentsDefined = false;
 		output.requireDefineAtEnd = true;
 		const auto outputHandle = graph.ImportTexture(output);
 
+        // 色Viewを登録する
+        KT::Renderer::GraphViewDesc colorView{};
+        colorView.name = "BackBufferRTV";
+        colorView.resource = outputHandle;
+        colorView.binding = KT::Graphics::ColorTargetView(*swapchain_, backBufferIndex);
+        const auto colorHandle = graph.AddView(std::move(colorView));
+
 		// Passの追加
-		KT::Renderer::AddClearPass(graph, outputHandle, {0.0f, 0.0f, 1.0f, 1.0f});
-		graph.Compile();
+        KT::Renderer::AddClearPass(graph, colorHandle, { 0.0f, 0.0f, 1.0f, 1.0f });
+        graph.Compile();
 
 		// TODO: 新Recordは記録中のFrameResourcesを受け取る。以下は旧呼出。
-		commandContext_.Begin();
-		graph.Record(commandContext_);
-		commandContext_.End();
+        frame.Begin();
+        graph.Record(frame);
+        frame.EndRecording();
+        frame.Submit();
+        swapchain_->Present();
+        frame.Wait();
 
 		// 送信・表示・完了待機：画像とRTVを保持したままFence完了まで待つ。
 		try

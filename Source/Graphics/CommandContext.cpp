@@ -240,6 +240,7 @@ namespace KT::Graphics
 			throw;
 		}
 	}
+
 	void CommandContext::ClearDepth(const DepthBuffer& depth)
 	{
 		try
@@ -258,6 +259,7 @@ namespace KT::Graphics
 	{
 		failed_ = true;
 	}
+
 	// packet・描画先・同じFrameの定数を検査し、全indexの描画を記録する
 	void CommandContext::DrawIndexed(const IndexedDrawPacket& packet, const ColorTargetView& color,
 		const DepthTargetView& depth, const ConstantBufferArena& constants)
