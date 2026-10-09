@@ -43,7 +43,7 @@ namespace KT::Renderer
 		void Compile();
 		// 記録だけ。Begin/End/Submit/Present/Waitは呼出側。同じframeのarenaを使用。
 		// Deviceは1つを前提とする。画像とdescriptorの対応・寿命は外部所有者が保証する。
-		// 事前検査失敗はCompiledを保持。TODO: callback後と成功確定前にもContext健全性を確認する。
+		// 事前検査失敗はCompiledを保持。callback後と成功確定前にもContext健全性を確認する。
 		// 開始後の例外はFailed/Invalidateを保持する。listのReset・命令の取り消しは行わない。
 		void Record(KT::Graphics::FrameResources& frame);
 

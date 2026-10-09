@@ -219,7 +219,7 @@ namespace KT::Renderer
 			throw std::logic_error("CommandContextは記録中ではありません");
 		}
 
-		// 状態更新：事前検査後に記録を開始し、以後の例外はFailedとして保持する。
+		// 状態更新：事前検査後に記録を開始し、以後の例外はFailedとして保持する
 		auto* commandList = commandContext.GetRecordingList();
 		state_ = State::Recording;
 		try
@@ -227,7 +227,7 @@ namespace KT::Renderer
 			// パス記録：登録順の遷移計画をたどる。
 			for (const auto& plannedPass : compiledPlan_->passes)
 			{
-				// 状態遷移：初版は1Mip・1slice・1planeの画像全体を対象にする。
+				// 状態遷移：初版は1Mip・1slice・1planeの画像全体を対象にする
 				for (const auto& transition : plannedPass.transitions)
 				{
 					auto resource = storage_.resources[transition.resource.index].importedTexture->resource;
@@ -240,10 +240,15 @@ namespace KT::Renderer
 					);
 					commandList->ResourceBarrier(1, &barrier);
 
-					// TODO: 全遷移後にcallbackを1回実行し、Contextの健全性を確認する。
-					GraphExecutionContext executionContext(*this, commandContext, constantBufferArena, plannedPass.passIndex);
-					storage_.passes[plannedPass.passIndex].record(executionContext);
 				}
+
+                // 全遷移後にcallbackを1回実行し、Contextの健全性を確認する
+                GraphExecutionContext executionContext(*this, commandContext, constantBufferArena, plannedPass.passIndex);
+                storage_.passes[plannedPass.passIndex].record(executionContext);
+
+                // 失敗確認：callback内でcatchされても、無効ContextならRecordを成功させない。
+                (void)commandContext.GetRecordingList();
+
 			}
 
 			// 終了遷移：借用画像を指定されたfinalStateへ戻す。
@@ -258,7 +263,8 @@ namespace KT::Renderer
 				commandList->ResourceBarrier(1, &barrier);
 			}
 
-			// TODO: 成功確定前にもContextの健全性を確認する。
+			// 成功確定：終了遷移後もContextが健全な場合だけRecordedへ進める。
+			(void)commandContext.GetRecordingList();
 			state_ = State::Recorded;
 
 		}

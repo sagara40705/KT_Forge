@@ -1,4 +1,4 @@
-﻿#include <Renderer/Graph/GraphExecutionContext.h>
+#include <Renderer/Graph/GraphExecutionContext.h>
 #include <Renderer/Graph/RenderGraph.h>
 #include <Renderer/Graph/GraphView.h>
 #include <Renderer/Graph/GraphResourceUse.h>
@@ -15,62 +15,137 @@ namespace KT::Renderer
 	// このパスのWriteAll/RenderTarget宣言を確認し、カラー画像の全域Clearを記録する。
 	void GraphExecutionContext::ClearColor(GraphViewHandle target, const std::array<float, 4>& color)
 	{
-		// 前検査：現在パスの宣言・用途と、借用viewの種類を確認する。
-		const auto& viewDesc = RequireDeclaredView(target, GraphResourceUsage::RenderTarget);
-		auto* colorView = std::get_if<KT::Graphics::ColorTargetView>(&viewDesc.binding);
-		if (!colorView)
+		try
 		{
-			throw std::invalid_argument("GraphViewHandleはColorTargetViewではありません");
-		}
+			// 前検査：失敗済みのContextでは、宣言検査や追加記録を始めない。
+			(void)commands_.GetRecordingList();
 
-		// access検査：全域Clearは範囲全体の内容を定義するため、WriteAllを要求する。
-		for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
-		{
-			if (declaredView.view.index == target.index && declaredView.view.graphid == target.graphid)
+			// 前検査：現在パスの宣言・用途と、借用viewの種類を確認する。
+			const auto& viewDesc = RequireDeclaredView(target, GraphResourceUsage::RenderTarget);
+			auto* colorView = std::get_if<KT::Graphics::ColorTargetView>(&viewDesc.binding);
+			if (!colorView)
 			{
-				if (declaredView.access != GraphResourceAccess::WriteAll)
-				{
-					throw std::invalid_argument("GraphViewHandleのaccessがWriteAllではありません");
-				}
-				break;
+				throw std::invalid_argument("GraphViewHandleはColorTargetViewではありません");
 			}
-		}
 
-		// 記録：宣言とaccessの検査後にGraphicsへ渡す。
-		commands_.ClearRenderTarget(colorView->GetRtv(), color);
+			// access検査：全域Clearは範囲全体の内容を定義するため、WriteAllを要求する。
+			for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
+			{
+				if (declaredView.view.index == target.index && declaredView.view.graphid == target.graphid)
+				{
+					if (declaredView.access != GraphResourceAccess::WriteAll)
+					{
+						throw std::invalid_argument("GraphViewHandleのaccessがWriteAllではありません");
+					}
+					break;
+				}
+			}
+
+			// 記録：宣言とaccessの検査後にGraphicsへ渡す。
+			commands_.ClearRenderTarget(colorView->GetRtv(), color);
+		}
+		catch (...)
+		{
+			// 失敗保持：callbackが例外をcatchしても、このlistの記録・送信を禁止する。
+			commands_.Invalidate();
+			throw;
+		}
 	}
 
 	// このパスのWriteAll/DepthStencil宣言を確認し、深度の全域ClearをGraphicsへ依頼する。
 	void GraphExecutionContext::ClearDepth(GraphViewHandle target)
 	{
-		// 前検査：現在パスの宣言・用途と、借用viewの種類を確認する。
-		const auto& viewDesc = RequireDeclaredView(target, GraphResourceUsage::DepthStencil);
-		auto* depthView = std::get_if<KT::Graphics::DepthTargetView>(&viewDesc.binding);
-		if (!depthView)
+		try
 		{
-			throw std::invalid_argument("GraphViewHandleはDepthTargetViewではありません");
-		}
+			// 前検査：失敗済みのContextでは、宣言検査や追加記録を始めない。
+			(void)commands_.GetRecordingList();
 
-		// access検査：全域Clearは範囲全体の内容を定義するため、WriteAllを要求する。
-		for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
-		{
-			if (declaredView.view.index == target.index && declaredView.view.graphid == target.graphid)
+			// 前検査：現在パスの宣言・用途と、借用viewの種類を確認する。
+			const auto& viewDesc = RequireDeclaredView(target, GraphResourceUsage::DepthStencil);
+			auto* depthView = std::get_if<KT::Graphics::DepthTargetView>(&viewDesc.binding);
+			if (!depthView)
 			{
-				if (declaredView.access != GraphResourceAccess::WriteAll)
-				{
-					throw std::invalid_argument("GraphViewHandleのaccessがWriteAllではありません");
-				}
-				break;
+				throw std::invalid_argument("GraphViewHandleはDepthTargetViewではありません");
 			}
-		}
 
-		// 記録依頼：DepthTargetView版のGraphics窓口は未実装。
-		commands_.ClearDepth(*depthView);
+			// access検査：全域Clearは範囲全体の内容を定義するため、WriteAllを要求する。
+			for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
+			{
+				if (declaredView.view.index == target.index && declaredView.view.graphid == target.graphid)
+				{
+					if (declaredView.access != GraphResourceAccess::WriteAll)
+					{
+						throw std::invalid_argument("GraphViewHandleのaccessがWriteAllではありません");
+					}
+					break;
+				}
+			}
+
+			// 記録依頼：DepthTargetView版のGraphics窓口は未実装。
+			commands_.ClearDepth(*depthView);
+		}
+		catch (...)
+		{
+			// 失敗保持：callbackが例外をcatchしても、このlistの記録・送信を禁止する。
+			commands_.Invalidate();
+			throw;
+		}
 	}
 
-	// TODO: 未実装。ReadWrite宣言・packet寸法・同じFrameの定数を検査し、Drawを記録する。
+	// ReadWrite宣言・packet寸法・同じFrameの定数を検査し、Drawを記録する。
 	void GraphExecutionContext::DrawIndexed(GraphViewHandle color, GraphViewHandle depth, const KT::Graphics::IndexedDrawPacket& packet)
 	{
+		try
+		{
+			// 前検査：失敗済みのContextでは、宣言検査や追加記録を始めない。
+			(void)commands_.GetRecordingList();
+
+            // 色と深度の宣言を取得する
+            const auto& colorViewDesc = RequireDeclaredView(color, GraphResourceUsage::RenderTarget);
+            const auto& depthViewDesc = RequireDeclaredView(depth, GraphResourceUsage::DepthStencil);
+
+            // bindingからViewを取り出す
+            auto* colorView = std::get_if<KT::Graphics::ColorTargetView>(&colorViewDesc.binding);
+            auto* depthView = std::get_if<KT::Graphics::DepthTargetView>(&depthViewDesc.binding);
+            if (!colorView || !depthView)
+            {
+                throw std::invalid_argument("GraphViewHandleがColorTargetViewまたはDepthTargetViewではありません");
+            }
+
+            //両方のaccessがReadWriteか確認する
+            for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
+            {
+                if (declaredView.view.index == color.index && declaredView.view.graphid == color.graphid)
+                {
+                    if (declaredView.access != GraphResourceAccess::ReadWrite)
+                    {
+                        throw std::invalid_argument("Color GraphViewHandleのaccessがReadWriteではありません");
+                    }
+                }
+                if (declaredView.view.index == depth.index && declaredView.view.graphid == depth.graphid)
+                {
+                    if (declaredView.access != GraphResourceAccess::ReadWrite)
+                    {
+                        throw std::invalid_argument("Depth GraphViewHandleのaccessがReadWriteではありません");
+                    }
+                }
+            }
+
+            // 描画サイズを確認する
+            if (packet.expectedWidth == 0 || packet.expectedHeight == 0)
+            {
+                throw std::invalid_argument("IndexedDrawPacketのexpectedWidthまたはexpectedHeightが0です");
+            }
+
+            // Graphicsへ渡す
+            commands_.DrawIndexed(packet, *colorView, *depthView, constants_);
+		}
+		catch (...)
+		{
+			// 失敗保持：callbackが例外をcatchしても、このlistの記録・送信を禁止する。
+			commands_.Invalidate();
+			throw;
+		}
 	}
 
 	// Graphだけが生成する。検査済みのパスindexと同じFrameの記録先を、callback中だけ借りる。
