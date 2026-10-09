@@ -38,4 +38,7 @@ target_sources(KT_Forge PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Texture.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/VertexBuffer.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/VertexBuffer.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/DepthTargetView.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/DepthTargetView.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/IndexedDrawPacket.h"
 )

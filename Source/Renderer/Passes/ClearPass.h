@@ -1,12 +1,11 @@
 #pragma once
-#include "Renderer/Graph/RenderGraphTypes.h"
+#include <Renderer/Graph/GraphViewHandle.h>
 #include <array>
 
 namespace KT::Renderer
 {
-	// 前方宣言
 	class RenderGraph;
-
-	// RenderGraphに全域Clearパスを追加する。targetはRenderTargetとして宣言されている必要がある
-	void AddClearPass(RenderGraph& graph, GraphResourceHandle target, std::array<float, 4> color);
+	// 未実装: view全域のWriteAll/RenderTargetと値捕捉Clear callbackを登録。
+	// finite色/宣言/画像適合を検査。旧ResourceHandle引数版は退避済み。
+	void AddClearPass(RenderGraph& graph, GraphViewHandle target, std::array<float, 4> color);
 }

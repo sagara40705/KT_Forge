@@ -12,6 +12,8 @@ namespace KT::Graphics
 	class IndexBuffer;
 	class ColorTargetView;
 	class DepthBuffer;
+	class DepthTargetView;
+	struct IndexedDrawPacket;
 	class ConstantBufferArena;
 	struct RootConstantBinding;
 
@@ -64,6 +66,14 @@ namespace KT::Graphics
 			const ColorTargetView& target, const DepthBuffer& depth, const ConstantBufferArena& constants,
 			std::span<const RootConstantBinding> bindings);
 		void ClearDepth(const DepthBuffer& depth); // Reverse-Z全域clear0。DEPTH_WRITEは呼出側。
+		// 新窓口は宣言だけ。既存DepthBuffer版の本体は保持する。
+		// packetのnull/layout/index/format/同一device/同一Frame arenaを全検査してから記録。
+		// expectedWidth/expectedHeightの0を拒否し、color/depth両方の寸法との一致も
+		// 命令追加前に検査する。Graph外から呼ぶ場合もこの契約を省略しない。
+		// 色とdepthのownerはFenceまで保持。状態遷移/clear/submitを隠さない。
+		void DrawIndexed(const IndexedDrawPacket& packet, const ColorTargetView& color,
+			const DepthTargetView& depth, const ConstantBufferArena& constants);
+		void ClearDepth(const DepthTargetView& depth);
 		// 記録失敗時にContextを使用禁止にする。GPU待機や命令の取り消しは行わない
 		void Invalidate() noexcept;
 	};

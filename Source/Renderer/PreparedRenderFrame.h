@@ -25,6 +25,10 @@ namespace KT::Renderer
 			const MeshStore& meshes, const MaterialStore& materials, KT::Graphics::ConstantBufferArena& constants);
 		void RecordDraw(KT::Graphics::CommandContext& context, std::size_t index, const KT::Graphics::ColorTargetView& target,
 			const KT::Graphics::DepthBuffer& depth, const KT::Graphics::ConstantBufferArena& constants) const;
+		// OpaquePass接続用の宣言だけ。既存Prepare/RecordDraw/GetDraws本体は変更しない。
+		KT::Graphics::ConstantSlice GetViewConstants() const noexcept;
+		UINT GetWidth() const noexcept;
+		UINT GetHeight() const noexcept;
 		const std::vector<PreparedDraw>& GetDraws() const noexcept { return draws_; }
 	private:
 		KT::Graphics::ConstantSlice viewConstants_;

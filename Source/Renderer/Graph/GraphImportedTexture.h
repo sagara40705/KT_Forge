@@ -1,55 +1,19 @@
 #pragma once
-#include <Renderer/Graph/RenderGraphTypes.h>
-#include <string>
 #include <d3d12.h>
+#include <string>
 
 namespace KT::Renderer
 {
-	// 画像の種類
-	enum class GraphTextureKind
-	{
-		Color,      // カラー画像
-		Depth,      // 深度画像
-	};
-
-	// グラフにインポートされたテクスチャの情報
+	// 外部画像だけを借用。RTV/DSV/kind/targetViewはここへ置かない。
+	// Graph破棄では画像を解放しない。所有者は最後の利用Fence完了まで保持する。
 	struct GraphImportedTextureDesc
 	{
-		// テクスチャの名前
 		std::string name;
-
-		// 外部所有の画像を借用する。所有者はGPUの利用完了まで保持する
 		ID3D12Resource* resource = nullptr;
-
-		// 描画先RTVのCPUハンドル。Graphはdescriptor heapを所有しない
-		D3D12_CPU_DESCRIPTOR_HANDLE rtv{};
-
-		// Graphの処理開始時に画像が置かれている状態
 		D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON;
-
-		// Graphの処理終了時に要求する状態。保存しただけでは遷移しない
 		D3D12_RESOURCE_STATES finalState = D3D12_RESOURCE_STATE_COMMON;
-
-		// 最初から読み取り可能な内容があるか
+		// 初期内容の外部保証。現在は画像全体の真偽、stateや完了とは別。
 		bool contentsDefined = false;
-
-		// Graph終了時に画像全体の内容が定義済みであることを要求する
 		bool requireDefineAtEnd = false;
-
-		// 画像の種類
-		GraphTextureKind kind = GraphTextureKind::Color;
-
-		// 深度ステンシル用のCPUハンドル
-		D3D12_CPU_DESCRIPTOR_HANDLE dsv{};
-	};
-
-	struct GraphImortedRtvDesc
-	{
-		// テクスチャの名前
-		std::string name;
-		// 外部所有の画像を借用する。所有者はGPUの利用完了まで保持する
-		GraphResourceHandle resource{};
-		// 描画先RTVのCPUハンドル。Graphはdescriptor heapを所有しない
-		D3D12_CPU_DESCRIPTOR_HANDLE rtv{};
 	};
 }

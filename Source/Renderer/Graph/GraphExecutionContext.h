@@ -1,40 +1,40 @@
 #pragma once
-#include "Renderer/Graph/RenderGraphTypes.h"
-#include "Core/Utility/NonCopyable.h"
+#include <Core/Utility/NonCopyable.h>
+#include <Renderer/Graph/GraphViewHandle.h>
+#include <Renderer/Graph/GraphResourceUse.h>
 #include <array>
 #include <cstddef>
 
 namespace KT::Graphics
 {
-	// 前方宣言
 	class CommandContext;
+	class ConstantBufferArena;
+	struct IndexedDrawPacket;
 }
 namespace KT::Renderer
 {
-	// 前方宣言
 	class RenderGraph;
-
-	// パスのcallbackへ「そのパスが宣言したリソースに描画命令を記録する窓口」を渡す
-	// callbackの呼び出し中だけ有効。参照・ポインタを保存して後で使用しない。
+	struct GraphViewDesc;
+	// 現在passの画像宣言だけを解決する記録窓口。callback中のみ有効、保存禁止。
+	// 未宣言画像、別Graph、用途/access違いを命令追加前に拒否。raw listを公開しない。
+	// VB/IBは外部の不変UPLOAD/GENERIC_READ契約、定数は同じFrame/epochの契約。
+	// shaderや外部GPU参照をすべて自動検出する機能ではない。
 	class GraphExecutionContext : private KT::Core::NonCopyable
 	{
 	public:
-		void ClearColor(GraphResourceHandle resource, const std::array<float, 4>& color);
-
+		void ClearColor(GraphViewHandle target, const std::array<float, 4>& color);
+		void ClearDepth(GraphViewHandle target); // D32 Reverse-Z clear0。
+		// packet.expectedWidth/expectedHeightの0を拒否し、color/depth両viewの寸法と
+		// 一致することを命令追加前に検査する。Graphicsも同じサイズ契約を再検査する。
+		void DrawIndexed(GraphViewHandle color, GraphViewHandle depth, const KT::Graphics::IndexedDrawPacket& packet);
 	private:
-		// 所属するGraph
-		const RenderGraph& graph_;
-		// 命令の記録先
-		KT::Graphics::CommandContext& commandContext_;
-		// 現在のパスの番号
-		std::size_t passIndex_;
-
-	private:
-		// GraphExecutionContextはRenderGraphからしか作れない
 		friend class RenderGraph;
-		GraphExecutionContext(
-			const RenderGraph& graph, 
-			KT::Graphics::CommandContext& commandContext, 
-			std::size_t passIndex);
+		GraphExecutionContext(const RenderGraph& graph, KT::Graphics::CommandContext& commands,
+			const KT::Graphics::ConstantBufferArena& constants, std::size_t passIndex);
+		const GraphViewDesc& RequireDeclaredView(GraphViewHandle view, GraphResourceUsage usage) const;
+		const RenderGraph& graph_;
+		KT::Graphics::CommandContext& commands_;
+		const KT::Graphics::ConstantBufferArena& constants_;
+		std::size_t passIndex_;
 	};
 }
