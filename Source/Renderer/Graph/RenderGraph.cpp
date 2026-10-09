@@ -124,11 +124,26 @@ namespace KT::Renderer
 		// GraphResourceHandleを返す
 		return GraphResourceHandle{ storage_.graphid, index };
 	}
+
+	// Viewを登録してGraphViewHandleを返す
 	GraphViewHandle RenderGraph::AddView(GraphViewDesc desc)
 	{
 		// 前検査
 		RequireBuilding();
-		return GraphViewHandle();
+		if (storage_.views.size() >= (std::numeric_limits<std::uint32_t>::max)())
+		{
+			throw std::overflow_error("Viewが最大数に達しました");
+		}
+		validator_.ValidateView(desc, storage_);
+
+		// 登録データを作成してstorage_に追加
+		const std::uint32_t index = static_cast<std::uint32_t>(storage_.views.size());
+		GraphViewRecord viewRecord{};
+		viewRecord.desc = std::move(desc);
+		storage_.views.push_back(std::move(viewRecord));
+
+		// GraphViewHandleを返す
+		return GraphViewHandle{ storage_.graphid, index };
 	}
 	void RenderGraph::AddPass(GraphPassDesc desc, GraphRecordFn record)
 	{

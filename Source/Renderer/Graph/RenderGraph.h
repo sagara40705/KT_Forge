@@ -31,6 +31,7 @@ namespace KT::Renderer
 		// GPU画像をGraphへ登録してGraphResourceHandleを返す
 		GraphResourceHandle ImportTexture(GraphImportedTextureDesc desc);
 
+		// Viewを登録してGraphViewHandleを返す
 		GraphViewHandle AddView(GraphViewDesc desc);
 		void AddPass(GraphPassDesc desc, GraphRecordFn record);
 
