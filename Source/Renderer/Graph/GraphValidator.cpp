@@ -181,8 +181,7 @@ namespace KT::Renderer
 		}
 
 		// Resolverの出力を作る関数ではない。元宣言を照合するための検査用値だけを作る。
-		std::vector<GraphNormalizedUse> CheckDeclarations(const GraphPassDesc& desc,
-			const GraphStorage& storage, const GraphValidator& validator)
+		std::vector<GraphNormalizedUse> CheckDeclarations(const GraphPassDesc& desc, const GraphStorage& storage, const GraphValidator& validator)
 		{
 			if (desc.name.empty())
 			{

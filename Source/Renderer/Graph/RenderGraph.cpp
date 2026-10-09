@@ -145,11 +145,25 @@ namespace KT::Renderer
 		// GraphViewHandleを返す
 		return GraphViewHandle{ storage_.graphid, index };
 	}
+
+	// Passを登録する。GraphPassDescとGraphRecordFnを保持する。
 	void RenderGraph::AddPass(GraphPassDesc desc, GraphRecordFn record)
 	{
 		// 前検査
 		RequireBuilding();
+		if (record == nullptr)
+		{
+			throw std::invalid_argument("GraphRecordFnがnullptrです");
+		}
+		validator_.ValidatePass(desc, storage_);
+
+		// 登録データを作成してstorage_に追加
+		GraphPassRecord passRecord{};
+		passRecord.desc = std::move(desc);
+		passRecord.record = std::move(record);
+		storage_.passes.push_back(std::move(passRecord));
 	}
+
 	// 登録できる状態かを確認する。Building以外は登録不可。
 	void RenderGraph::RequireBuilding() const
 	{
