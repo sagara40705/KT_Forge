@@ -5,9 +5,9 @@
 #include <Renderer/MaterialStore.h>
 #include <Renderer/Mesh.h>
 #include <Renderer/UnlitMaterial.h>
-#include <Graphics/CommandContext.h>
-#include <Graphics/ColorTargetView.h>
-#include <Graphics/DepthBuffer.h>
+#include <Graphics/Commands/CommandContext.h>
+#include <Graphics/Textures/ColorTargetView.h>
+#include <Graphics/Textures/DepthBuffer.h>
 #include <Core/Math/Matrix4.h>
 #include <array>
 #include <cstddef>

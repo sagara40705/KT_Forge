@@ -1,5 +1,5 @@
 #pragma once
-#include <Graphics/ConstantBufferArena.h>
+#include <Graphics/Buffers/ConstantBufferArena.h>
 #include <d3d12.h>
 #include <cstddef>
 #include <vector>

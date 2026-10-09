@@ -1,6 +1,6 @@
 #pragma once
-#include <Graphics/VertexBuffer.h>
-#include <Graphics/IndexBuffer.h>
+#include <Graphics/Buffers/VertexBuffer.h>
+#include <Graphics/Buffers/IndexBuffer.h>
 #include <array>
 #include <type_traits>
 

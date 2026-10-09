@@ -5,8 +5,8 @@
 #include <Renderer/Mesh.h>
 #include <Renderer/UnlitMaterial.h>
 #include <Renderer/UnlitPipeline.h>
-#include <Graphics/IndexedDrawPacket.h>
-#include <Graphics/ConstantBufferArena.h>
+#include <Graphics/Commands/IndexedDrawPacket.h>
+#include <Graphics/Buffers/ConstantBufferArena.h>
 #include <array>
 #include <stdexcept>
 

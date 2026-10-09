@@ -7,8 +7,7 @@
 
 namespace KT::Graphics
 {
-	template<typename T>
-	using ComPtr = Microsoft::WRL::ComPtr<T>;
+	template <typename T> using ComPtr = Microsoft::WRL::ComPtr<T>;
 
 	// DirectX 12のデバイスを管理するクラス
 	class GraphicsDevice : private KT::Core::NonCopyable
@@ -16,6 +15,7 @@ namespace KT::Graphics
 	public:
 		GraphicsDevice();
 		~GraphicsDevice() = default;
+
 	private:
 		ComPtr<IDXGIFactory6> factory_;
 		ComPtr<IDXGIAdapter1> adapter_;

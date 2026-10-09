@@ -1,6 +1,6 @@
 #include <Renderer/Graph/RenderGraph.h>
 #include <Renderer/Graph/GraphExecutionContext.h>
-#include <Graphics/FrameResources.h>
+#include <Graphics/Commands/FrameResources.h>
 #include <d3dx12.h>
 #include <cstdint>
 #include <stdexcept>

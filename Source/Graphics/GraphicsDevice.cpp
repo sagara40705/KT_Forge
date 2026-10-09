@@ -53,7 +53,8 @@ namespace KT::Graphics
 		{
 			ComPtr<IDXGIAdapter1> candidate{};
 
-			result = factory_->EnumAdapterByGpuPreference(index, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(candidate.GetAddressOf()));
+			result =
+				factory_->EnumAdapterByGpuPreference(index, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(candidate.GetAddressOf()));
 			if (result == DXGI_ERROR_NOT_FOUND)
 			{
 				break;
@@ -63,15 +64,15 @@ namespace KT::Graphics
 				throw std::runtime_error("Adapterの列挙の失敗");
 			}
 
-			DXGI_ADAPTER_DESC1 desc{};
-			result = candidate->GetDesc1(&desc);
+			DXGI_ADAPTER_DESC1 adapterDesc{};
+			result = candidate->GetDesc1(&adapterDesc);
 			if (FAILED(result))
 			{
 				throw std::runtime_error("Adapterのdesc取得に失敗");
 			}
 
 			// ソフトウェアAdapterを除外
-			if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0)
+			if ((adapterDesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0)
 			{
 				continue;
 			}
@@ -93,6 +94,7 @@ namespace KT::Graphics
 	{
 		return device_.Get();
 	}
+
 	IDXGIFactory6* GraphicsDevice::GetFactory() const noexcept
 	{
 		return factory_.Get();

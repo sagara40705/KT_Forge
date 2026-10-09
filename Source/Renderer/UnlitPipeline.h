@@ -1,5 +1,5 @@
 #pragma once
-#include <Graphics/GraphicsPipelineState.h>
+#include <Graphics/Pipeline/GraphicsPipelineState.h>
 
 namespace KT::Renderer
 {

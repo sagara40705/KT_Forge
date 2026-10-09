@@ -2,11 +2,11 @@
 #include <Renderer/Graph/RenderGraph.h>
 #include <Renderer/Graph/GraphView.h>
 #include <Renderer/Graph/GraphResourceUse.h>
-#include <Graphics/CommandContext.h>
-#include <Graphics/ConstantBufferArena.h>
-#include <Graphics/IndexedDrawPacket.h>
-#include <Graphics/ColorTargetView.h>
-#include <Graphics/DepthTargetView.h>
+#include <Graphics/Commands/CommandContext.h>
+#include <Graphics/Buffers/ConstantBufferArena.h>
+#include <Graphics/Commands/IndexedDrawPacket.h>
+#include <Graphics/Textures/ColorTargetView.h>
+#include <Graphics/Textures/DepthTargetView.h>
 #include <stdexcept>
 #include <variant>
 

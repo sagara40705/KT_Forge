@@ -1,8 +1,8 @@
 #pragma once
 #include <Renderer/Graph/GraphResourceHandle.h>
 #include <Renderer/Graph/GraphTextureRange.h>
-#include <Graphics/ColorTargetView.h>
-#include <Graphics/DepthTargetView.h>
+#include <Graphics/Textures/ColorTargetView.h>
+#include <Graphics/Textures/DepthTargetView.h>
 #include <string>
 #include <variant>
 

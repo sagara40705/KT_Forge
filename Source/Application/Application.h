@@ -3,9 +3,9 @@
 #include <Platform/GlfwContext.h>
 #include <Platform/Window.h>
 #include <Graphics/GraphicsDevice.h>
-#include <Graphics/CommandQueue.h>
-#include <Graphics/CommandContext.h>
-#include <Graphics/Swapchain.h>
+#include <Graphics/Commands/CommandQueue.h>
+#include <Graphics/Commands/CommandContext.h>
+#include <Graphics/Presentation/Swapchain.h>
 #include <memory>
 
 namespace KT::Application
