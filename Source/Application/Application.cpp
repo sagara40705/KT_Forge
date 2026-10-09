@@ -12,13 +12,12 @@
 namespace KT::Application
 {
 	Application::Application(int width, int height, const char* title)
-		: window_(width, height, title), 
-		graphicsDevice_(), 
-		commandQueue_(graphicsDevice_),
-		commandContext_(graphicsDevice_)
+		: window_(width, height, title),
+		  graphicsDevice_(),
+		  commandQueue_(graphicsDevice_),
+		  commandContext_(graphicsDevice_)
 	{
 	}
-
 
 	// 旧APIの一度だけClearする経路。TODO: 新Graphのview登録とFrameResourcesへ接続する。
 	void Application::Run()
@@ -35,7 +34,7 @@ namespace KT::Application
 		window_.GetFramebufferSize(width, height);
 		while (width <= 0 || height <= 0)
 		{
-			if (window_.ShouldClose()) 
+			if (window_.ShouldClose())
 			{
 				KT_LOG_INFO("ウィンドウが閉じられたため、Swapchainの作成を中止");
 				return;
@@ -51,8 +50,7 @@ namespace KT::Application
 			return;
 		}
 		// Swapchainの作成
-		swapchain_ = std::make_unique<KT::Graphics::Swapchain>(
-			graphicsDevice_, commandQueue_, window_.GetNativeHandle(),
+		swapchain_ = std::make_unique<KT::Graphics::Swapchain>(graphicsDevice_, commandQueue_, window_.GetNativeHandle(),
 			static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height));
 		KT_LOG_INFO("Swapchainの作成に成功");
 
@@ -61,38 +59,37 @@ namespace KT::Application
 		// 送信・表示・完了待機：画像とRTVを保持したままFence完了まで待つ。
 		try
 		{
-            
-            KT::Graphics::FrameResources frame(graphicsDevice_, commandQueue_);
-            KT::Renderer::RenderGraph graph;
+			KT::Graphics::FrameResources frame(graphicsDevice_, commandQueue_);
+			KT::Renderer::RenderGraph graph;
 
-            // BackBufferのImport
-            KT::Renderer::GraphImportedTextureDesc output{};
-            output.name = "BackBuffer";
-            output.resource = swapchain_->GetBackBuffer(backBufferIndex);
-            output.initialState = D3D12_RESOURCE_STATE_PRESENT;
-            output.finalState = D3D12_RESOURCE_STATE_PRESENT;
-            output.contentsDefined = false;
-            output.requireDefineAtEnd = true;
-            const auto outputHandle = graph.ImportTexture(output);
+			// BackBufferのImport
+			KT::Renderer::GraphImportedTextureDesc output{};
+			output.name = "BackBuffer";
+			output.resource = swapchain_->GetBackBuffer(backBufferIndex);
+			output.initialState = D3D12_RESOURCE_STATE_PRESENT;
+			output.finalState = D3D12_RESOURCE_STATE_PRESENT;
+			output.contentsDefined = false;
+			output.requireDefineAtEnd = true;
+			const auto outputHandle = graph.ImportTexture(output);
 
-            // 色Viewを登録する
-            KT::Renderer::GraphViewDesc colorView{};
-            colorView.name = "BackBufferRTV";
-            colorView.resource = outputHandle;
-            colorView.binding = KT::Graphics::ColorTargetView(*swapchain_, backBufferIndex);
-            const auto colorHandle = graph.AddView(std::move(colorView));
+			// 色Viewを登録する
+			KT::Renderer::GraphViewDesc colorView{};
+			colorView.name = "BackBufferRTV";
+			colorView.resource = outputHandle;
+			colorView.binding = KT::Graphics::ColorTargetView(*swapchain_, backBufferIndex);
+			const auto colorHandle = graph.AddView(std::move(colorView));
 
-            // Passの追加
-            KT::Renderer::AddClearPass(graph, colorHandle, { 0.0f, 1.0f, 1.0f, 1.0f });
-            graph.Compile();
+			// Passの追加
+			KT::Renderer::AddClearPass(graph, colorHandle, {0.0f, 1.0f, 1.0f, 1.0f});
+			graph.Compile();
 
-            // TODO: 新Recordは記録中のFrameResourcesを受け取る。以下は旧呼出。
-            frame.Begin();
-            graph.Record(frame);
-            frame.EndRecording();
-            frame.Submit();
-            swapchain_->Present();
-            frame.Wait();
+			// TODO: 新Recordは記録中のFrameResourcesを受け取る。以下は旧呼出。
+			frame.Begin();
+			graph.Record(frame);
+			frame.EndRecording();
+			frame.Submit();
+			swapchain_->Present();
+			frame.Wait();
 
 			commandQueue_.Execute(commandContext_);
 			swapchain_->Present();

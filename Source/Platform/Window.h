@@ -2,7 +2,7 @@
 #include <Core/Utility/NonCopyable.h>
 #include <Windows.h>
 
-//　前方宣言
+// 　前方宣言
 struct GLFWwindow;
 
 namespace KT::Platform

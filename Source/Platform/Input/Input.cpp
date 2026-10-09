@@ -160,23 +160,16 @@ namespace
 		}
 		return true;
 	}
+
 	static_assert(HasCompleteKeyMappings());
 	static_assert(GamepadSlotCount == GLFW_JOYSTICK_LAST - GLFW_JOYSTICK_1 + 1);
 
-	constexpr std::array<int, MouseButtonCount> mouseMappings{
-		GLFW_MOUSE_BUTTON_LEFT, GLFW_MOUSE_BUTTON_RIGHT, GLFW_MOUSE_BUTTON_MIDDLE,
-		GLFW_MOUSE_BUTTON_4, GLFW_MOUSE_BUTTON_5, GLFW_MOUSE_BUTTON_6,
-		GLFW_MOUSE_BUTTON_7, GLFW_MOUSE_BUTTON_8
-	};
-	constexpr std::array<int, GamepadButtonCount> gamepadMappings{
-		GLFW_GAMEPAD_BUTTON_A, GLFW_GAMEPAD_BUTTON_B, GLFW_GAMEPAD_BUTTON_X,
-		GLFW_GAMEPAD_BUTTON_Y, GLFW_GAMEPAD_BUTTON_LEFT_BUMPER,
-		GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER, GLFW_GAMEPAD_BUTTON_BACK,
-		GLFW_GAMEPAD_BUTTON_START, GLFW_GAMEPAD_BUTTON_GUIDE,
-		GLFW_GAMEPAD_BUTTON_LEFT_THUMB, GLFW_GAMEPAD_BUTTON_RIGHT_THUMB,
-		GLFW_GAMEPAD_BUTTON_DPAD_UP, GLFW_GAMEPAD_BUTTON_DPAD_RIGHT,
-		GLFW_GAMEPAD_BUTTON_DPAD_DOWN, GLFW_GAMEPAD_BUTTON_DPAD_LEFT
-	};
+	constexpr std::array<int, MouseButtonCount> mouseMappings{GLFW_MOUSE_BUTTON_LEFT, GLFW_MOUSE_BUTTON_RIGHT, GLFW_MOUSE_BUTTON_MIDDLE,
+		GLFW_MOUSE_BUTTON_4, GLFW_MOUSE_BUTTON_5, GLFW_MOUSE_BUTTON_6, GLFW_MOUSE_BUTTON_7, GLFW_MOUSE_BUTTON_8};
+	constexpr std::array<int, GamepadButtonCount> gamepadMappings{GLFW_GAMEPAD_BUTTON_A, GLFW_GAMEPAD_BUTTON_B, GLFW_GAMEPAD_BUTTON_X,
+		GLFW_GAMEPAD_BUTTON_Y, GLFW_GAMEPAD_BUTTON_LEFT_BUMPER, GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER, GLFW_GAMEPAD_BUTTON_BACK,
+		GLFW_GAMEPAD_BUTTON_START, GLFW_GAMEPAD_BUTTON_GUIDE, GLFW_GAMEPAD_BUTTON_LEFT_THUMB, GLFW_GAMEPAD_BUTTON_RIGHT_THUMB,
+		GLFW_GAMEPAD_BUTTON_DPAD_UP, GLFW_GAMEPAD_BUTTON_DPAD_RIGHT, GLFW_GAMEPAD_BUTTON_DPAD_DOWN, GLFW_GAMEPAD_BUTTON_DPAD_LEFT};
 
 	void ApplyButtonAction(ButtonState& button, int action) noexcept
 	{
@@ -193,8 +186,7 @@ namespace
 		// REPEAT/未知actionは新たな押下にしない。
 	}
 
-	template<std::size_t Count>
-	void CancelButtons(std::array<ButtonState, Count>& buttons) noexcept
+	template <std::size_t Count> void CancelButtons(std::array<ButtonState, Count>& buttons) noexcept
 	{
 		for (auto& button : buttons)
 		{
@@ -204,8 +196,7 @@ namespace
 		}
 	}
 
-	template<std::size_t Count>
-	void ClearEdges(std::array<ButtonState, Count>& buttons) noexcept
+	template <std::size_t Count> void ClearEdges(std::array<ButtonState, Count>& buttons) noexcept
 	{
 		for (auto& button : buttons)
 		{
@@ -512,8 +503,7 @@ namespace KT::Platform
 			{
 				for (std::size_t button = 0; button < GamepadButtonCount; ++button)
 				{
-					output.buttons[button].released =
-						previous.buttons[button].down || gamepadReleasePending_[slot][button];
+					output.buttons[button].released = previous.buttons[button].down || gamepadReleasePending_[slot][button];
 				}
 				gamepadNeedsBaseline_[slot] = true;
 				continue;
@@ -525,13 +515,12 @@ namespace KT::Platform
 				auto& state = output.buttons[button];
 				state.down = native.buttons[gamepadMappings[button]] == GLFW_PRESS;
 				state.pressed = !baseline && state.down && !previous.buttons[button].down;
-				state.released = gamepadReleasePending_[slot][button] ||
-					(!baseline && !state.down && previous.buttons[button].down);
+				state.released = gamepadReleasePending_[slot][button] || (!baseline && !state.down && previous.buttons[button].down);
 			}
-			output.leftStick = ApplyStickDeadZone(native.axes[GLFW_GAMEPAD_AXIS_LEFT_X],
-				native.axes[GLFW_GAMEPAD_AXIS_LEFT_Y], stickDeadZone_);
-			output.rightStick = ApplyStickDeadZone(native.axes[GLFW_GAMEPAD_AXIS_RIGHT_X],
-				native.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y], stickDeadZone_);
+			output.leftStick =
+				ApplyStickDeadZone(native.axes[GLFW_GAMEPAD_AXIS_LEFT_X], native.axes[GLFW_GAMEPAD_AXIS_LEFT_Y], stickDeadZone_);
+			output.rightStick =
+				ApplyStickDeadZone(native.axes[GLFW_GAMEPAD_AXIS_RIGHT_X], native.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y], stickDeadZone_);
 			output.leftTrigger = (native.axes[GLFW_GAMEPAD_AXIS_LEFT_TRIGGER] + 1.0f) * 0.5f;
 			output.rightTrigger = (native.axes[GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER] + 1.0f) * 0.5f;
 			gamepadNeedsBaseline_[slot] = false;

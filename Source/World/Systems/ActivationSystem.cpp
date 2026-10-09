@@ -17,6 +17,10 @@ namespace KT::World
 			context.active_ = std::move(result);
 			context.stage_ = SceneUpdateContext::Stage::Activation;
 		}
-		catch (...) { context.Fail(); throw; }
+		catch (...)
+		{
+			context.Fail();
+			throw;
+		}
 	}
 }

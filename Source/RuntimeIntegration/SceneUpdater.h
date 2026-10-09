@@ -9,10 +9,14 @@ namespace KT::RuntimeIntegration
 	class SceneUpdater : private KT::Core::NonCopyable
 	{
 	public:
-		const RenderFrame& Update(const KT::World::World& world,
-			std::optional<KT::World::Entity> camera, KT::World::Viewport viewport);
+		const RenderFrame& Update(const KT::World::World& world, std::optional<KT::World::Entity> camera, KT::World::Viewport viewport);
 		const RenderFrame& Get() const;
-		bool HasFrame() const noexcept { return frame_.has_value(); }
+
+		bool HasFrame() const noexcept
+		{
+			return frame_.has_value();
+		}
+
 	private:
 		std::optional<RenderFrame> frame_;
 	};

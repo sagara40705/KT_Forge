@@ -9,8 +9,8 @@
 
 namespace KT::RuntimeIntegration
 {
-	const RenderFrame& SceneUpdater::Update(const KT::World::World& world,
-		std::optional<KT::World::Entity> camera, KT::World::Viewport viewport)
+	const RenderFrame& SceneUpdater::Update(
+		const KT::World::World& world, std::optional<KT::World::Entity> camera, KT::World::Viewport viewport)
 	{
 		frame_.reset();
 		KT::World::SceneUpdateContext context(world, camera, viewport);
@@ -24,9 +24,13 @@ namespace KT::RuntimeIntegration
 		frame_.emplace(std::move(pending));
 		return *frame_;
 	}
+
 	const RenderFrame& SceneUpdater::Get() const
 	{
-		if (!frame_) throw std::logic_error("No complete RenderFrame is published.");
+		if (!frame_)
+		{
+			throw std::logic_error("No complete RenderFrame is published.");
+		}
 		return *frame_;
 	}
 }

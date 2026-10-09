@@ -8,6 +8,7 @@ namespace KT::Core
 	protected:
 		NonCopyable() = default;
 		~NonCopyable() = default;
+
 	public:
 		// コピーコンストラクタとコピー代入演算子を削除
 		NonCopyable(const NonCopyable&) = delete;

@@ -12,6 +12,5 @@ namespace KT::Renderer
 	// packetの非0描画寸法はPreparedFrameから設定し、color/depth両方との一致を検査する。
 	// Drawがある時だけ同じFrameの定数slice・PSOを検査する。binding spanは即時記録中だけ借用する。
 	// 空draw一覧は未使用constants/PSOの検査を要求しない。宣言画像/Viewの通常検証は行う。
-	void AddOpaquePass(RenderGraph& graph, GraphViewHandle color, GraphViewHandle depth,
-		const PreparedRenderFrame& prepared);
+	void AddOpaquePass(RenderGraph& graph, GraphViewHandle color, GraphViewHandle depth, const PreparedRenderFrame& prepared);
 }

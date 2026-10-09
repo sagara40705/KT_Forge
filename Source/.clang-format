@@ -1,0 +1,29 @@
+BasedOnStyle: Microsoft
+UseTab: Always
+IndentWidth: 4
+TabWidth: 4
+ContinuationIndentWidth: 4
+NamespaceIndentation: All
+AccessModifierOffset: -4
+BreakBeforeBraces: Allman
+InsertBraces: true
+AllowShortFunctionsOnASingleLine: None
+AllowShortBlocksOnASingleLine: Never
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+ColumnLimit: 140
+SortIncludes: Never
+IncludeBlocks: Preserve
+PointerAlignment: Left
+ReferenceAlignment: Left
+AlignAfterOpenBracket: DontAlign
+AlignOperands: DontAlign
+FixNamespaceComments: false
+BreakBeforeTernaryOperators: false
+KeepEmptyLines:
+  AtStartOfBlock: false
+  AtStartOfFile: false
+BreakConstructorInitializers: BeforeColon
+PackConstructorInitializers: Never
+SeparateDefinitionBlocks: Always
+LineEnding: DeriveLF

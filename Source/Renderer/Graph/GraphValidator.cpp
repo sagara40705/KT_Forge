@@ -41,9 +41,8 @@ namespace KT::Renderer
 
 		// 初版は1Mip/1slice/1planeの全範囲だけを受理する。
 		const auto& range = desc.range;
-		if (range.firstMip != 0 || range.mipCount != 1 ||
-			range.firstSlice != 0 || range.sliceCount != 1 ||
-			range.firstPlane != 0 || range.planeCount != 1)
+		if (range.firstMip != 0 || range.mipCount != 1 || range.firstSlice != 0 || range.sliceCount != 1 || range.firstPlane != 0 ||
+			range.planeCount != 1)
 		{
 			throw std::invalid_argument("Viewのrangeは各先頭0・個数1の全範囲だけ対応しています");
 		}
@@ -53,14 +52,12 @@ namespace KT::Renderer
 		{
 			throw std::invalid_argument("Viewの親画像はTexture2Dである必要があります");
 		}
-		if (image.Width == 0 || image.Height == 0 ||
-			image.Width > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
+		if (image.Width == 0 || image.Height == 0 || image.Width > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
 			image.Height > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION)
 		{
 			throw std::invalid_argument("Viewの親画像の幅・高さがTexture2Dの対応範囲外です");
 		}
-		if (image.MipLevels != 1 || image.DepthOrArraySize != 1 ||
-			image.SampleDesc.Count != 1 || image.SampleDesc.Quality != 0)
+		if (image.MipLevels != 1 || image.DepthOrArraySize != 1 || image.SampleDesc.Count != 1 || image.SampleDesc.Quality != 0)
 		{
 			throw std::invalid_argument("Viewの親画像は1Mip・1slice・sample count1/quality0だけ対応しています");
 		}
@@ -81,8 +78,7 @@ namespace KT::Renderer
 			{
 				throw std::invalid_argument("Color Viewの画像が親import画像と一致しません");
 			}
-			if (color->GetWidth() != image.Width || color->GetHeight() != image.Height ||
-				color->GetFormat() != image.Format)
+			if (color->GetWidth() != image.Width || color->GetHeight() != image.Height || color->GetFormat() != image.Format)
 			{
 				throw std::invalid_argument("Color Viewの幅・高さ・formatが親画像と一致しません");
 			}
@@ -90,8 +86,7 @@ namespace KT::Renderer
 			{
 				throw std::invalid_argument("Color ViewのRTVが無効です");
 			}
-			if (!KT::Graphics::IsColorTargetFormat(image.Format) ||
-				(image.Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) == 0)
+			if (!KT::Graphics::IsColorTargetFormat(image.Format) || (image.Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) == 0)
 			{
 				throw std::invalid_argument("Color Viewの親画像は対応color formatとALLOW_RENDER_TARGETが必要です");
 			}
@@ -102,8 +97,7 @@ namespace KT::Renderer
 			{
 				throw std::invalid_argument("Depth Viewの画像が親import画像と一致しません");
 			}
-			if (depth->GetWidth() != image.Width || depth->GetHeight() != image.Height ||
-				depth->GetFormat() != image.Format)
+			if (depth->GetWidth() != image.Width || depth->GetHeight() != image.Height || depth->GetFormat() != image.Format)
 			{
 				throw std::invalid_argument("Depth Viewの幅・高さ・formatが親画像と一致しません");
 			}
@@ -111,8 +105,7 @@ namespace KT::Renderer
 			{
 				throw std::invalid_argument("Depth ViewのDSVが無効です");
 			}
-			if (image.Format != DXGI_FORMAT_D32_FLOAT ||
-				(image.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) == 0)
+			if (image.Format != DXGI_FORMAT_D32_FLOAT || (image.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) == 0)
 			{
 				throw std::invalid_argument("Depth Viewの親画像はD32_FLOATとALLOW_DEPTH_STENCILが必要です");
 			}
@@ -142,9 +135,8 @@ namespace KT::Renderer
 		// 初版は1Mip/1slice/1planeの全範囲だけを受理する。
 		void CheckRange(const GraphTextureRange& range)
 		{
-			if (range.firstMip != 0 || range.mipCount != 1 ||
-				range.firstSlice != 0 || range.sliceCount != 1 ||
-				range.firstPlane != 0 || range.planeCount != 1)
+			if (range.firstMip != 0 || range.mipCount != 1 || range.firstSlice != 0 || range.sliceCount != 1 || range.firstPlane != 0 ||
+				range.planeCount != 1)
 			{
 				throw std::invalid_argument("使用範囲は各先頭0・個数1だけ対応しています");
 			}
@@ -153,8 +145,7 @@ namespace KT::Renderer
 		// access/usageの列挙値を確認してから、初版で対応する組合せを検査する。
 		void CheckAccessUsage(GraphResourceAccess access, GraphResourceUsage usage)
 		{
-			if (access != GraphResourceAccess::Read && access != GraphResourceAccess::WriteAll &&
-				access != GraphResourceAccess::ReadWrite)
+			if (access != GraphResourceAccess::Read && access != GraphResourceAccess::WriteAll && access != GraphResourceAccess::ReadWrite)
 			{
 				throw std::invalid_argument("画像accessの列挙値が不正です");
 			}
@@ -172,8 +163,7 @@ namespace KT::Renderer
 		// 元宣言と正規化Useの画像・範囲・access/usageが完全に一致するかを確認する。
 		bool SameUse(const GraphNormalizedUse& firstUse, const GraphNormalizedUse& secondUse)
 		{
-			return firstUse.resource.graphid == secondUse.resource.graphid &&
-				firstUse.resource.index == secondUse.resource.index &&
+			return firstUse.resource.graphid == secondUse.resource.graphid && firstUse.resource.index == secondUse.resource.index &&
 				firstUse.range.firstMip == secondUse.range.firstMip && firstUse.range.mipCount == secondUse.range.mipCount &&
 				firstUse.range.firstSlice == secondUse.range.firstSlice && firstUse.range.sliceCount == secondUse.range.sliceCount &&
 				firstUse.range.firstPlane == secondUse.range.firstPlane && firstUse.range.planeCount == secondUse.range.planeCount &&
@@ -181,7 +171,8 @@ namespace KT::Renderer
 		}
 
 		// Resolverの出力を作る関数ではない。元宣言を照合するための検査用値だけを作る。
-		std::vector<GraphNormalizedUse> CheckDeclarations(const GraphPassDesc& desc, const GraphStorage& storage, const GraphValidator& validator)
+		std::vector<GraphNormalizedUse> CheckDeclarations(
+			const GraphPassDesc& desc, const GraphStorage& storage, const GraphValidator& validator)
 		{
 			if (desc.name.empty())
 			{
@@ -239,8 +230,8 @@ namespace KT::Renderer
 				{
 					if (declarations[useIndex].resource.index == declarations[previousUseIndex].resource.index &&
 						(declarations[useIndex].usage != declarations[previousUseIndex].usage ||
-						declarations[useIndex].access != GraphResourceAccess::Read ||
-						declarations[previousUseIndex].access != GraphResourceAccess::Read))
+							declarations[useIndex].access != GraphResourceAccess::Read ||
+							declarations[previousUseIndex].access != GraphResourceAccess::Read))
 					{
 						throw std::invalid_argument("同じPassの同一画像に重複writeまたは相反usageがあります");
 					}
@@ -261,8 +252,7 @@ namespace KT::Renderer
 		// 登録済みdesc自身だけを除外し、同じGPU画像の二重importを拒否する。
 		for (const auto& record : storage.resources)
 		{
-			if (record.importedTexture && &*record.importedTexture != &desc &&
-				record.importedTexture->resource == desc.resource)
+			if (record.importedTexture && &*record.importedTexture != &desc && record.importedTexture->resource == desc.resource)
 			{
 				throw std::invalid_argument("同じGPU画像が二重importされています");
 			}
@@ -278,10 +268,9 @@ namespace KT::Renderer
 		}
 
 		// format/flagsからColorまたはDepthとして使える画像かを検査する。
-		const bool isColorTarget = KT::Graphics::IsColorTargetFormat(image.Format) &&
-			(image.Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) != 0;
-		const bool isDepthTarget = image.Format == DXGI_FORMAT_D32_FLOAT &&
-			(image.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) != 0;
+		const bool isColorTarget =
+			KT::Graphics::IsColorTargetFormat(image.Format) && (image.Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) != 0;
+		const bool isDepthTarget = image.Format == DXGI_FORMAT_D32_FLOAT && (image.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) != 0;
 		if (!isColorTarget && !isDepthTarget)
 		{
 			throw std::invalid_argument("Import画像のformat/flagsは初版のRTまたはD32 Depthに対応していません");
@@ -426,8 +415,8 @@ namespace KT::Renderer
 		// Graph末尾で内容定義が必要なimport画像を確認する。
 		for (std::size_t resourceIndex = 0; resourceIndex < storage.resources.size(); ++resourceIndex)
 		{
-			if (storage.resources[resourceIndex].importedTexture &&
-				storage.resources[resourceIndex].importedTexture->requireDefineAtEnd && !contentsDefined[resourceIndex])
+			if (storage.resources[resourceIndex].importedTexture && storage.resources[resourceIndex].importedTexture->requireDefineAtEnd &&
+				!contentsDefined[resourceIndex])
 			{
 				throw std::invalid_argument("requireDefineAtEnd画像がGraph末尾でも未定義です");
 			}

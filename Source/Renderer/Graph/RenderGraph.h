@@ -9,10 +9,15 @@
 #include <optional>
 #include <string>
 
-namespace KT::Graphics { class FrameResources; }
+namespace KT::Graphics
+{
+	class FrameResources;
+}
+
 namespace KT::Renderer
 {
 	class GraphExecutionContext;
+
 	// 画像の借用登録・使用検査・遷移計画・命令記録を管理する。単一スレッド・Direct Queue・宣言順。
 	// 内部一意IDでhandleの所属を区別する。copy/moveとResetは行わない。
 	class RenderGraph : private KT::Core::NonCopyable
@@ -49,7 +54,14 @@ namespace KT::Renderer
 
 	private:
 		friend class GraphExecutionContext;
-		enum class State { Building, Compiled, Recording, Recorded, Failed };
+		enum class State
+		{
+			Building,
+			Compiled,
+			Recording,
+			Recorded,
+			Failed
+		};
 
 		// 非0の一意IDを発行する。最大値で停止し、破棄したGraphのIDも再利用しない。
 		static std::uint64_t AcquireGraphId();

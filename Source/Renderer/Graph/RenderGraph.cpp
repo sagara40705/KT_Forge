@@ -7,7 +7,6 @@
 #include <limits>
 #include <utility>
 
-
 namespace KT::Renderer
 {
 	// 単一スレッドで非0の一意IDを発行する。最大値で停止し、破棄したGraphのIDも再利用しない。
@@ -25,11 +24,13 @@ namespace KT::Renderer
 		++currentId;
 		return acquiredId;
 	}
+
 	// 新しいGraphの登録領域に、一意IDを設定する。
 	RenderGraph::RenderGraph()
 	{
 		storage_.graphid = AcquireGraphId();
 	}
+
 	// 画像handleの形式・所属・範囲を確認する。不正なら例外、すべて満たす場合だけtrueを返す。
 	bool RenderGraph::Contains(GraphResourceHandle resource) const
 	{
@@ -49,6 +50,7 @@ namespace KT::Renderer
 
 		return true;
 	}
+
 	// view handleの形式・所属・範囲を確認する。不正なら例外、すべて満たす場合だけtrueを返す。
 	bool RenderGraph::Contains(GraphViewHandle view) const
 	{
@@ -68,6 +70,7 @@ namespace KT::Renderer
 
 		return true;
 	}
+
 	// CPU宣言用の画像名を登録する。GPU画像の借用はImportTextureで別に登録する。
 	GraphResourceHandle RenderGraph::RegisterResource(std::string name)
 	{
@@ -88,8 +91,9 @@ namespace KT::Renderer
 		resourceRecord.name = std::move(name);
 		storage_.resources.push_back(std::move(resourceRecord));
 
-		return GraphResourceHandle{ storage_.graphid, index };
+		return GraphResourceHandle{storage_.graphid, index};
 	}
+
 	// 外部のGPU画像を借用登録する。画像の所有者は最後の利用Fence完了まで保持する。
 	GraphResourceHandle RenderGraph::ImportTexture(GraphImportedTextureDesc desc)
 	{
@@ -124,7 +128,7 @@ namespace KT::Renderer
 		resourceRecord.importedTexture = std::move(desc);
 		storage_.resources.push_back(std::move(resourceRecord));
 
-		return GraphResourceHandle{ storage_.graphid, index };
+		return GraphResourceHandle{storage_.graphid, index};
 	}
 
 	// Viewを登録してGraphViewHandleを返す
@@ -144,7 +148,7 @@ namespace KT::Renderer
 		viewRecord.desc = std::move(desc);
 		storage_.views.push_back(std::move(viewRecord));
 
-		return GraphViewHandle{ storage_.graphid, index };
+		return GraphViewHandle{storage_.graphid, index};
 	}
 
 	// 検査済みの使用宣言と記録callbackを、実行する順に登録する。
@@ -173,6 +177,7 @@ namespace KT::Renderer
 			throw std::logic_error("GraphはBuilding状態ではありません。登録操作は許可されません。");
 		}
 	}
+
 	// 入力を変更せず、親画像へ正規化した使用と元宣言・内容依存を照合する。
 	void RenderGraph::Validate() const
 	{
@@ -208,7 +213,7 @@ namespace KT::Renderer
 		{
 			throw std::logic_error("コンパイル計画が存在しません。");
 		}
-	
+
 		// 記録先の取得：同じframeのContextと定数arenaを借りる。
 		auto& commandContext = frame.GetContext();
 		auto& constantBufferArena = frame.GetConstants();
@@ -233,22 +238,16 @@ namespace KT::Renderer
 					auto resource = storage_.resources[transition.resource.index].importedTexture->resource;
 
 					D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-						resource,
-						transition.before,
-						transition.after,
-						D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES
-					);
+						resource, transition.before, transition.after, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
 					commandList->ResourceBarrier(1, &barrier);
-
 				}
 
-                // 全遷移後にcallbackを1回実行し、Contextの健全性を確認する
-                GraphExecutionContext executionContext(*this, commandContext, constantBufferArena, plannedPass.passIndex);
-                storage_.passes[plannedPass.passIndex].record(executionContext);
+				// 全遷移後にcallbackを1回実行し、Contextの健全性を確認する
+				GraphExecutionContext executionContext(*this, commandContext, constantBufferArena, plannedPass.passIndex);
+				storage_.passes[plannedPass.passIndex].record(executionContext);
 
-                // 失敗確認：callback内でcatchされても、無効ContextならRecordを成功させない。
-                (void)commandContext.GetRecordingList();
-
+				// 失敗確認：callback内でcatchされても、無効ContextならRecordを成功させない。
+				(void)commandContext.GetRecordingList();
 			}
 
 			// 終了遷移：借用画像を指定されたfinalStateへ戻す。
@@ -256,17 +255,13 @@ namespace KT::Renderer
 			{
 				auto* resource = storage_.resources[transition.resource.index].importedTexture->resource;
 				auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-					resource,
-					transition.before,
-					transition.after,
-					D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+					resource, transition.before, transition.after, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
 				commandList->ResourceBarrier(1, &barrier);
 			}
 
 			// 成功確定：終了遷移後もContextが健全な場合だけRecordedへ進める。
 			(void)commandContext.GetRecordingList();
 			state_ = State::Recorded;
-
 		}
 		// 失敗保持：記録済み命令を取り消さず、listの送信を禁止して呼出側へ伝える。
 		catch (...)

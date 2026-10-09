@@ -7,18 +7,21 @@
 namespace KT::World
 {
 	inline constexpr std::size_t NoParent = (std::numeric_limits<std::size_t>::max)();
+
 	struct HierarchyNode
 	{
 		Entity entity;
 		std::size_t parent = NoParent;
 		std::vector<std::size_t> children;
 	};
+
 	// 値snapshot。親正本はHierarchy componentだけ。この派生indexはECSへ保存しない。
 	struct HierarchySnapshot
 	{
 		std::vector<HierarchyNode> nodes;
 		std::vector<std::size_t> parentFirst;
 	};
+
 	HierarchySnapshot ValidateHierarchy(const World& world);
 	void SetParent(World& world, Entity child, Entity parent = {}); // KeepLocalのみ。検証後commit。
 	Entity GetParent(const World& world, Entity child);

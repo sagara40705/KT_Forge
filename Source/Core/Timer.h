@@ -9,7 +9,10 @@ namespace KT::Core
 	class Timer
 	{
 	public:
-		Timer() noexcept { Reset(); }
+		Timer() noexcept
+		{
+			Reset();
+		}
 
 		// ここを新しい計測開始点とする。次のTickの基準もここに戻し、保存済みの差分を0にする。
 		void Reset() noexcept
@@ -36,7 +39,10 @@ namespace KT::Core
 		}
 
 		// 直前のTickで保存した差分を返す。ここでは時刻を測り直さない。生成直後とReset直後は0。
-		[[nodiscard]] double GetDeltaSeconds() const noexcept { return deltaSeconds_; }
+		[[nodiscard]] double GetDeltaSeconds() const noexcept
+		{
+			return deltaSeconds_;
+		}
 
 	private:
 		using Clock = std::chrono::steady_clock;

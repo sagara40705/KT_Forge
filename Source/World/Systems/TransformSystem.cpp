@@ -21,6 +21,10 @@ namespace KT::World
 			context.frame_.entities = std::move(result);
 			context.stage_ = SceneUpdateContext::Stage::Transform;
 		}
-		catch (...) { context.Fail(); throw; }
+		catch (...)
+		{
+			context.Fail();
+			throw;
+		}
 	}
 }

@@ -13,7 +13,7 @@ namespace KT::Renderer
 		for (std::size_t index = 0; index < storage.passes.size(); ++index)
 		{
 			// 前検査：handleの所属・範囲と使用の競合を確認してから参照する。
-			
+
 			validator.ValidatePass(storage.passes[index].desc, storage);
 
 			// パスの準備：登録順のindexを結果にも保持する。

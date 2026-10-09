@@ -5,10 +5,10 @@
 namespace KT::Renderer
 {
 	// Resolver/Validatorの検査済み入力から、登録順の遷移計画を作る。Storageは変更しない。
-    GraphCompiledPlan GraphCompiler::Compile(const GraphStorage& storage, std::span<const GraphResolvedPass> passes) const
-    {
+	GraphCompiledPlan GraphCompiler::Compile(const GraphStorage& storage, std::span<const GraphResolvedPass> passes) const
+	{
 		GraphCompiledPlan plan{};
-        std::vector<D3D12_RESOURCE_STATES> currentStates{};
+		std::vector<D3D12_RESOURCE_STATES> currentStates{};
 
 		// 前検査・初期状態：GPU Compileでは全登録画像のimportを要求する。
 		for (const auto& resourceRecord : storage.resources)
@@ -55,7 +55,7 @@ namespace KT::Renderer
 					GraphTransition transition{};
 					transition.resource = use.resource;
 					transition.range = use.range;
-					transition.before= currentState;
+					transition.before = currentState;
 					transition.after = requiredState;
 					plannedPass.transitions.push_back(std::move(transition));
 					// 状態更新：以降のパスは今回の遷移後の状態を基準にする。
@@ -76,7 +76,7 @@ namespace KT::Renderer
 			if (before != after)
 			{
 				GraphTransition transition{};
-				transition.resource = GraphResourceHandle{ storage.graphid, static_cast<std::uint32_t>(index) };
+				transition.resource = GraphResourceHandle{storage.graphid, static_cast<std::uint32_t>(index)};
 				transition.range = GraphTextureRange{};
 				transition.before = before;
 				transition.after = after;

@@ -14,11 +14,13 @@ namespace KT::Renderer
 		GraphResourceAccess access = GraphResourceAccess::Read;
 		GraphResourceUsage usage = GraphResourceUsage::Unspecified;
 	};
+
 	struct GraphResolvedPass
 	{
 		std::size_t passIndex = 0;
 		std::vector<GraphNormalizedUse> uses;
 	};
+
 	struct GraphTransition
 	{
 		GraphResourceHandle resource{};
@@ -26,11 +28,13 @@ namespace KT::Renderer
 		D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_COMMON;
 		D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_COMMON;
 	};
+
 	struct GraphPlannedPass
 	{
 		std::size_t passIndex = 0;
 		std::vector<GraphTransition> transitions;
 	};
+
 	// 単一Direct Queue/登録順。計画の完成とGPU実行/完了は別。
 	// 部分range遷移、UAV/aliasing barrier、自動並替え/cullingは初版で扱わない。
 	struct GraphCompiledPlan

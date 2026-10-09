@@ -100,45 +100,45 @@ namespace KT::Renderer
 			// 前検査：失敗済みのContextでは、宣言検査や追加記録を始めない。
 			(void)commands_.GetRecordingList();
 
-            // 色と深度の宣言を取得する
-            const auto& colorViewDesc = RequireDeclaredView(color, GraphResourceUsage::RenderTarget);
-            const auto& depthViewDesc = RequireDeclaredView(depth, GraphResourceUsage::DepthStencil);
+			// 色と深度の宣言を取得する
+			const auto& colorViewDesc = RequireDeclaredView(color, GraphResourceUsage::RenderTarget);
+			const auto& depthViewDesc = RequireDeclaredView(depth, GraphResourceUsage::DepthStencil);
 
-            // bindingからViewを取り出す
-            auto* colorView = std::get_if<KT::Graphics::ColorTargetView>(&colorViewDesc.binding);
-            auto* depthView = std::get_if<KT::Graphics::DepthTargetView>(&depthViewDesc.binding);
-            if (!colorView || !depthView)
-            {
-                throw std::invalid_argument("GraphViewHandleがColorTargetViewまたはDepthTargetViewではありません");
-            }
+			// bindingからViewを取り出す
+			auto* colorView = std::get_if<KT::Graphics::ColorTargetView>(&colorViewDesc.binding);
+			auto* depthView = std::get_if<KT::Graphics::DepthTargetView>(&depthViewDesc.binding);
+			if (!colorView || !depthView)
+			{
+				throw std::invalid_argument("GraphViewHandleがColorTargetViewまたはDepthTargetViewではありません");
+			}
 
-            //両方のaccessがReadWriteか確認する
-            for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
-            {
-                if (declaredView.view.index == color.index && declaredView.view.graphid == color.graphid)
-                {
-                    if (declaredView.access != GraphResourceAccess::ReadWrite)
-                    {
-                        throw std::invalid_argument("Color GraphViewHandleのaccessがReadWriteではありません");
-                    }
-                }
-                if (declaredView.view.index == depth.index && declaredView.view.graphid == depth.graphid)
-                {
-                    if (declaredView.access != GraphResourceAccess::ReadWrite)
-                    {
-                        throw std::invalid_argument("Depth GraphViewHandleのaccessがReadWriteではありません");
-                    }
-                }
-            }
+			// 両方のaccessがReadWriteか確認する
+			for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
+			{
+				if (declaredView.view.index == color.index && declaredView.view.graphid == color.graphid)
+				{
+					if (declaredView.access != GraphResourceAccess::ReadWrite)
+					{
+						throw std::invalid_argument("Color GraphViewHandleのaccessがReadWriteではありません");
+					}
+				}
+				if (declaredView.view.index == depth.index && declaredView.view.graphid == depth.graphid)
+				{
+					if (declaredView.access != GraphResourceAccess::ReadWrite)
+					{
+						throw std::invalid_argument("Depth GraphViewHandleのaccessがReadWriteではありません");
+					}
+				}
+			}
 
-            // 描画サイズを確認する
-            if (packet.expectedWidth == 0 || packet.expectedHeight == 0)
-            {
-                throw std::invalid_argument("IndexedDrawPacketのexpectedWidthまたはexpectedHeightが0です");
-            }
+			// 描画サイズを確認する
+			if (packet.expectedWidth == 0 || packet.expectedHeight == 0)
+			{
+				throw std::invalid_argument("IndexedDrawPacketのexpectedWidthまたはexpectedHeightが0です");
+			}
 
-            // Graphicsへ渡す
-            commands_.DrawIndexed(packet, *colorView, *depthView, constants_);
+			// Graphicsへ渡す
+			commands_.DrawIndexed(packet, *colorView, *depthView, constants_);
 		}
 		catch (...)
 		{
@@ -149,9 +149,12 @@ namespace KT::Renderer
 	}
 
 	// Graphだけが生成する。検査済みのパスindexと同じFrameの記録先を、callback中だけ借りる。
-	GraphExecutionContext::GraphExecutionContext(
-		const RenderGraph& graph, KT::Graphics::CommandContext& commands, const KT::Graphics::ConstantBufferArena& constants, std::size_t passIndex):
-		graph_(graph), commands_(commands), constants_(constants), passIndex_(passIndex)
+	GraphExecutionContext::GraphExecutionContext(const RenderGraph& graph, KT::Graphics::CommandContext& commands,
+		const KT::Graphics::ConstantBufferArena& constants, std::size_t passIndex)
+		: graph_(graph),
+		  commands_(commands),
+		  constants_(constants),
+		  passIndex_(passIndex)
 	{
 	}
 
@@ -180,7 +183,7 @@ namespace KT::Renderer
 				return graph_.storage_.views[view.index].desc;
 			}
 		}
-		
+
 		throw std::invalid_argument("GraphViewHandleがこのパスで宣言されていません");
 	}
 

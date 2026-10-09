@@ -7,19 +7,19 @@ namespace KT::Renderer
 {
 	// WriteAllは指定範囲全体の定義契約。部分draw/writeだけでは満たさない。
 	// Read/ReadWriteはpass開始時の既存内容を要求する。
-	enum class GraphResourceAccess 
-	{ 
-		Read, 
-		WriteAll, 
-		ReadWrite 
+	enum class GraphResourceAccess
+	{
+		Read,
+		WriteAll,
+		ReadWrite
 	};
 
 	// Viewの種類とは別の利用目的。GPU初版でUnspecifiedは拒否。
 	// SRVのstage、readonly DSV、UAV ordering、Copy用途は将来明示追加する。
-	enum class GraphResourceUsage 
-	{ 
-		Unspecified, 
-		RenderTarget, 
+	enum class GraphResourceUsage
+	{
+		Unspecified,
+		RenderTarget,
 		DepthStencil,
 	};
 

@@ -16,6 +16,7 @@ namespace KT::World
 		{
 			return worldId != 0 && index != InvalidIndex && generation != 0;
 		}
+
 		bool operator==(const Entity&) const = default;
 	};
 }

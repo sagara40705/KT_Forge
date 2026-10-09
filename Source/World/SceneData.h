@@ -5,10 +5,28 @@
 
 namespace KT::World
 {
-	struct ActiveInHierarchy { bool value = true; };
-	struct WorldTransform { KT::Core::Math::Matrix4 matrix{}; };
-	struct FinalizedEntity { Entity entity; ActiveInHierarchy active; WorldTransform transform; };
-	struct Viewport { std::uint32_t width = 0, height = 0; };
+	struct ActiveInHierarchy
+	{
+		bool value = true;
+	};
+
+	struct WorldTransform
+	{
+		KT::Core::Math::Matrix4 matrix{};
+	};
+
+	struct FinalizedEntity
+	{
+		Entity entity;
+		ActiveInHierarchy active;
+		WorldTransform transform;
+	};
+
+	struct Viewport
+	{
+		std::uint32_t width = 0, height = 0;
+	};
+
 	struct CameraViewData
 	{
 		Entity entity;
@@ -16,6 +34,7 @@ namespace KT::World
 		KT::Core::Math::Vector3 position{};
 		Viewport viewport;
 	};
+
 	// CPU結果を値として所有する。component参照やRenderer依存を持たない。
 	struct WorldFrame
 	{

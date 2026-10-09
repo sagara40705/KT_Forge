@@ -4,13 +4,13 @@
 #include <stdexcept>
 #include <execution>
 
-int main() 
+int main()
 {
-    try
-    {
-        KT::Application::Application app(1280, 720, "KT_Forge");
-        app.Run();
-    }
+	try
+	{
+		KT::Application::Application app(1280, 720, "KT_Forge");
+		app.Run();
+	}
 	catch (const std::exception& error)
 	{
 		KT_LOG_ERROR(error.what());

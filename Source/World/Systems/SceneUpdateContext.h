@@ -24,16 +24,34 @@ namespace KT::World
 	class SceneUpdateContext : private KT::Core::NonCopyable
 	{
 	public:
-		enum class Stage { Captured, Hierarchy, Activation, Transform, Camera, Failed };
+		enum class Stage
+		{
+			Captured,
+			Hierarchy,
+			Activation,
+			Transform,
+			Camera,
+			Failed
+		};
 		SceneUpdateContext(const World& world, std::optional<Entity> camera, Viewport viewport);
-		Stage CurrentStage() const noexcept { return stage_; }
-		std::uint64_t SourceWorldId() const noexcept { return worldId_; }
+
+		Stage CurrentStage() const noexcept
+		{
+			return stage_;
+		}
+
+		std::uint64_t SourceWorldId() const noexcept
+		{
+			return worldId_;
+		}
+
 		const std::vector<SceneEntityInput>& Inputs() const;
 		// 結果配列のindexはInputs()と対応する。slotに穴がある場合のEntity.indexとは異なる。
 		const HierarchySnapshot& GetHierarchy() const;
 		const std::vector<bool>& GetActivation() const;
 		const std::vector<FinalizedEntity>& GetTransforms() const;
 		const WorldFrame& GetFrame() const;
+
 	private:
 		friend class HierarchySystem;
 		friend class ActivationSystem;
@@ -41,7 +59,12 @@ namespace KT::World
 		friend class CameraSystem;
 		void RequireStage(Stage expected) const;
 		void RequireAtLeast(Stage minimum) const;
-		void Fail() noexcept { stage_ = Stage::Failed; }
+
+		void Fail() noexcept
+		{
+			stage_ = Stage::Failed;
+		}
+
 		std::uint64_t worldId_;
 		std::optional<Entity> camera_;
 		Viewport viewport_;

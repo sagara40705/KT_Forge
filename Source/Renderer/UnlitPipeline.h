@@ -7,11 +7,16 @@ namespace KT::Renderer
 	class UnlitPipeline : private KT::Core::NonCopyable
 	{
 	public:
-		UnlitPipeline(KT::Graphics::GraphicsDevice& device, DXGI_FORMAT target=DXGI_FORMAT_R8G8B8A8_UNORM,
-			DXGI_FORMAT depth=DXGI_FORMAT_D32_FLOAT);
-		const KT::Graphics::GraphicsPipelineState& GetPipeline() const noexcept { return pipeline_; }
+		UnlitPipeline(KT::Graphics::GraphicsDevice& device, DXGI_FORMAT target = DXGI_FORMAT_R8G8B8A8_UNORM,
+			DXGI_FORMAT depth = DXGI_FORMAT_D32_FLOAT);
+
+		const KT::Graphics::GraphicsPipelineState& GetPipeline() const noexcept
+		{
+			return pipeline_;
+		}
+
 	private:
-		KT::Graphics::Shader vertex_,pixel_;
+		KT::Graphics::Shader vertex_, pixel_;
 		KT::Graphics::RootSignature root_;
 		KT::Graphics::GraphicsPipelineState pipeline_;
 	};
