@@ -57,19 +57,23 @@ namespace KT::Renderer
 		}
 		catch (...) { context.Invalidate(); throw; }
 	}
-	// TODO: 未実装。Prepareで保持した値をOpaquePassへ渡す。
+
+	// Prepareで保持した値をOpaquePassへ渡す。
 	KT::Graphics::ConstantSlice PreparedRenderFrame::GetViewConstants() const noexcept
 	{
+        return viewConstants_;
 	}
 
-	// TODO: 未実装。Prepareで保持した値をOpaquePassへ渡す。
+	// Prepareで保持した値をOpaquePassへ渡す。
 	UINT PreparedRenderFrame::GetWidth() const noexcept
 	{
+        return width_;
 	}
 
-	// TODO: 未実装。Prepareで保持した値をOpaquePassへ渡す。
+	// Prepareで保持した値をOpaquePassへ渡す。
 	UINT PreparedRenderFrame::GetHeight() const noexcept
 	{
+        return height_;
 	}
 
 }

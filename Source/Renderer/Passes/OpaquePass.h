@@ -5,7 +5,7 @@ namespace KT::Renderer
 {
 	class RenderGraph;
 	class PreparedRenderFrame;
-	// TODO: 未実装。PreparedFrameを値捕捉し、各Drawのpacketをcallback中に記録する。
+	// PreparedFrameを値捕捉し、各Drawのpacketをcallback中に記録する。
 	// 初版はClearを別passでWriteAll、Opaqueのcolor/depthをReadWriteとする。
 	// 内容の前提：この組込みpassは先行ClearとReadWriteを使い、部分描画で全域を定義したと扱わない。
 	// 借用寿命：Mesh・Material・arenaは外部がFenceまで保持する。
