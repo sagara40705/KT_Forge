@@ -26,7 +26,8 @@ namespace KT::Renderer
 		// ViewがこのGraphに登録されているかを確認する
 		bool Contains(GraphViewHandle view) const;
 
-		GraphResourceHandle RegisterResource(std::string name); // CPU宣言のみ。GPU Compileはimport必須。
+		// 名前を登録してGraphResourceHandleを返す
+		GraphResourceHandle RegisterResource(std::string name);
 
 		GraphResourceHandle ImportTexture(GraphImportedTextureDesc desc);
 

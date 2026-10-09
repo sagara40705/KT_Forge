@@ -64,20 +64,45 @@ namespace KT::Renderer
 
 		return true;
 	}
+	// 名前を登録してGraphResourceHandleを返す
 	GraphResourceHandle RenderGraph::RegisterResource(std::string name)
 	{
-		return GraphResourceHandle();
+		// 前検査
+		RequireBuilding();
+		if (name.empty())
+		{
+			throw std::invalid_argument("名前が空です");
+		}
+		if (storage_.resources.size() >= (std::numeric_limits<std::uint32_t>::max)())
+		{
+			throw std::overflow_error("リソースが最大数に達しました");
+		}
+
+		// 新しいリソースを登録(ImportTextureは未設定)
+		const std::uint32_t index = static_cast<std::uint32_t>(storage_.resources.size());
+		GraphResourceRecord resourceRecord{};
+		resourceRecord.name = std::move(name);
+		storage_.resources.push_back(std::move(resourceRecord));
+
+		// GraphResourceHandleを返す
+		return GraphResourceHandle{ storage_.graphid, index };
 	}
 	GraphResourceHandle RenderGraph::ImportTexture(GraphImportedTextureDesc desc)
 	{
+		// 前検査
+		RequireBuilding();
 		return GraphResourceHandle();
 	}
 	GraphViewHandle RenderGraph::AddView(GraphViewDesc desc)
 	{
+		// 前検査
+		RequireBuilding();
 		return GraphViewHandle();
 	}
 	void RenderGraph::AddPass(GraphPassDesc desc, GraphRecordFn record)
 	{
+		// 前検査
+		RequireBuilding();
 	}
 	// 登録できる状態かを確認する。Building以外は登録不可。
 	void RenderGraph::RequireBuilding() const

@@ -16,7 +16,9 @@ namespace KT::Renderer
 		std::optional<GraphImportedTextureDesc> importedTexture;
 	};
 	struct GraphViewRecord { GraphViewDesc desc; };
+
 	struct GraphPassRecord { GraphPassDesc desc; GraphRecordFn record; };
+
 	// RenderGraphがprivateに所有する登録正本。外部へ可変参照を公開しない。
 	// GPU画像/descriptor/Renderer描画フレームを所有しない。
 	struct GraphStorage
