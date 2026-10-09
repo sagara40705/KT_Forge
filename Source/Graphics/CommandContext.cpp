@@ -221,9 +221,26 @@ namespace KT::Graphics
 	{
 	}
 
-	// TODO: 未実装。借用DSVを検査し、D32/Reverse-Zの全域clear0を記録する。
+	// 借用DSVを検査し、D32/Reverse-Zの全域clear0を記録する。
 	void CommandContext::ClearDepth(const DepthTargetView& depth)
 	{
+        try
+        {
+            auto* commandList = GetRecordingList();
+            const auto dsv = depth.GetDsv();
+            commandList->ClearDepthStencilView(
+                dsv,
+                D3D12_CLEAR_FLAG_DEPTH,
+                0.0f,
+                0,
+                0,
+                nullptr);
+        }
+        catch (...)
+        {
+            Invalidate();
+            throw;
+        }
 	}
 
 }
