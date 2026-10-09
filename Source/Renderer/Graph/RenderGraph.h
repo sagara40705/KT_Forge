@@ -18,23 +18,43 @@ namespace KT::Renderer
 	class RenderGraph : private KT::Core::NonCopyable
 	{
 	public:
+		// コンストラクタ
 		RenderGraph();
+
+		// 画像がこのGraphに登録されているかを確認する
 		bool Contains(GraphResourceHandle resource) const;
+		// ViewがこのGraphに登録されているかを確認する
 		bool Contains(GraphViewHandle view) const;
+
 		GraphResourceHandle RegisterResource(std::string name); // CPU宣言のみ。GPU Compileはimport必須。
+
 		GraphResourceHandle ImportTexture(GraphImportedTextureDesc desc);
+
 		GraphViewHandle AddView(GraphViewDesc desc);
 		void AddPass(GraphPassDesc desc, GraphRecordFn record);
+
 		void Validate() const;
+
+		// 全計画をローカル完成後に公開。失敗はBuilding/登録内容を保持する。
 		void Compile();
 		// 記録だけ。Begin/End/Submit/Present/Waitは呼出側。同じframeのarenaを使用。
+		// 記録可能Contextを取得後、全import画像とlistのDeviceをRequireSameDeviceで照合。
+		// 最初の命令前に完了し、画像/descriptor対応や寿命の証明とは区別する。
+		// 事前検査失敗は命令なし。入口/callback後/成功確定前にContext健全性を確認。
+		// 開始後失敗はFailed/Invalidateを保持し、callbackがcatchしても成功扱いしない。
+		// 失敗listは送信不可。callerのlistを勝手にResetしない。
 		void Record(KT::Graphics::FrameResources& frame);
+
 	private:
 		friend class GraphExecutionContext;
-		enum class State { Building, Completed, Recording, Recorded, Failed };
-		// 未実装: プロセス内で非0/再発行なし。最大値を枯渇用に予約し循環せずoverflow_error。
+		enum class State { Building, Compiled, Recording, Recorded, Failed };
+
+		// 新しいGraphのIDを取得する。0は無効ID、1から開始する。最大値に達した場合はerror
 		static std::uint64_t AcquireGraphId();
+
+		//　登録できる状態かを確認する。Building以外は登録不可。
 		void RequireBuilding() const;
+
 		GraphStorage storage_;
 		State state_ = State::Building;
 		std::optional<GraphCompiledPlan> compiledPlan_;

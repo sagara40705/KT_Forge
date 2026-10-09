@@ -8,7 +8,7 @@ namespace KT::Graphics
 {
 	class ConstantBufferArena;
 	class FrameResources;
-	// 非所有の割当token。arena/epoch/範囲を検査し、過去frameの再利用を拒否する。
+	// 非所有の割当token。owner/再利用しないarena個体ID/epoch/範囲を検査する。
 	class ConstantSlice
 	{
 	public:
@@ -16,6 +16,7 @@ namespace KT::Graphics
 	private:
 		friend class ConstantBufferArena;
 		const ConstantBufferArena* owner_=nullptr;
+		std::uint64_t arenaId_=0;
 		std::uint64_t epoch_=0;
 		std::size_t offset_=0,size_=0;
 	};
@@ -38,6 +39,8 @@ namespace KT::Graphics
 		ComPtr<ID3D12Resource> resource_;
 		std::byte* mapped_=nullptr;
 		std::size_t capacity_=0,cursor_=0;
+		// 再構築時も別ID。BeginはこのIDを変えずepochだけを進める。0は未発行。
+		std::uint64_t arenaId_=0;
 		std::uint64_t epoch_=0;
 		bool writable_=false;
 	};

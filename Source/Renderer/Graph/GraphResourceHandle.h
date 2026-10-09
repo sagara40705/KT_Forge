@@ -7,9 +7,16 @@ namespace KT::Renderer
 	// 画像の非所有識別子。Viewとは別のindex。Graph破棄後は使用不可、IDは再発行しない。
 	struct GraphResourceHandle
 	{
+		// 所属するGraphのID
 		std::uint64_t graphid = 0;
+
+		// Graph内でのindex
 		std::uint32_t index = (std::numeric_limits<std::uint32_t>::max)();
-		// 未実装: 無効値の形式検査だけ。所属/範囲/寿命の証明ではない。
-		bool IsValid() const noexcept;
+
+		// このHandleが有効化か
+		bool IsValid() const noexcept
+		{
+			return graphid != 0 && index != (std::numeric_limits<std::uint32_t>::max)();
+		}
 	};
 }

@@ -19,6 +19,8 @@ namespace KT::Renderer
 	// 未宣言画像、別Graph、用途/access違いを命令追加前に拒否。raw listを公開しない。
 	// VB/IBは外部の不変UPLOAD/GENERIC_READ契約、定数は同じFrame/epochの契約。
 	// shaderや外部GPU参照をすべて自動検出する機能ではない。
+	// 操作はContextの健全性を入口で確認。失敗はInvalidateし、callbackのcatchで回復しない。
+	// Graphはcallback後と成功確定前にも健全性を確認してFailedへ進める。
 	class GraphExecutionContext : private KT::Core::NonCopyable
 	{
 	public:

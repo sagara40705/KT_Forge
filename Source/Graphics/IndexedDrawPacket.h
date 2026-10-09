@@ -17,7 +17,7 @@ namespace KT::Graphics
 		const VertexBuffer* vertices = nullptr;
 		const IndexBuffer* indices = nullptr;
 		std::span<const RootConstantBinding> bindings{};
-		// PreparedRenderFrameのviewport寸法。0は不正値で、未指定として許可しない。
+		// callerの期待描画寸法。0は不正値で、未指定として許可しない。
 		// GraphExecutionContext/Graphicsはcolor/depth両方との一致を命令追加前に検査する。
 		UINT expectedWidth = 0;
 		UINT expectedHeight = 0;
