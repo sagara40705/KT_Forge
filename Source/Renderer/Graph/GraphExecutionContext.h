@@ -31,12 +31,18 @@ namespace KT::Renderer
 		void DrawIndexed(GraphViewHandle color, GraphViewHandle depth, const KT::Graphics::IndexedDrawPacket& packet);
 	private:
 		friend class RenderGraph;
-		GraphExecutionContext(const RenderGraph& graph, KT::Graphics::CommandContext& commands,
-			const KT::Graphics::ConstantBufferArena& constants, std::size_t passIndex);
+		//　コンストラクタ	
+		GraphExecutionContext(const RenderGraph& graph, KT::Graphics::CommandContext& commands, const KT::Graphics::ConstantBufferArena& constants, std::size_t passIndex);
+		// 渡されたViewが、このパスで指定された用途として宣言されているか
 		const GraphViewDesc& RequireDeclaredView(GraphViewHandle view, GraphResourceUsage usage) const;
+	private:
+		// graphの参照
 		const RenderGraph& graph_;
+		// commandsの参照
 		KT::Graphics::CommandContext& commands_;
+		// constantsの参照
 		const KT::Graphics::ConstantBufferArena& constants_;
+		// 現在のpassのindex
 		std::size_t passIndex_;
 	};
 }

@@ -1,5 +1,6 @@
 #include <Renderer/MaterialStore.h>
 #include <stdexcept>
+#include <utility>
 
 namespace KT::Renderer
 {

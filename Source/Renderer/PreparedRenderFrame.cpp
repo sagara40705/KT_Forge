@@ -1,5 +1,17 @@
 #include <Renderer/PreparedRenderFrame.h>
 #include <Renderer/RenderConstants.h>
+#include <Renderer/RenderData.h>
+#include <Renderer/MeshStore.h>
+#include <Renderer/MaterialStore.h>
+#include <Renderer/Mesh.h>
+#include <Renderer/UnlitMaterial.h>
+#include <Graphics/CommandContext.h>
+#include <Graphics/ColorTargetView.h>
+#include <Graphics/DepthBuffer.h>
+#include <Core/Math/Matrix4.h>
+#include <array>
+#include <cstddef>
+#include <span>
 #include <stdexcept>
 
 namespace KT::Renderer
@@ -45,4 +57,16 @@ namespace KT::Renderer
 		}
 		catch (...) { context.Invalidate(); throw; }
 	}
+	KT::Graphics::ConstantSlice PreparedRenderFrame::GetViewConstants() const noexcept
+	{
+	}
+
+	UINT PreparedRenderFrame::GetWidth() const noexcept
+	{
+	}
+
+	UINT PreparedRenderFrame::GetHeight() const noexcept
+	{
+	}
+
 }

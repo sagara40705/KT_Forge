@@ -1,14 +1,24 @@
 #pragma once
-#include <Renderer/RenderData.h>
-#include <Renderer/MeshStore.h>
-#include <Renderer/MaterialStore.h>
 #include <Graphics/ConstantBufferArena.h>
-#include <Graphics/CommandContext.h>
-#include <Graphics/ColorTargetView.h>
-#include <Graphics/DepthBuffer.h>
+#include <d3d12.h>
+#include <cstddef>
+#include <vector>
 
+namespace KT::Graphics
+{
+	class CommandContext;
+	class ColorTargetView;
+	class DepthBuffer;
+}
 namespace KT::Renderer
 {
+	class Mesh;
+	class UnlitMaterial;
+	class MeshStore;
+	class MaterialStore;
+	struct RenderWorld;
+	struct RenderView;
+
 	struct PreparedDraw
 	{
 		const Mesh* mesh=nullptr;

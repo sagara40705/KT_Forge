@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <limits>
+#include <utility>
 
 
 namespace KT::Renderer
@@ -267,6 +268,7 @@ namespace KT::Renderer
 		}
 		catch (...)
 		{
+			commandContext.Invalidate();
 			state_ = State::Failed;
 			throw; // 例外を再スローして呼び出し元に伝える
 		}

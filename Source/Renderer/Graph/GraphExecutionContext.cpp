@@ -1,6 +1,111 @@
 #include <Renderer/Graph/GraphExecutionContext.h>
+#include <Renderer/Graph/RenderGraph.h>
+#include <Renderer/Graph/GraphView.h>
+#include <Renderer/Graph/GraphResourceUse.h>
+#include <Graphics/CommandContext.h>
+#include <Graphics/ConstantBufferArena.h>
+#include <Graphics/IndexedDrawPacket.h>
+#include <Graphics/ColorTargetView.h>
+#include <Graphics/DepthTargetView.h>
+#include <stdexcept>
+#include <variant>
 
 namespace KT::Renderer
 {
-	// æœªå®Ÿè£…å¥‘ç´„: å®£è¨€æ¤œæŸ»/Clear/Drawçª“å£ã‚’æœ¬äººãŒå®Ÿè£…ã€‚åŒã˜Frameã®arenaã§ä½ãƒ¬ãƒ™ãƒ«Graphicsã¸è¨˜éŒ²ã€‚å¤±æ•—ã‚’æˆåŠŸæ‰±ã„ã«ã—ãªã„ã€‚æ—§æœ¬ä½“ã¯åŸæœ¬ã«é€€é¿ã€‚
+	//
+	void GraphExecutionContext::ClearColor(GraphViewHandle target, const std::array<float, 4>& color)
+	{
+		// “n‚³‚ê‚½target‚ªA‚±‚ÌƒpƒX‚ÅRenderTarget‚Æ‚µ‚ÄéŒ¾‚³‚ê‚Ä‚¢‚é‚©‚ğŒŸ¸‚·‚é
+		const auto& viewDesc = RequireDeclaredView(target, GraphResourceUsage::RenderTarget);
+		// binding‚ªColorTargetView‚Å‚ ‚é‚±‚Æ‚ğŒŸ¸‚·‚é
+		auto* colorView = std::get_if<KT::Graphics::ColorTargetView>(&viewDesc.binding);
+		if (!colorView)
+		{
+			throw std::invalid_argument("GraphViewHandle‚ÍColorTargetView‚Å‚Í‚ ‚è‚Ü‚¹‚ñ");
+		}
+
+		// éŒ¾‚Ìaccess‚ğŠm”F‚·‚é
+		for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
+		{
+			if (declaredView.view.index == target.index && declaredView.view.graphid == target.graphid)
+			{
+				if (declaredView.access != GraphResourceAccess::WriteAll)
+				{
+					throw std::invalid_argument("GraphViewHandle‚Ìaccess‚ªWriteAll‚Å‚Í‚ ‚è‚Ü‚¹‚ñ");
+				}
+				break;
+			}
+		}
+
+		// commands‚ÉClearRenderTarget‚ğ’Ç‰Á‚·‚é
+		commands_.ClearRenderTarget(colorView->GetRtv(), color);
+	}
+
+	void GraphExecutionContext::ClearDepth(GraphViewHandle target)
+	{
+		// “n‚³‚ê‚½target‚ªA‚±‚ÌƒpƒX‚ÅDepthStencil‚Æ‚µ‚ÄéŒ¾‚³‚ê‚Ä‚¢‚é‚©‚ğŒŸ¸‚·‚é
+		const auto& viewDesc = RequireDeclaredView(target, GraphResourceUsage::DepthStencil);
+		// binding‚ªDepthTargetView‚Å‚ ‚é‚±‚Æ‚ğŒŸ¸‚·‚é
+		auto* depthView = std::get_if<KT::Graphics::DepthTargetView>(&viewDesc.binding);
+		if (!depthView)
+		{
+			throw std::invalid_argument("GraphViewHandle‚ÍDepthTargetView‚Å‚Í‚ ‚è‚Ü‚¹‚ñ");
+		}
+
+		// éŒ¾‚Ìaccess‚ğŠm”F‚·‚é
+		for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
+		{
+			if (declaredView.view.index == target.index && declaredView.view.graphid == target.graphid)
+			{
+				if (declaredView.access != GraphResourceAccess::WriteAll)
+				{
+					throw std::invalid_argument("GraphViewHandle‚Ìaccess‚ªWriteAll‚Å‚Í‚ ‚è‚Ü‚¹‚ñ");
+				}
+				break;
+			}
+		}
+
+		// commands‚ÉClearDepthStencil‚ğ’Ç‰Á‚·‚é
+		commands_.ClearDepth(*depthView);
+	}
+
+	void GraphExecutionContext::DrawIndexed(GraphViewHandle color, GraphViewHandle depth, const KT::Graphics::IndexedDrawPacket& packet)
+	{
+	}
+
+	// ƒRƒ“ƒXƒgƒ‰ƒNƒ^
+	GraphExecutionContext::GraphExecutionContext(
+		const RenderGraph& graph, KT::Graphics::CommandContext& commands, const KT::Graphics::ConstantBufferArena& constants, std::size_t passIndex):
+		graph_(graph), commands_(commands), constants_(constants), passIndex_(passIndex)
+	{
+	}
+
+	// “n‚³‚ê‚½View‚ªA‚±‚ÌƒpƒX‚Åw’è‚³‚ê‚½—p“r‚Æ‚µ‚ÄéŒ¾‚³‚ê‚Ä‚¢‚é‚©
+	const GraphViewDesc& GraphExecutionContext::RequireDeclaredView(GraphViewHandle view, GraphResourceUsage usage) const
+	{
+		if (!graph_.Contains(view))
+		{
+			throw std::invalid_argument("GraphViewHandle‚ª‚±‚ÌGraph‚É‘®‚µ‚Ä‚¢‚Ü‚¹‚ñ");
+		}
+		if (view.index >= graph_.storage_.views.size())
+		{
+			throw std::out_of_range("GraphViewHandle‚Ìindex‚ª”ÍˆÍŠO‚Å‚·");
+		}
+
+		// Œ»İ‚ÌƒpƒX‚ÌViewéŒ¾‚ğ’T‚·
+		for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
+		{
+			if (declaredView.view.index == view.index && declaredView.view.graphid == view.graphid)
+			{
+				if (declaredView.usage != usage)
+				{
+					throw std::invalid_argument("GraphViewHandle‚Ì—p“r‚ªéŒ¾‚Æˆê’v‚µ‚Ü‚¹‚ñ");
+				}
+				return graph_.storage_.views[view.index].desc;
+			}
+		}
+		
+		throw std::invalid_argument("GraphViewHandle‚ª‚±‚ÌƒpƒX‚ÅéŒ¾‚³‚ê‚Ä‚¢‚Ü‚¹‚ñ");
+	}
+
 }

@@ -1,6 +1,7 @@
 #include <Renderer/MeshStore.h>
 #include <Graphics/GraphicsValidation.h>
 #include <stdexcept>
+#include <utility>
 
 namespace KT::Renderer
 {

@@ -2,6 +2,7 @@
 #include <atomic>
 #include <exception>
 #include <limits>
+#include <utility>
 
 namespace KT::World
 {

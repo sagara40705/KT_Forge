@@ -4,6 +4,8 @@
 #include <Graphics/IndexBuffer.h>
 #include <Graphics/ColorTargetView.h>
 #include <Graphics/DepthBuffer.h>
+#include <Graphics/DepthTargetView.h>
+#include <Graphics/IndexedDrawPacket.h>
 #include <Graphics/ConstantBufferArena.h>
 #include <Graphics/GraphicsValidation.h>
 #include <stdexcept>
@@ -213,4 +215,13 @@ namespace KT::Graphics
 	{
 		failed_ = true;
 	}
+	void CommandContext::DrawIndexed(const IndexedDrawPacket& packet, const ColorTargetView& color,
+		const DepthTargetView& depth, const ConstantBufferArena& constants)
+	{
+	}
+
+	void CommandContext::ClearDepth(const DepthTargetView& depth)
+	{
+	}
+
 }
