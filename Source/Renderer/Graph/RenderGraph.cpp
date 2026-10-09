@@ -10,30 +10,30 @@
 
 namespace KT::Renderer
 {
-	// 新しいGraphのIDを取得する。0は無効ID、1から開始する。最大値に達した場合はerror。
+	// 単一スレッドで非0の一意IDを発行する。最大値で停止し、破棄したGraphのIDも再利用しない。
 	std::uint64_t RenderGraph::AcquireGraphId()
 	{
-		static std::uint64_t currentId = 1; // 0は無効IDとして予約
+		static std::uint64_t currentId = 1;
+		// 前検査：枯渇後も値を進めず、wrapによるIDの再発行を防ぐ。
 		if (currentId == (std::numeric_limits<std::uint64_t>::max)())
 		{
 			throw std::overflow_error("Graph ID overflow");
 		}
 
-		// 現在のIDを返し、次のIDに進める
+		// 発行：使用したIDを返し、次回の候補を進める。
 		const std::uint64_t acquiredId = currentId;
 		++currentId;
 		return acquiredId;
 	}
-	// コンストラクタ
+	// 新しいGraphの登録領域に、一意IDを設定する。
 	RenderGraph::RenderGraph()
 	{
-		// 新しいGraphのIDを取得してstorage_に設定
 		storage_.graphid = AcquireGraphId();
 	}
-	// 画像がこのGraphに登録されているかを確認する
+	// 画像handleの形式・所属・範囲を確認する。不正なら例外、すべて満たす場合だけtrueを返す。
 	bool RenderGraph::Contains(GraphResourceHandle resource) const
 	{
-		// 検査
+		// 前検査：配列を参照する前に、handleの形式・所属・範囲を確認する。
 		if (!resource.IsValid())
 		{
 			throw std::invalid_argument("GraphResourceHandleが無効です");
@@ -49,10 +49,10 @@ namespace KT::Renderer
 
 		return true;
 	}
-	// ViewがこのGraphに登録されているかを確認する
+	// view handleの形式・所属・範囲を確認する。不正なら例外、すべて満たす場合だけtrueを返す。
 	bool RenderGraph::Contains(GraphViewHandle view) const
 	{
-		// 検査
+		// 前検査：配列を参照する前に、handleの形式・所属・範囲を確認する。
 		if (!view.IsValid())
 		{
 			throw std::invalid_argument("GraphViewHandleが無効です");
@@ -68,7 +68,7 @@ namespace KT::Renderer
 
 		return true;
 	}
-	// 名前を登録してGraphResourceHandleを返す
+	// CPU宣言用の画像名を登録する。GPU画像の借用はImportTextureで別に登録する。
 	GraphResourceHandle RenderGraph::RegisterResource(std::string name)
 	{
 		// 前検査
@@ -82,16 +82,15 @@ namespace KT::Renderer
 			throw std::overflow_error("リソースが最大数に達しました");
 		}
 
-		// 新しいリソースを登録(ImportTextureは未設定)
+		// 登録：縮小前に上限を確認したindexで、importなしのrecordを追加する。
 		const std::uint32_t index = static_cast<std::uint32_t>(storage_.resources.size());
 		GraphResourceRecord resourceRecord{};
 		resourceRecord.name = std::move(name);
 		storage_.resources.push_back(std::move(resourceRecord));
 
-		// GraphResourceHandleを返す
 		return GraphResourceHandle{ storage_.graphid, index };
 	}
-	// GPU画像をGraphへ登録してGraphResourceHandleを返す
+	// 外部のGPU画像を借用登録する。画像の所有者は最後の利用Fence完了まで保持する。
 	GraphResourceHandle RenderGraph::ImportTexture(GraphImportedTextureDesc desc)
 	{
 		// 前検査
@@ -109,7 +108,7 @@ namespace KT::Renderer
 			throw std::overflow_error("リソースが最大数に達しました");
 		}
 
-		// 同じ画像の二重登録を防ぐ
+		// 重複検査：同じ画像を別の状態追跡単位として登録しない。
 		for (const auto& resource : storage_.resources)
 		{
 			if (resource.importedTexture.has_value() && resource.importedTexture->resource == desc.resource)
@@ -118,14 +117,13 @@ namespace KT::Renderer
 			}
 		}
 
-		// 登録データを作成してstorage_に追加
+		// 登録：候補を組み立ててから追加し、失敗時は既存の登録内容を保つ。
 		const std::uint32_t index = static_cast<std::uint32_t>(storage_.resources.size());
 		GraphResourceRecord resourceRecord{};
 		resourceRecord.name = desc.name;
 		resourceRecord.importedTexture = std::move(desc);
 		storage_.resources.push_back(std::move(resourceRecord));
 
-		// GraphResourceHandleを返す
 		return GraphResourceHandle{ storage_.graphid, index };
 	}
 
@@ -140,17 +138,16 @@ namespace KT::Renderer
 		}
 		validator_.ValidateView(desc, storage_);
 
-		// 登録データを作成してstorage_に追加
+		// 登録：候補を組み立ててから追加し、失敗時は既存の登録内容を保つ。
 		const std::uint32_t index = static_cast<std::uint32_t>(storage_.views.size());
 		GraphViewRecord viewRecord{};
 		viewRecord.desc = std::move(desc);
 		storage_.views.push_back(std::move(viewRecord));
 
-		// GraphViewHandleを返す
 		return GraphViewHandle{ storage_.graphid, index };
 	}
 
-	// Passを登録する。GraphPassDescとGraphRecordFnを保持する。
+	// 検査済みの使用宣言と記録callbackを、実行する順に登録する。
 	void RenderGraph::AddPass(GraphPassDesc desc, GraphRecordFn record)
 	{
 		// 前検査
@@ -161,7 +158,7 @@ namespace KT::Renderer
 		}
 		validator_.ValidatePass(desc, storage_);
 
-		// 登録データを作成してstorage_に追加
+		// 登録：候補を組み立ててから追加し、失敗時は既存の登録内容を保つ。
 		GraphPassRecord passRecord{};
 		passRecord.desc = std::move(desc);
 		passRecord.record = std::move(record);
@@ -176,7 +173,7 @@ namespace KT::Renderer
 			throw std::logic_error("GraphはBuilding状態ではありません。登録操作は許可されません。");
 		}
 	}
-	// 入力を変更せず、Resolver結果をValidatorで再照合する。Resolve本体は未実装。
+	// 入力を変更せず、親画像へ正規化した使用と元宣言・内容依存を照合する。
 	void RenderGraph::Validate() const
 	{
 		const auto resolved = resolver_.Resolve(storage_);
@@ -188,11 +185,12 @@ namespace KT::Renderer
 	{
 		RequireBuilding();
 
-		// ResolveとValidateを行い、コンパイル計画を作成する
+		// 前検査：正規化した使用と内容依存を検査してから、遷移計画を作る。
 		const auto resolved = resolver_.Resolve(storage_);
 		validator_.Validate(storage_, resolved);
 
 		const auto plan = compiler_.Compile(storage_, resolved);
+		// 計画の公開：保持に成功してからCompiledへ進める。
 		compiledPlan_ = std::move(plan);
 
 		state_ = State::Compiled;
@@ -211,31 +209,29 @@ namespace KT::Renderer
 			throw std::logic_error("コンパイル計画が存在しません。");
 		}
 	
-		//frameから記録中のCommandContextとConstantBufferArenaを取得する
+		// 記録先の取得：同じframeのContextと定数arenaを借りる。
 		auto& commandContext = frame.GetContext();
 		auto& constantBufferArena = frame.GetConstants();
 
-		//commandContextが記録中か
+		// 前検査：記録中かつ使用可能なlistを要求する。失敗時はCompiledのまま。
 		if (!commandContext.GetRecordingList())
 		{
 			throw std::logic_error("CommandContextは記録中ではありません");
 		}
 
-		// 記録に使うCommandListを取得する
+		// 状態更新：事前検査後に記録を開始し、以後の例外はFailedとして保持する。
 		auto* commandList = commandContext.GetRecordingList();
 		state_ = State::Recording;
 		try
 		{
-			// compiledPlan_->passesを順番にループ
+			// パス記録：登録順の遷移計画をたどる。
 			for (const auto& plannedPass : compiledPlan_->passes)
 			{
-				// 各パスのtransitionsを先に記録する
+				// 状態遷移：初版は1Mip・1slice・1planeの画像全体を対象にする。
 				for (const auto& transition : plannedPass.transitions)
 				{
-					//各transitionについて、画像を取り出し
 					auto resource = storage_.resources[transition.resource.index].importedTexture->resource;
 
-					//バリアを作って、commandListに記録する
 					D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
 						resource,
 						transition.before,
@@ -244,13 +240,13 @@ namespace KT::Renderer
 					);
 					commandList->ResourceBarrier(1, &barrier);
 
-					//そのパスのコールバックを呼ぶ
+					// TODO: 全遷移後にcallbackを1回実行し、Contextの健全性を確認する。
 					GraphExecutionContext executionContext(*this, commandContext, constantBufferArena, plannedPass.passIndex);
 					storage_.passes[plannedPass.passIndex].record(executionContext);
 				}
 			}
 
-			//finalTransitionsを記録する
+			// 終了遷移：借用画像を指定されたfinalStateへ戻す。
 			for (const auto& transition : compiledPlan_->finalTransitions)
 			{
 				auto* resource = storage_.resources[transition.resource.index].importedTexture->resource;
@@ -262,15 +258,16 @@ namespace KT::Renderer
 				commandList->ResourceBarrier(1, &barrier);
 			}
 
-			// 記録が成功した場合、状態をRecordedに変更する
+			// TODO: 成功確定前にもContextの健全性を確認する。
 			state_ = State::Recorded;
 
 		}
+		// 失敗保持：記録済み命令を取り消さず、listの送信を禁止して呼出側へ伝える。
 		catch (...)
 		{
 			commandContext.Invalidate();
 			state_ = State::Failed;
-			throw; // 例外を再スローして呼び出し元に伝える
+			throw;
 		}
 	}
 

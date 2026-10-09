@@ -121,7 +121,7 @@ namespace KT::Renderer
 		{
 			throw std::invalid_argument("Viewのbinding種別に対応していません");
 		}
-		// 記録先Deviceの同一性はRecordの責務。storageは変更しない。
+		// storageは変更しない。descriptorの対応・借用寿命と、単一Deviceの前提は外部で保証する。
 	}
 
 	namespace

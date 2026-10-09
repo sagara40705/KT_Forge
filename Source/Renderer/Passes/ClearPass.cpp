@@ -6,7 +6,7 @@
 
 namespace KT::Renderer
 {
-	// 未実装契約: AddClearPassの本体を本人が実装。旧ResourceHandle版は原本に退避。
+	// TODO: 未実装。finite色を検査し、WriteAll/RenderTarget宣言と値捕捉Clear callbackを登録する。
 	void AddClearPass(RenderGraph& graph, GraphViewHandle target, std::array<float, 4> color)
 	{
 	}

@@ -4,6 +4,6 @@
 namespace KT::Renderer
 {
 	class RenderGraph;
-	// 未実装: view全域のWriteAll/DepthStencil、D32 clear0を宣言・記録。
+	// TODO: 未実装。view全域のWriteAll/DepthStencilとD32/Reverse-Z clear0を宣言・記録する。
 	void AddDepthClearPass(RenderGraph& graph, GraphViewHandle target);
 }

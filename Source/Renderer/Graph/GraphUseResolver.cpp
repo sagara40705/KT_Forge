@@ -4,7 +4,7 @@
 
 namespace KT::Renderer
 {
-	// View経由の使用を、親画像への使用に変換する
+	// 宣言を検査して、viewと直接画像の使用を親画像・範囲へ正規化する。入力は変更しない。
 	std::vector<GraphResolvedPass> GraphUseResolver::Resolve(const GraphStorage& storage) const
 	{
 		std::vector<GraphResolvedPass> resolvedPasses{};
@@ -12,41 +12,39 @@ namespace KT::Renderer
 
 		for (std::size_t index = 0; index < storage.passes.size(); ++index)
 		{
-			//各パスを検査する
+			// 前検査：handleの所属・範囲と使用の競合を確認してから参照する。
 			
 			validator.ValidatePass(storage.passes[index].desc, storage);
 
-			// GraphResolvedPassを作る
+			// パスの準備：登録順のindexを結果にも保持する。
 			GraphResolvedPass resolvedPass{};
 			resolvedPass.passIndex = index;
 
-			//パスのdesc.viewsをループする
+			// view使用の登録：親画像・範囲へ写し、access/usageは宣言どおり保持する。
 			for (const auto& viewUse : storage.passes[index].desc.views)
 			{
-				// use.view.indexを使ってstorage.viewsからGraphViewRecordを取得し、そのdescを参照します
 				const GraphViewDesc& viewDesc = storage.views[viewUse.view.index].desc;
 
-				// GraphNormalizedUseを作る
 				GraphNormalizedUse normalizedUse{};
-				normalizedUse.resource = viewDesc.resource; // 親画像のハンドルを
-				normalizedUse.range = viewDesc.range; // 親画像の範囲を
-				normalizedUse.access = viewUse.access; // アクセス権を
-				normalizedUse.usage = viewUse.usage; // 使用用途を
+				normalizedUse.resource = viewDesc.resource;
+				normalizedUse.range = viewDesc.range;
+				normalizedUse.access = viewUse.access;
+				normalizedUse.usage = viewUse.usage;
 				resolvedPass.uses.push_back(normalizedUse);
 			}
 
-			//desc.resourcesもループする
+			// 直接画像使用の登録：viewの有無にかかわらず、元宣言を独立して追加する。
 			for (const auto& resourceUse : storage.passes[index].desc.resources)
 			{
-				// GraphNormalizedUseを作る
 				GraphNormalizedUse normalizedResourceUse{};
-				normalizedResourceUse.resource = resourceUse.resource; // 親画像のハンドルを
-				normalizedResourceUse.range = resourceUse.range; // 親画像の範囲を
-				normalizedResourceUse.access = resourceUse.access; // アクセス権を
-				normalizedResourceUse.usage = resourceUse.usage; // 使用用途を
+				normalizedResourceUse.resource = resourceUse.resource;
+				normalizedResourceUse.range = resourceUse.range;
+				normalizedResourceUse.access = resourceUse.access;
+				normalizedResourceUse.usage = resourceUse.usage;
 				resolvedPass.uses.push_back(normalizedResourceUse);
 			}
 
+			// 結果の登録：完成したパスを1回だけ追加する。
 			resolvedPasses.push_back(std::move(resolvedPass));
 		}
 

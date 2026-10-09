@@ -39,7 +39,7 @@ namespace KT::Graphics
 	private:
 		// 記録中か
 		bool recording_ = false;
-		// GPU処理が失敗したか
+		// 記録の失敗を保持する。trueになったContextは記録・送信禁止。
 		bool failed_ = false;
 		friend class FrameResources;
 		bool frameOwned_ = false, frameBegin_ = false, frameSubmit_ = false;
@@ -65,14 +65,16 @@ namespace KT::Graphics
 		void DrawIndexed(const GraphicsPipelineState& pipeline, const VertexBuffer& vertices, const IndexBuffer& indices,
 			const ColorTargetView& target, const DepthBuffer& depth, const ConstantBufferArena& constants,
 			std::span<const RootConstantBinding> bindings);
-		void ClearDepth(const DepthBuffer& depth); // Reverse-Z全域clear0。DEPTH_WRITEは呼出側。
-		// 新窓口は宣言だけ。既存DepthBuffer版の本体は保持する。
+		// Reverse-Zの全域clear0。DEPTH_WRITEへの遷移は呼出側が行う。
+		void ClearDepth(const DepthBuffer& depth);
+		// TODO: DepthTargetView/packet版は未実装。以下は実装時の検査・記録契約。
 		// packetのnull/layout/index/format/同一device/同一Frame arenaを全検査してから記録。
 		// expectedWidth/expectedHeightの0を拒否し、color/depth両方の寸法との一致も
 		// 命令追加前に検査する。Graph外から呼ぶ場合もこの契約を省略しない。
 		// 色とdepthのownerはFenceまで保持。状態遷移/clear/submitを隠さない。
 		void DrawIndexed(const IndexedDrawPacket& packet, const ColorTargetView& color,
 			const DepthTargetView& depth, const ConstantBufferArena& constants);
+		// TODO: 未実装。借用DSVを検査して全域clear0を記録する。
 		void ClearDepth(const DepthTargetView& depth);
 		// 記録失敗時にContextを使用禁止にする。GPU待機や命令の取り消しは行わない
 		void Invalidate() noexcept;

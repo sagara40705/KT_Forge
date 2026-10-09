@@ -1,0 +1,27 @@
+# 参照: https://editorconfig.org/
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# Build scriptと構造化設定ファイルは2 spacesを使用する。
+[{CMakeLists.txt,*.cmake,*.json,*.yml,*.yaml,.clang-format}]
+indent_size = 2
+
+# Markdownの末尾2 spacesによるhard line breakを保持する。
+[*.md]
+indent_size = 2
+trim_trailing_whitespace = false
+
+# Windows command scriptのみ既定でCRLFとする。
+[*.{bat,cmd}]
+end_of_line = crlf
+
+# Makefileを導入する場合、recipe内のtabを保持する。
+[{Makefile,makefile,*.mk}]
+indent_style = tab

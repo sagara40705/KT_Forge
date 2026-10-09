@@ -215,11 +215,13 @@ namespace KT::Graphics
 	{
 		failed_ = true;
 	}
+	// TODO: 未実装。packet・画像・同じFrameの定数を検査してからDrawを記録する。
 	void CommandContext::DrawIndexed(const IndexedDrawPacket& packet, const ColorTargetView& color,
 		const DepthTargetView& depth, const ConstantBufferArena& constants)
 	{
 	}
 
+	// TODO: 未実装。借用DSVを検査し、D32/Reverse-Zの全域clear0を記録する。
 	void CommandContext::ClearDepth(const DepthTargetView& depth)
 	{
 	}

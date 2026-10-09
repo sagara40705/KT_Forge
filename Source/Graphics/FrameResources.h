@@ -7,7 +7,7 @@ namespace KT::Graphics
 {
 	// 1slot: allocator/list/定数arenaを所有、queueを非所有借用。queueはこのobjectより長生きさせる。
 	// Beginは前submitのFenceを待ってからreset。EndRecordingで定数を書込禁止、Submitでfenceを発行。
-	// GPUが借りるMesh/Material/target/heapもWait完了まで保持する。将来N個のslotで同じ契約を使う。
+	// GPUが借りるMesh・Material・画像・heapもWait完了まで外部所有者が保持する。
 	class FrameResources : private KT::Core::NonCopyable
 	{
 	public:

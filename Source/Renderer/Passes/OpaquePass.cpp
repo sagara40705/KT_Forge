@@ -11,7 +11,7 @@
 
 namespace KT::Renderer
 {
-	// 未実装契約: AddOpaquePassの本体を本人が実装。PreparedFrameはこの層だけが扱う。
+	// TODO: 未実装。PreparedFrameを値捕捉し、color/depthのReadWrite宣言とDraw callbackを登録する。
 	void AddOpaquePass(RenderGraph& graph, GraphViewHandle color, GraphViewHandle depth,
 		const PreparedRenderFrame& prepared)
 	{

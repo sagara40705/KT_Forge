@@ -1,0 +1,64 @@
+# 検出されたtext fileはGitとworking treeでLFへ正規化する。
+# 参照: https://git-scm.com/docs/gitattributes
+* text=auto eol=lf
+
+# Source、build定義、文書、構造化text。
+*.c text
+*.cc text
+*.cpp text
+*.cxx text
+*.h text
+*.hh text
+*.hpp text
+*.hxx text
+*.inl text
+*.hlsl text
+*.hlsli text
+*.cmake text
+CMakeLists.txt text
+*.md text
+*.txt text
+*.json text
+*.yml text
+*.yaml text
+*.xml text
+*.meta text
+*.ktmanifest text
+
+# Scriptの改行規則を.editorconfigと一致させる。
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.psm1 text eol=lf
+*.psd1 text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# OBJとFBXはtext / binaryの両方があり得るため、text変換を強制しない。
+*.obj text=auto
+*.fbx text=auto
+*.gltf text
+*.mtl text
+
+# Binary asset: EOL変換、text diff、text mergeを行わない。
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.dds binary
+*.ico binary
+*.tga binary
+*.hdr binary
+*.exr binary
+*.glb binary
+*.bin binary
+*.ttf binary
+*.otf binary
+*.zip binary
+*.7z binary
+
+# 必要に応じてVersion Controlへ含めるbinary依存・Shader bytecode。
+*.lib binary
+*.dll binary
+*.exe binary
+*.pdb binary
+*.cso binary
+*.dxil binary

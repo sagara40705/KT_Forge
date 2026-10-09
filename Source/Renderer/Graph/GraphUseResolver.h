@@ -6,7 +6,7 @@
 namespace KT::Renderer
 {
 	// 参照を解決する前にhandle所属/範囲を検査。View→同じ親画像/rangeへ写す。
-	// readonlyの完全一致重複だけは統合候補。Read+WriteAllを合成して未定義Readを隠さない。
+	// 使用を合成せず元宣言を保持し、ReadとWriteAllをまとめて未定義Readを隠さない。
 	// 初版の重なる書込/矛盾用途は拒否し、alias viewを独立画像として扱わない。
 	class GraphUseResolver
 	{

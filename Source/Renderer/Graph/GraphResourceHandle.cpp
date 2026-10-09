@@ -2,5 +2,5 @@
 
 namespace KT::Renderer
 {
-	// 未実装契約: IsValidの形式検査を本人が実装。所属検査はContainsと区別する。
+	// IsValidの形式検査はheader内で定義する。所属と登録範囲はRenderGraph::Containsで確認する。
 }

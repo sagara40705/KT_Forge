@@ -9,7 +9,7 @@ namespace KT::Renderer
 	{
 		std::uint64_t graphid = 0;
 		std::uint32_t index = (std::numeric_limits<std::uint32_t>::max)();
-		// 未実装: 形式だけ検査。別Graph/破棄済みGraphの参照を許可しない。
+		// 非0 IDと無効index以外の形式だけを検査する。所属・登録範囲・寿命は別に確認する。
 		bool IsValid() const noexcept;
 	};
 }

@@ -4,7 +4,7 @@
 namespace KT::Graphics
 {
 	class DepthBuffer;
-	// DepthBufferから検証して作る非所有借用値。画像/DSV/formatを値として保持し、copy可能。
+	// TODO: constructor/getterは未実装。DepthBufferから画像・DSV・寸法・formatを借用し、copy可能な値にする。
 	// ownerへのポインタを保持しない。画像とheapは最後の利用Fenceまで外部で保持する。
 	// 初版はD32_FLOAT/sample1/1Mip/1sliceの書込可能DSV。readonly/stencil/任意raw組は未対応。
 	class DepthTargetView

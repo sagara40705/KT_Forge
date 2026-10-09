@@ -1,4 +1,4 @@
-#include <Renderer/Graph/GraphExecutionContext.h>
+ï»¿#include <Renderer/Graph/GraphExecutionContext.h>
 #include <Renderer/Graph/RenderGraph.h>
 #include <Renderer/Graph/GraphView.h>
 #include <Renderer/Graph/GraphResourceUse.h>
@@ -12,100 +12,101 @@
 
 namespace KT::Renderer
 {
-	//
+	// ï¿½ï¿½ï¿½Ìƒpï¿½Xï¿½ï¿½WriteAll/RenderTargetï¿½éŒ¾ï¿½ï¿½ï¿½mï¿½Fï¿½ï¿½ï¿½Aï¿½Jï¿½ï¿½ï¿½[ï¿½æ‘œï¿½Ì‘Sï¿½ï¿½Clearï¿½ï¿½ï¿½Lï¿½^ï¿½ï¿½ï¿½ï¿½B
 	void GraphExecutionContext::ClearColor(GraphViewHandle target, const std::array<float, 4>& color)
 	{
-		// “n‚³‚ê‚½target‚ªA‚±‚ÌƒpƒX‚ÅRenderTarget‚Æ‚µ‚ÄéŒ¾‚³‚ê‚Ä‚¢‚é‚©‚ğŒŸ¸‚·‚é
+		// ï¿½Oï¿½ï¿½ï¿½ï¿½ï¿½Fï¿½ï¿½ï¿½İƒpï¿½Xï¿½ÌéŒ¾ï¿½Eï¿½pï¿½rï¿½ÆAï¿½Ø—pviewï¿½Ìï¿½Ş‚ï¿½ï¿½mï¿½Fï¿½ï¿½ï¿½ï¿½B
 		const auto& viewDesc = RequireDeclaredView(target, GraphResourceUsage::RenderTarget);
-		// binding‚ªColorTargetView‚Å‚ ‚é‚±‚Æ‚ğŒŸ¸‚·‚é
 		auto* colorView = std::get_if<KT::Graphics::ColorTargetView>(&viewDesc.binding);
 		if (!colorView)
 		{
-			throw std::invalid_argument("GraphViewHandle‚ÍColorTargetView‚Å‚Í‚ ‚è‚Ü‚¹‚ñ");
+			throw std::invalid_argument("GraphViewHandleï¿½ï¿½ColorTargetViewï¿½Å‚Í‚ï¿½ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½");
 		}
 
-		// éŒ¾‚Ìaccess‚ğŠm”F‚·‚é
+		// accessï¿½ï¿½ï¿½ï¿½ï¿½Fï¿½Sï¿½ï¿½Clearï¿½Í”ÍˆÍ‘Sï¿½Ì‚Ì“ï¿½ï¿½eï¿½ï¿½ï¿½`ï¿½ï¿½ï¿½é‚½ï¿½ßAWriteAllï¿½ï¿½vï¿½ï¿½ï¿½ï¿½ï¿½ï¿½B
 		for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
 		{
 			if (declaredView.view.index == target.index && declaredView.view.graphid == target.graphid)
 			{
 				if (declaredView.access != GraphResourceAccess::WriteAll)
 				{
-					throw std::invalid_argument("GraphViewHandle‚Ìaccess‚ªWriteAll‚Å‚Í‚ ‚è‚Ü‚¹‚ñ");
+					throw std::invalid_argument("GraphViewHandleï¿½ï¿½accessï¿½ï¿½WriteAllï¿½Å‚Í‚ï¿½ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½");
 				}
 				break;
 			}
 		}
 
-		// commands‚ÉClearRenderTarget‚ğ’Ç‰Á‚·‚é
+		// ï¿½Lï¿½^ï¿½Fï¿½éŒ¾ï¿½ï¿½accessï¿½ÌŒï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Graphicsï¿½Ö“nï¿½ï¿½ï¿½B
 		commands_.ClearRenderTarget(colorView->GetRtv(), color);
 	}
 
+	// ï¿½ï¿½ï¿½Ìƒpï¿½Xï¿½ï¿½WriteAll/DepthStencilï¿½éŒ¾ï¿½ï¿½ï¿½mï¿½Fï¿½ï¿½ï¿½Aï¿½[ï¿½xï¿½Ì‘Sï¿½ï¿½Clearï¿½ï¿½Graphicsï¿½ÖˆË—ï¿½ï¿½ï¿½ï¿½ï¿½B
 	void GraphExecutionContext::ClearDepth(GraphViewHandle target)
 	{
-		// “n‚³‚ê‚½target‚ªA‚±‚ÌƒpƒX‚ÅDepthStencil‚Æ‚µ‚ÄéŒ¾‚³‚ê‚Ä‚¢‚é‚©‚ğŒŸ¸‚·‚é
+		// ï¿½Oï¿½ï¿½ï¿½ï¿½ï¿½Fï¿½ï¿½ï¿½İƒpï¿½Xï¿½ÌéŒ¾ï¿½Eï¿½pï¿½rï¿½ÆAï¿½Ø—pviewï¿½Ìï¿½Ş‚ï¿½ï¿½mï¿½Fï¿½ï¿½ï¿½ï¿½B
 		const auto& viewDesc = RequireDeclaredView(target, GraphResourceUsage::DepthStencil);
-		// binding‚ªDepthTargetView‚Å‚ ‚é‚±‚Æ‚ğŒŸ¸‚·‚é
 		auto* depthView = std::get_if<KT::Graphics::DepthTargetView>(&viewDesc.binding);
 		if (!depthView)
 		{
-			throw std::invalid_argument("GraphViewHandle‚ÍDepthTargetView‚Å‚Í‚ ‚è‚Ü‚¹‚ñ");
+			throw std::invalid_argument("GraphViewHandleï¿½ï¿½DepthTargetViewï¿½Å‚Í‚ï¿½ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½");
 		}
 
-		// éŒ¾‚Ìaccess‚ğŠm”F‚·‚é
+		// accessï¿½ï¿½ï¿½ï¿½ï¿½Fï¿½Sï¿½ï¿½Clearï¿½Í”ÍˆÍ‘Sï¿½Ì‚Ì“ï¿½ï¿½eï¿½ï¿½ï¿½`ï¿½ï¿½ï¿½é‚½ï¿½ßAWriteAllï¿½ï¿½vï¿½ï¿½ï¿½ï¿½ï¿½ï¿½B
 		for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
 		{
 			if (declaredView.view.index == target.index && declaredView.view.graphid == target.graphid)
 			{
 				if (declaredView.access != GraphResourceAccess::WriteAll)
 				{
-					throw std::invalid_argument("GraphViewHandle‚Ìaccess‚ªWriteAll‚Å‚Í‚ ‚è‚Ü‚¹‚ñ");
+					throw std::invalid_argument("GraphViewHandleï¿½ï¿½accessï¿½ï¿½WriteAllï¿½Å‚Í‚ï¿½ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½");
 				}
 				break;
 			}
 		}
 
-		// commands‚ÉClearDepthStencil‚ğ’Ç‰Á‚·‚é
+		// ï¿½Lï¿½^ï¿½Ë—ï¿½ï¿½FDepthTargetViewï¿½Å‚ï¿½Graphicsï¿½ï¿½ï¿½ï¿½ï¿½Í–ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½B
 		commands_.ClearDepth(*depthView);
 	}
 
+	// TODO: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½BReadWriteï¿½éŒ¾ï¿½Epacketï¿½ï¿½ï¿½@ï¿½Eï¿½ï¿½ï¿½ï¿½Frameï¿½Ì’è”ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ADrawï¿½ï¿½ï¿½Lï¿½^ï¿½ï¿½ï¿½ï¿½B
 	void GraphExecutionContext::DrawIndexed(GraphViewHandle color, GraphViewHandle depth, const KT::Graphics::IndexedDrawPacket& packet)
 	{
 	}
 
-	// ƒRƒ“ƒXƒgƒ‰ƒNƒ^
+	// Graphï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Bï¿½ï¿½ï¿½ï¿½ï¿½Ï‚İ‚Ìƒpï¿½Xindexï¿½Æ“ï¿½ï¿½ï¿½Frameï¿½Ì‹Lï¿½^ï¿½ï¿½ï¿½ï¿½Acallbackï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø‚ï¿½ï¿½B
 	GraphExecutionContext::GraphExecutionContext(
 		const RenderGraph& graph, KT::Graphics::CommandContext& commands, const KT::Graphics::ConstantBufferArena& constants, std::size_t passIndex):
 		graph_(graph), commands_(commands), constants_(constants), passIndex_(passIndex)
 	{
 	}
 
-	// “n‚³‚ê‚½View‚ªA‚±‚ÌƒpƒX‚Åw’è‚³‚ê‚½—p“r‚Æ‚µ‚ÄéŒ¾‚³‚ê‚Ä‚¢‚é‚©
+	// viewï¿½Ìï¿½ï¿½ï¿½ï¿½Eï¿½ÍˆÍ‚ÆŒï¿½ï¿½İƒpï¿½Xï¿½Ì—pï¿½rï¿½éŒ¾ï¿½ï¿½ï¿½mï¿½Fï¿½ï¿½ï¿½Aï¿½oï¿½^ï¿½ï¿½ï¿½ê‚½descï¿½ï¿½Ô‚ï¿½ï¿½B
 	const GraphViewDesc& GraphExecutionContext::RequireDeclaredView(GraphViewHandle view, GraphResourceUsage usage) const
 	{
+		// ï¿½Oï¿½ï¿½ï¿½ï¿½ï¿½Fï¿½oï¿½^ï¿½zï¿½ï¿½ï¿½ï¿½Qï¿½Æ‚ï¿½ï¿½ï¿½Oï¿½ï¿½handleï¿½ï¿½ï¿½mï¿½Fï¿½ï¿½ï¿½ï¿½B
 		if (!graph_.Contains(view))
 		{
-			throw std::invalid_argument("GraphViewHandle‚ª‚±‚ÌGraph‚É‘®‚µ‚Ä‚¢‚Ü‚¹‚ñ");
+			throw std::invalid_argument("GraphViewHandleï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Graphï¿½É‘ï¿½ï¿½ï¿½ï¿½Ä‚ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½");
 		}
 		if (view.index >= graph_.storage_.views.size())
 		{
-			throw std::out_of_range("GraphViewHandle‚Ìindex‚ª”ÍˆÍŠO‚Å‚·");
+			throw std::out_of_range("GraphViewHandleï¿½ï¿½indexï¿½ï¿½ï¿½ÍˆÍŠOï¿½Å‚ï¿½");
 		}
 
-		// Œ»İ‚ÌƒpƒX‚ÌViewéŒ¾‚ğ’T‚·
+		// ï¿½éŒ¾ï¿½Æï¿½ï¿½Fï¿½ï¿½ï¿½ï¿½Graphï¿½ï¿½viewï¿½Å‚ï¿½ï¿½Aï¿½ï¿½ï¿½İƒpï¿½Xï¿½É‚È‚ï¿½ï¿½gï¿½pï¿½Í‹ï¿½ï¿½Â‚ï¿½ï¿½È‚ï¿½ï¿½B
 		for (const auto& declaredView : graph_.storage_.passes[passIndex_].desc.views)
 		{
 			if (declaredView.view.index == view.index && declaredView.view.graphid == view.graphid)
 			{
 				if (declaredView.usage != usage)
 				{
-					throw std::invalid_argument("GraphViewHandle‚Ì—p“r‚ªéŒ¾‚Æˆê’v‚µ‚Ü‚¹‚ñ");
+					throw std::invalid_argument("GraphViewHandleï¿½Ì—pï¿½rï¿½ï¿½ï¿½éŒ¾ï¿½Æˆï¿½vï¿½ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½");
 				}
 				return graph_.storage_.views[view.index].desc;
 			}
 		}
 		
-		throw std::invalid_argument("GraphViewHandle‚ª‚±‚ÌƒpƒX‚ÅéŒ¾‚³‚ê‚Ä‚¢‚Ü‚¹‚ñ");
+		throw std::invalid_argument("GraphViewHandleï¿½ï¿½ï¿½ï¿½ï¿½Ìƒpï¿½Xï¿½ÅéŒ¾ï¿½ï¿½ï¿½ï¿½Ä‚ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½");
 	}
 
 }

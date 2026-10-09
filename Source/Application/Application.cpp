@@ -17,6 +17,7 @@ namespace KT::Application
 	}
 
 
+	// 旧APIの一度だけClearする経路。TODO: 新Graphのview登録とFrameResourcesへ接続する。
 	void Application::Run()
 	{
 		// 空のCommandListを実行してGPU完了待ちするテスト
@@ -25,7 +26,7 @@ namespace KT::Application
 		commandQueue_.ExecuteAndWait(commandContext_);
 		KT_LOG_INFO("空のCommandListの実行とGPU完了待ちに成功");
 
-		// ウィンドウのサイズを取得
+		// 前検査：有効なframebuffer寸法が得られるまで待つ。閉じた場合は作成を中止する。
 		int width = 0;
 		int height = 0;
 		window_.GetFramebufferSize(width, height);
@@ -54,6 +55,7 @@ namespace KT::Application
 
 		const auto backBufferIndex = swapchain_->GetCurrentBackBufferIndex();
 
+		// TODO: 手動Graph ID・desc.rtv・画像handle Clearを、新しい画像/view分離APIへ移行する。
 		KT::Renderer::RenderGraph graph(1);
 		KT::Renderer::GraphImportedTextureDesc output{};
 		output.name = "BackBuffer";
@@ -69,11 +71,12 @@ namespace KT::Application
 		KT::Renderer::AddClearPass(graph, outputHandle, {0.0f, 0.0f, 1.0f, 1.0f});
 		graph.Compile();
 
-		// CommandContextへ命令を記録する
+		// TODO: 新Recordは記録中のFrameResourcesを受け取る。以下は旧呼出。
 		commandContext_.Begin();
 		graph.Record(commandContext_);
 		commandContext_.End();
 
+		// 送信・表示・完了待機：画像とRTVを保持したままFence完了まで待つ。
 		try
 		{
 			commandQueue_.Execute(commandContext_);
@@ -90,7 +93,7 @@ namespace KT::Application
 
 		while (!window_.ShouldClose())
 		{
-			// 今ははイベントが届くまで待つ
+			// イベント待機：このループでは追加の描画を行わない。
 			glfwContext_.WaitEvents();
 		}
 	}
