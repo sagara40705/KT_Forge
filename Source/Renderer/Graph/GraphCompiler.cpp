@@ -1,6 +1,24 @@
 #include <Renderer/Graph/GraphCompiler.h>
+#include <stdexcept>
 
 namespace KT::Renderer
 {
-	// 未実装契約: Compileを本人が実装。登録順/単一Queue、RT/DEPTH_WRITE/final遷移、完成計画だけ公開。
+    GraphCompiledPlan GraphCompiler::Compile(const GraphStorage& storage, std::span<const GraphResolvedPass> passes) const
+    {
+		GraphCompiledPlan plan{};
+        std::vector<D3D12_RESOURCE_STATES> currentStates{};
+
+		for (const auto& resourceRecord : storage.resources)
+		{
+			if (!resourceRecord.importedTexture.has_value())
+			{
+				throw std::invalid_argument("リソースがインポートされていません");
+			}
+
+			// 初期状態をcurrentStatesに追加
+			currentStates.push_back(resourceRecord.importedTexture->initialState);
+
+		}
+
+    }
 }

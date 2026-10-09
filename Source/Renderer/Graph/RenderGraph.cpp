@@ -151,7 +151,7 @@ namespace KT::Renderer
 	{
 		// 前検査
 		RequireBuilding();
-		if (record == nullptr)
+		if (!record)
 		{
 			throw std::invalid_argument("GraphRecordFnがnullptrです");
 		}
@@ -177,6 +177,20 @@ namespace KT::Renderer
 	{
 		const auto resolved = resolver_.Resolve(storage_);
 		validator_.Validate(storage_, resolved);
+	}
+
+	void RenderGraph::Compile()
+	{
+		RequireBuilding();
+
+		// ResolveとValidateを行い、コンパイル計画を作成する
+		const auto resolved = resolver_.Resolve(storage_);
+		validator_.Validate(storage_, resolved);
+
+		const auto plan = compiler_.Compile(storage_, resolved);
+		compiledPlan_ = std::move(plan);
+
+		state_ = State::Compiled;
 	}
 
 }

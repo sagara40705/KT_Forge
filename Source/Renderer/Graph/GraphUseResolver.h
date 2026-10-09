@@ -11,6 +11,7 @@ namespace KT::Renderer
 	class GraphUseResolver
 	{
 	public:
+		// View経由の使用を、親画像への使用に変換する
 		std::vector<GraphResolvedPass> Resolve(const GraphStorage& storage) const;
 	};
 }
