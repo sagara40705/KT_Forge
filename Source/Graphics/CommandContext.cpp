@@ -157,45 +157,88 @@ namespace KT::Graphics
 		list->ClearRenderTargetView(rtv, color.data(), 0, nullptr);
 	}
 
-	void CommandContext::DrawIndexed(const GraphicsPipelineState& p, const VertexBuffer& vertices, const IndexBuffer& indices,
+	void CommandContext::DrawIndexed(const GraphicsPipelineState& pipeline, const VertexBuffer& vertices, const IndexBuffer& indices,
 		const ColorTargetView& target, const DepthBuffer& depth, const ConstantBufferArena& constants,
 		std::span<const RootConstantBinding> bindings)
 	{
 		try
 		{
-			auto* list=GetRecordingList();
-			if (frameConstants_!=&constants) throw std::invalid_argument("Draw constants must belong to this Context's FrameResources.");
-			if (vertices.GetView().StrideInBytes!=p.GetVertexStride() || indices.GetMaximumIndex()>=vertices.GetCount() ||
-				indices.GetCount()%3!=0 || target.GetFormat()!=p.GetTargetFormat() || depth.GetTexture().GetFormat()!=p.GetDepthFormat() ||
-				target.GetWidth()!=depth.GetTexture().GetWidth() || target.GetHeight()!=depth.GetTexture().GetHeight() ||
-				bindings.size()!=p.GetRootParameterCount() || bindings.size()>32)
-				throw std::invalid_argument("Indexed draw layout/index/target/constants mismatch.");
-			ComPtr<ID3D12Device> device;
-			CheckGraphicsResult(list->GetDevice(IID_PPV_ARGS(device.GetAddressOf())),"Recording device query failed.");
-			for (auto* object:std::array<ID3D12DeviceChild*,6>{p.GetState(),vertices.GetResource(),indices.GetResource(),
-				target.GetResource(),depth.GetTexture().GetResource(),constants.GetResource()}) RequireSameDevice(object,device.Get());
-			std::array<D3D12_GPU_VIRTUAL_ADDRESS,32> addresses{};
-			for (std::size_t i=0; i<bindings.size(); ++i)
+			// 記録中のListを取得する
+			auto* commandList = GetRecordingList();
+
+			// このContextと同じFrameの定数か確認する
+			if (frameConstants_ != &constants)
 			{
-				if (bindings[i].rootParameter>=p.GetRootParameterCount()) throw std::invalid_argument("Root parameter is out of range.");
-				for (std::size_t j=0; j<i; ++j)
-					if (bindings[j].rootParameter==bindings[i].rootParameter) throw std::invalid_argument("Duplicate root parameter.");
-				addresses[i]=constants.GetAddress(bindings[i].slice);
+				throw std::invalid_argument("Draw constants must belong to this Context's FrameResources.");
 			}
-			// 全検査完了後だけ記録。GraphicsはView/Object/Materialの意味を知らない。
-			const D3D12_VIEWPORT viewport{0,0,float(target.GetWidth()),float(target.GetHeight()),0,1};
-			const D3D12_RECT scissor{0,0,LONG(target.GetWidth()),LONG(target.GetHeight())};
-			const auto rtv=target.GetRtv(), dsv=depth.GetDsv();
-			list->SetGraphicsRootSignature(p.GetRootSignature()); list->SetPipelineState(p.GetState());
-			list->RSSetViewports(1,&viewport); list->RSSetScissorRects(1,&scissor);
-			list->OMSetRenderTargets(1,&rtv,FALSE,&dsv);
-			list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-			const auto& vb=vertices.GetView(); const auto& ib=indices.GetView();
-			list->IASetVertexBuffers(0,1,&vb); list->IASetIndexBuffer(&ib);
-			for (std::size_t i=0; i<bindings.size(); ++i) list->SetGraphicsRootConstantBufferView(bindings[i].rootParameter,addresses[i]);
-			list->DrawIndexedInstanced(indices.GetCount(),1,0,0,0);
+
+			// 頂点・index・描画先・定数の組合せを確認する
+			if (vertices.GetView().StrideInBytes != pipeline.GetVertexStride() || indices.GetMaximumIndex() >= vertices.GetCount() ||
+				indices.GetCount() % 3 != 0 || target.GetFormat() != pipeline.GetTargetFormat() || depth.GetTexture().GetFormat() != pipeline.GetDepthFormat() ||
+				target.GetWidth() != depth.GetTexture().GetWidth() || target.GetHeight() != depth.GetTexture().GetHeight() ||
+				bindings.size() != pipeline.GetRootParameterCount() || bindings.size() > 32)
+			{
+				throw std::invalid_argument("Indexed draw layout/index/target/constants mismatch.");
+			}
+
+			// 描画に使う部品が、記録先と同じDeviceに属するか確認する
+			ComPtr<ID3D12Device> device;
+			CheckGraphicsResult(commandList->GetDevice(IID_PPV_ARGS(device.GetAddressOf())), "Recording device query failed.");
+			for (auto* object : std::array<ID3D12DeviceChild*, 6>{pipeline.GetState(), vertices.GetResource(), indices.GetResource(),
+				target.GetResource(), depth.GetTexture().GetResource(), constants.GetResource()})
+			{
+				RequireSameDevice(object, device.Get());
+			}
+
+			// root parameterの範囲・重複と定数sliceを確認する
+			std::array<D3D12_GPU_VIRTUAL_ADDRESS, 32> addresses{};
+			for (std::size_t i = 0; i < bindings.size(); ++i)
+			{
+				if (bindings[i].rootParameter >= pipeline.GetRootParameterCount())
+				{
+					throw std::invalid_argument("Root parameter is out of range.");
+				}
+				for (std::size_t j = 0; j < i; ++j)
+				{
+					if (bindings[j].rootParameter == bindings[i].rootParameter)
+					{
+						throw std::invalid_argument("Duplicate root parameter.");
+					}
+				}
+				addresses[i] = constants.GetAddress(bindings[i].slice);
+			}
+
+			// 全検査後に、描画範囲と描画先を設定する
+			const D3D12_VIEWPORT viewport{0, 0, static_cast<float>(target.GetWidth()), static_cast<float>(target.GetHeight()), 0, 1};
+			const D3D12_RECT scissor{0, 0, static_cast<LONG>(target.GetWidth()), static_cast<LONG>(target.GetHeight())};
+			const auto rtv = target.GetRtv();
+			const auto dsv = depth.GetDsv();
+			commandList->SetGraphicsRootSignature(pipeline.GetRootSignature());
+			commandList->SetPipelineState(pipeline.GetState());
+			commandList->RSSetViewports(1, &viewport);
+			commandList->RSSetScissorRects(1, &scissor);
+			commandList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+
+			// 頂点・index・定数を設定する
+			commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			const auto& vertexView = vertices.GetView();
+			const auto& indexView = indices.GetView();
+			commandList->IASetVertexBuffers(0, 1, &vertexView);
+			commandList->IASetIndexBuffer(&indexView);
+			for (std::size_t i = 0; i < bindings.size(); ++i)
+			{
+				commandList->SetGraphicsRootConstantBufferView(bindings[i].rootParameter, addresses[i]);
+			}
+
+			// 全indexの描画を記録する
+			commandList->DrawIndexedInstanced(indices.GetCount(), 1, 0, 0, 0);
 		}
-		catch (...) { Invalidate(); throw; }
+		catch (...)
+		{
+			// 失敗したContextの記録・送信を禁止する
+			Invalidate();
+			throw;
+		}
 	}
 	void CommandContext::ClearDepth(const DepthBuffer& depth)
 	{
@@ -215,10 +258,112 @@ namespace KT::Graphics
 	{
 		failed_ = true;
 	}
-	// TODO: 未実装。packet・画像・同じFrameの定数を検査してからDrawを記録する。
+	// packet・描画先・同じFrameの定数を検査し、全indexの描画を記録する
 	void CommandContext::DrawIndexed(const IndexedDrawPacket& packet, const ColorTargetView& color,
 		const DepthTargetView& depth, const ConstantBufferArena& constants)
 	{
+		try
+		{
+			// 記録中のListを取得する
+			auto* commandList = GetRecordingList();
+
+			// packetの参照先を確認する
+			if (!packet.pipeline || !packet.vertices || !packet.indices)
+			{
+				throw std::invalid_argument("IndexedDrawPacketのpipeline・vertices・indicesがnullptrです");
+			}
+			const auto& pipeline = *packet.pipeline;
+			const auto& vertices = *packet.vertices;
+			const auto& indices = *packet.indices;
+			const auto bindings = packet.bindings;
+
+			// このContextと同じFrameの定数か確認する
+			if (frameConstants_ != &constants)
+			{
+				throw std::invalid_argument("定数がこのContextと同じFrameResourcesに属していません");
+			}
+
+			// 期待する描画サイズと、色・深度両方のサイズを確認する
+			if (packet.expectedWidth == 0 || packet.expectedHeight == 0)
+			{
+				throw std::invalid_argument("IndexedDrawPacketのexpectedWidthまたはexpectedHeightが0です");
+			}
+			if (packet.expectedWidth != color.GetWidth() || packet.expectedHeight != color.GetHeight() ||
+				packet.expectedWidth != depth.GetWidth() || packet.expectedHeight != depth.GetHeight())
+			{
+				throw std::invalid_argument("IndexedDrawPacketの描画サイズが色または深度のサイズと一致しません");
+			}
+			if (color.GetRtv().ptr == 0 || depth.GetDsv().ptr == 0)
+			{
+				throw std::invalid_argument("描画先のRTVまたはDSVが無効です");
+			}
+
+			// 頂点・index・描画先・定数の組合せを確認する
+			if (vertices.GetView().StrideInBytes != pipeline.GetVertexStride() || indices.GetMaximumIndex() >= vertices.GetCount() ||
+				indices.GetCount() % 3 != 0 || color.GetFormat() != pipeline.GetTargetFormat() || depth.GetFormat() != pipeline.GetDepthFormat() ||
+				bindings.size() != pipeline.GetRootParameterCount() || bindings.size() > 32)
+			{
+				throw std::invalid_argument("頂点・index・描画先・定数の組合せが一致しません");
+			}
+
+			// 描画に使う部品が、記録先と同じDeviceに属するか確認する
+			ComPtr<ID3D12Device> device;
+			CheckGraphicsResult(commandList->GetDevice(IID_PPV_ARGS(device.GetAddressOf())), "記録先Deviceの取得に失敗");
+			for (auto* object : std::array<ID3D12DeviceChild*, 6>{pipeline.GetState(), vertices.GetResource(), indices.GetResource(),
+				color.GetResource(), depth.GetResource(), constants.GetResource()})
+			{
+				RequireSameDevice(object, device.Get());
+			}
+
+			// root parameterの範囲・重複と定数sliceを確認する
+			std::array<D3D12_GPU_VIRTUAL_ADDRESS, 32> addresses{};
+			for (std::size_t i = 0; i < bindings.size(); ++i)
+			{
+				if (bindings[i].rootParameter >= pipeline.GetRootParameterCount())
+				{
+					throw std::invalid_argument("root parameterが範囲外です");
+				}
+				for (std::size_t j = 0; j < i; ++j)
+				{
+					if (bindings[j].rootParameter == bindings[i].rootParameter)
+					{
+						throw std::invalid_argument("root parameterが重複しています");
+					}
+				}
+				addresses[i] = constants.GetAddress(bindings[i].slice);
+			}
+
+			// 全検査後に、描画範囲と描画先を設定する
+			const D3D12_VIEWPORT viewport{0, 0, static_cast<float>(color.GetWidth()), static_cast<float>(color.GetHeight()), 0, 1};
+			const D3D12_RECT scissor{0, 0, static_cast<LONG>(color.GetWidth()), static_cast<LONG>(color.GetHeight())};
+			const auto rtv = color.GetRtv();
+			const auto dsv = depth.GetDsv();
+			commandList->SetGraphicsRootSignature(pipeline.GetRootSignature());
+			commandList->SetPipelineState(pipeline.GetState());
+			commandList->RSSetViewports(1, &viewport);
+			commandList->RSSetScissorRects(1, &scissor);
+			commandList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+
+			// 頂点・index・定数を設定する
+			commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			const auto& vertexView = vertices.GetView();
+			const auto& indexView = indices.GetView();
+			commandList->IASetVertexBuffers(0, 1, &vertexView);
+			commandList->IASetIndexBuffer(&indexView);
+			for (std::size_t i = 0; i < bindings.size(); ++i)
+			{
+				commandList->SetGraphicsRootConstantBufferView(bindings[i].rootParameter, addresses[i]);
+			}
+
+			// 全indexの描画を記録する
+			commandList->DrawIndexedInstanced(indices.GetCount(), 1, 0, 0, 0);
+		}
+		catch (...)
+		{
+			// 失敗したContextの記録・送信を禁止する
+			Invalidate();
+			throw;
+		}
 	}
 
 	// 借用DSVを検査し、D32/Reverse-Zの全域clear0を記録する。

@@ -67,7 +67,7 @@ namespace KT::Graphics
 			std::span<const RootConstantBinding> bindings);
 		// Reverse-Zの全域clear0。DEPTH_WRITEへの遷移は呼出側が行う。
 		void ClearDepth(const DepthBuffer& depth);
-		// TODO: DepthTargetView/packet版は未実装。以下は実装時の検査・記録契約。
+		// DepthTargetView/packet版。すべての検査後に全indexの描画を記録する。
 		// packetのnull/layout/index/format/同一device/同一Frame arenaを全検査してから記録。
 		// expectedWidth/expectedHeightの0を拒否し、color/depth両方の寸法との一致も
 		// 命令追加前に検査する。Graph外から呼ぶ場合もこの契約を省略しない。
