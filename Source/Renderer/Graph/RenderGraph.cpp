@@ -1,4 +1,7 @@
 #include <Renderer/Graph/RenderGraph.h>
+#include <Renderer/Graph/GraphExecutionContext.h>
+#include <Graphics/FrameResources.h>
+#include <d3dx12.h>
 #include <cstdint>
 #include <stdexcept>
 #include <limits>
@@ -179,6 +182,7 @@ namespace KT::Renderer
 		validator_.Validate(storage_, resolved);
 	}
 
+	// 全計画をローカル完成後に公開。失敗はBuilding/登録内容を保持する。
 	void RenderGraph::Compile()
 	{
 		RequireBuilding();
@@ -191,6 +195,81 @@ namespace KT::Renderer
 		compiledPlan_ = std::move(plan);
 
 		state_ = State::Compiled;
+	}
+
+	// 記録だけ。Begin/End/Submit/Present/Waitは呼出側。同じframeのarenaを使用。
+	void RenderGraph::Record(KT::Graphics::FrameResources& frame)
+	{
+		// 前検査
+		if (state_ != State::Compiled)
+		{
+			throw std::logic_error("GraphはCompiled状態ではありません。Record操作は許可されません。");
+		}
+		if (!compiledPlan_.has_value())
+		{
+			throw std::logic_error("コンパイル計画が存在しません。");
+		}
+	
+		//frameから記録中のCommandContextとConstantBufferArenaを取得する
+		auto& commandContext = frame.GetContext();
+		auto& constantBufferArena = frame.GetConstants();
+
+		//commandContextが記録中か
+		if (!commandContext.GetRecordingList())
+		{
+			throw std::logic_error("CommandContextは記録中ではありません");
+		}
+
+		// 記録に使うCommandListを取得する
+		auto* commandList = commandContext.GetRecordingList();
+		state_ = State::Recording;
+		try
+		{
+			// compiledPlan_->passesを順番にループ
+			for (const auto& plannedPass : compiledPlan_->passes)
+			{
+				// 各パスのtransitionsを先に記録する
+				for (const auto& transition : plannedPass.transitions)
+				{
+					//各transitionについて、画像を取り出し
+					auto resource = storage_.resources[transition.resource.index].importedTexture->resource;
+
+					//バリアを作って、commandListに記録する
+					D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+						resource,
+						transition.before,
+						transition.after,
+						D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES
+					);
+					commandList->ResourceBarrier(1, &barrier);
+
+					//そのパスのコールバックを呼ぶ
+					GraphExecutionContext executionContext(*this, commandContext, constantBufferArena, plannedPass.passIndex);
+					storage_.passes[plannedPass.passIndex].record(executionContext);
+				}
+			}
+
+			//finalTransitionsを記録する
+			for (const auto& transition : compiledPlan_->finalTransitions)
+			{
+				auto* resource = storage_.resources[transition.resource.index].importedTexture->resource;
+				auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+					resource,
+					transition.before,
+					transition.after,
+					D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+				commandList->ResourceBarrier(1, &barrier);
+			}
+
+			// 記録が成功した場合、状態をRecordedに変更する
+			state_ = State::Recorded;
+
+		}
+		catch (...)
+		{
+			state_ = State::Failed;
+			throw; // 例外を再スローして呼び出し元に伝える
+		}
 	}
 
 }

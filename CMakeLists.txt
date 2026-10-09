@@ -25,15 +25,28 @@ FetchContent_Declare(glfw
 )
 FetchContent_MakeAvailable(glfw)
 
+# Microsoft DirectX-Headers v1.614.1。d3dx12の付随ヘッダーも同じ版で取得する。
+set(DXHEADERS_BUILD_TEST OFF CACHE BOOL "Build DirectX-Headers tests" FORCE)
+set(DXHEADERS_BUILD_GOOGLE_TEST OFF CACHE BOOL "Build DirectX-Headers Google tests" FORCE)
+set(DXHEADERS_INSTALL OFF CACHE BOOL "Generate DirectX-Headers install rules" FORCE)
+FetchContent_Declare(directx_headers
+    GIT_REPOSITORY https://github.com/microsoft/DirectX-Headers.git
+    GIT_TAG 48a762973271c5a75869946bf1fdbc489a628a5c
+    EXCLUDE_FROM_ALL
+)
+FetchContent_MakeAvailable(directx_headers)
+
 # 製品ターゲットは1つとし、各モジュールのディレクトリではソースを明示的に登録する。
 add_executable(KT_Forge)
 include(cmake/ShaderBuild.cmake)
 add_subdirectory(Source)
 target_compile_features(KT_Forge PRIVATE cxx_std_20)
 target_include_directories(KT_Forge PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source")
+# SDK版d3d12.hより先に、d3dx12.hと同じ版のD3D12ヘッダーを解決する。
+target_include_directories(KT_Forge BEFORE PRIVATE "${directx_headers_SOURCE_DIR}/include/directx")
 target_compile_options(KT_Forge PRIVATE /W4 /utf-8)
 target_compile_definitions(KT_Forge PRIVATE GLFW_INCLUDE_NONE)
-target_link_libraries(KT_Forge PRIVATE glfw d3d12 dxgi)
+target_link_libraries(KT_Forge PRIVATE glfw Microsoft::DirectX-Headers d3d12 dxgi)
 
 set_target_properties(KT_Forge PROPERTIES
     CXX_EXTENSIONS OFF
