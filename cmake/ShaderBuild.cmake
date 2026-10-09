@@ -1,5 +1,23 @@
-# One embedded shader per explicit call. Source/include dependencies and compiler
-# binaries trigger regeneration; each configuration and binary tree is separate.
+# 表示グループはディレクトリ単位のため、各ターゲットを作成したディレクトリで設定する。
+function(kt_forge_shader_groups target)
+    get_target_property(_headers ${target} KT_FORGE_SHADER_HEADERS)
+    if(NOT _headers)
+        return()
+    endif()
+    foreach(_config IN LISTS CMAKE_CONFIGURATION_TYPES)
+        foreach(_header IN LISTS _headers)
+            # CMake 4.2でも使えるよう、ビルド構成ごとのパスを明示的に展開する。
+            string(REPLACE "$<CONFIG>" "${_config}" _configured_header "${_header}")
+            source_group("Generated Shaders/${_config}" FILES "${_configured_header}")
+        endforeach()
+    endforeach()
+endfunction()
+
+# 1回の呼び出しで、埋め込み用のシェーダーを1つ登録する。
+# ソース・明示指定したinclude依存・コンパイラ本体の変更時に再生成する。
+# 生成物はビルド構成とビルド先ディレクトリごとに分ける。
+# 生成規則と共通の生成ターゲットを同じディレクトリに置くため、
+# 同じ製品のシェーダー登録は1つのCMakeディレクトリに集約する。
 function(kt_forge_shader target source symbol profile entry)
     if(NOT symbol MATCHES "^[A-Za-z_][A-Za-z0-9_]*$" OR
        NOT entry MATCHES "^[A-Za-z_][A-Za-z0-9_]*$" OR
@@ -34,10 +52,21 @@ function(kt_forge_shader target source symbol profile entry)
             -Fh "${_header}" -Fo "${_dir}/${symbol}.dxil" -Vn "${symbol}" "${_source}"
         DEPENDS "${_source}" ${ARGN} ${_compiler_inputs}
         COMMAND_EXPAND_LISTS VERBATIM)
-    # The product target is created in the root directory. An explicit producer
-    # target carries this child-directory rule and runs before C++ module scans.
-    add_custom_target(${target}_${symbol} DEPENDS "${_header}")
-    add_dependencies(${target} ${target}_${symbol})
+    # 全シェーダーの生成規則を1つのターゲットにまとめ、C++の依存関係スキャンより先に実行する。
+    # 生成ヘッダーをソースとして登録し、各シェーダーの差分ビルドを維持する。
+    set(_shaders "${target}_Shaders")
+    if(NOT TARGET ${_shaders})
+        add_custom_target(${_shaders})
+        add_dependencies(${target} ${_shaders})
+    else()
+        get_target_property(_shader_source_dir ${_shaders} SOURCE_DIR)
+        if(NOT "${_shader_source_dir}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
+            message(FATAL_ERROR "Register all ${target} shaders in ${_shader_source_dir}")
+        endif()
+    endif()
+    target_sources(${_shaders} PRIVATE "${_header}")
     target_sources(${target} PRIVATE "${_header}")
+    set_property(TARGET ${_shaders} ${target} APPEND PROPERTY KT_FORGE_SHADER_HEADERS "${_header}")
+    kt_forge_shader_groups(${_shaders})
     target_include_directories(${target} PRIVATE "${_dir}")
 endfunction()

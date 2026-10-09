@@ -175,10 +175,15 @@ namespace KT::Renderer
 		{
 			throw std::invalid_argument("インポートするテクスチャのリソースがnullptrです。");
 		}
-		if (desc.rtv.ptr == 0)
+		if (desc.kind == GraphTextureKind::Color && desc.rtv.ptr == 0)
 		{
 			throw std::invalid_argument("インポートするテクスチャのRTVが無効です。");
 		}
+		if (desc.kind == GraphTextureKind::Depth && desc.dsv.ptr == 0)
+		{
+			throw std::invalid_argument("インポートするテクスチャのDSVが無効です。");
+		}
+
 		if (resources_.size() >= ((std::numeric_limits<std::uint32_t>::max)()))
 		{
 			throw std::overflow_error("リソースの登録数が最大です。");

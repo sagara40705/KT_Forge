@@ -1,9 +1,17 @@
 #pragma once
+#include <Renderer/Graph/RenderGraphTypes.h>
 #include <string>
 #include <d3d12.h>
 
 namespace KT::Renderer
 {
+	// 画像の種類
+	enum class GraphTextureKind
+	{
+		Color,      // カラー画像
+		Depth,      // 深度画像
+	};
+
 	// グラフにインポートされたテクスチャの情報
 	struct GraphImportedTextureDesc
 	{
@@ -27,5 +35,21 @@ namespace KT::Renderer
 
 		// Graph終了時に画像全体の内容が定義済みであることを要求する
 		bool requireDefineAtEnd = false;
+
+		// 画像の種類
+		GraphTextureKind kind = GraphTextureKind::Color;
+
+		// 深度ステンシル用のCPUハンドル
+		D3D12_CPU_DESCRIPTOR_HANDLE dsv{};
+	};
+
+	struct GraphImortedRtvDesc
+	{
+		// テクスチャの名前
+		std::string name;
+		// 外部所有の画像を借用する。所有者はGPUの利用完了まで保持する
+		GraphResourceHandle resource{};
+		// 描画先RTVのCPUハンドル。Graphはdescriptor heapを所有しない
+		D3D12_CPU_DESCRIPTOR_HANDLE rtv{};
 	};
 }

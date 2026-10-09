@@ -11,8 +11,8 @@ endif()
 
 include(FetchContent)
 
-# GLFW 3.5.1: official release pinned to its immutable commit.
-# FetchContent keeps dependency sources and outputs in build/_deps.
+# GLFW 3.5.1の公式リリースに対応するコミットを固定して使用する。
+# FetchContentで取得する依存ソースと生成物はbuild/_depsに置く。
 set(GLFW_LIBRARY_TYPE STATIC CACHE STRING "GLFW library type" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "Build GLFW examples" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "Build GLFW tests" FORCE)
@@ -25,7 +25,7 @@ FetchContent_Declare(glfw
 )
 FetchContent_MakeAvailable(glfw)
 
-# One product target; module directories only register explicit sources.
+# 製品ターゲットは1つとし、各モジュールのディレクトリではソースを明示的に登録する。
 add_executable(KT_Forge)
 include(cmake/ShaderBuild.cmake)
 add_subdirectory(Source)
@@ -37,11 +37,12 @@ target_link_libraries(KT_Forge PRIVATE glfw d3d12 dxgi)
 
 set_target_properties(KT_Forge PROPERTIES
     CXX_EXTENSIONS OFF
-    # Keep Debug and Release outputs separate inside the existing build tree.
+    # 既存のビルド先ディレクトリ内で、DebugとReleaseの出力を分ける。
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>"
 )
 
 get_target_property(_forge_sources KT_Forge SOURCES)
 list(FILTER _forge_sources INCLUDE REGEX "${CMAKE_CURRENT_SOURCE_DIR}/Source/")
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/Source" PREFIX "Source" FILES ${_forge_sources})
+kt_forge_shader_groups(KT_Forge)
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT KT_Forge)

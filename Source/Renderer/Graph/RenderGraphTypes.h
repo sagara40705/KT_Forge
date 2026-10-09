@@ -22,6 +22,19 @@ namespace KT::Renderer
         }
     };
 
+    struct GraphViewHandle
+	{
+		// どのGraphか。0は無効
+		std::uint64_t graphid = 0;
+		// Graph内のリソース番号。最大値は無効
+		std::uint32_t index = (std::numeric_limits<std::uint32_t>::max)();
+		// Graph側で別途、graphidの一致とindexの範囲を検査する
+		bool IsValid() const
+		{
+			return graphid != 0 && index != (std::numeric_limits<std::uint32_t>::max)();
+		}
+	};
+
     // アクセスの種類
     enum class GraphResourceAccess
     {
@@ -34,6 +47,7 @@ namespace KT::Renderer
 	{
 		Unspecified,    // CPU宣言では用途未指定を許可する
 		RenderTarget,   // レンダーターゲットとして使う
+		DepthStencil    // 深度ステンシルとして使う
 	};
 
     // どのリソースをどう使うか
