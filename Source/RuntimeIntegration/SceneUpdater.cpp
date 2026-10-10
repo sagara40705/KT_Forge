@@ -1,7 +1,4 @@
 #include <RuntimeIntegration/SceneUpdater.h>
-#include <World/Systems/HierarchySystem.h>
-#include <World/Systems/ActivationSystem.h>
-#include <World/Systems/TransformSystem.h>
 #include <World/Systems/CameraSystem.h>
 #include <stdexcept>
 #include <type_traits>
@@ -10,16 +7,16 @@
 namespace KT::RuntimeIntegration
 {
 	const RenderFrame& SceneUpdater::Update(
-		const KT::World::World& world, std::optional<KT::World::Entity> camera, KT::World::Viewport viewport)
+		const KT::World::SceneUpdateContext& cpu, std::optional<KT::World::Entity> camera, KT::World::Viewport viewport)
 	{
+		// 前回の公開結果を失効させ、失敗時に古いFrameを返さない。
 		frame_.reset();
-		KT::World::SceneUpdateContext context(world, camera, viewport);
-		// 入力は一度捕捉し、同じcontextを順番に渡す。順序はこの5呼出だけで読める。
-		KT::World::HierarchySystem{}.Update(context);
-		KT::World::ActivationSystem{}.Update(context);
-		KT::World::TransformSystem{}.Update(context);
-		KT::World::CameraSystem{}.Update(context);
-		auto pending = RenderExtractionSystem{}.Extract(context);
+
+		// Sceneが公開した同じCPU結果を利用し、Worldを再読取しない。
+		const auto view = KT::World::CameraSystem{}.Calculate(cpu, camera, viewport);
+		auto pending = RenderExtractionSystem{}.Extract(cpu, view);
+
+		// 全計算が成功したFrameだけを公開する。
 		static_assert(std::is_nothrow_move_constructible_v<RenderFrame>);
 		frame_.emplace(std::move(pending));
 		return *frame_;
@@ -29,7 +26,7 @@ namespace KT::RuntimeIntegration
 	{
 		if (!frame_)
 		{
-			throw std::logic_error("No complete RenderFrame is published.");
+			throw std::logic_error("完成したRenderFrameがありません。");
 		}
 		return *frame_;
 	}

@@ -6,19 +6,19 @@
 
 namespace KT::World
 {
-	// シーンの入力を保持する。派生結果はSceneDataへ分ける。
-	// 階層とTransformは、直接編集した場合も描画前に全件検証する。
-	// 欠落時は親なし・有効・単位Transformとして扱う。
+	// 同じWorld内の親を保持する。SetParentだけで編集し、欠落時は親なしとして扱う。
 	struct Hierarchy
 	{
 		Entity parent{};
 	};
 
+	// 自身の有効設定を保持する。祖先を含む最終状態はCPU更新で求める。
 	struct ActiveSelf
 	{
 		bool value = true;
 	};
 
+	// 親の座標系での変換入力。CPU更新で検証し、欠落時は単位変換として扱う。
 	struct LocalTransform
 	{
 		KT::Core::Math::Vector3 position{};
@@ -27,6 +27,7 @@ namespace KT::World
 		KT::Core::Math::Vector3 scale{1, 1, 1};
 	};
 
+	// Reverse-Z投影に使う透視Cameraの設定。距離は正の有限値を指定する。
 	struct Camera
 	{
 		float verticalFovRadians = 1.0471975512f;
@@ -34,6 +35,7 @@ namespace KT::World
 		float farPlane = 1000.0f;
 	};
 
+	// 描画用のアセット参照と表示設定。描画用値へのコピーはRuntimeIntegrationが行う。
 	struct MeshRenderer
 	{
 		// 非0のアセットIDを保持する。アセットやGPU資源は所有しない。

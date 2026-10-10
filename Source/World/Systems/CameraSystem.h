@@ -9,5 +9,7 @@ namespace KT::World
 	{
 	public:
 		void Update(SceneUpdateContext& context) const;
+		// 完成CPU結果を読み、Cameraだけを追加計算する。元のcontextは変更しない。
+		std::optional<CameraViewData> Calculate(const SceneUpdateContext& context, std::optional<Entity> camera, Viewport viewport) const;
 	};
 }

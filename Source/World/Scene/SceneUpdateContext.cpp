@@ -3,8 +3,9 @@
 
 namespace KT::World
 {
-	SceneUpdateContext::SceneUpdateContext(const World& world, std::optional<Entity> camera, Viewport viewport)
+	SceneUpdateContext::SceneUpdateContext(const World& world, std::optional<Entity> camera, Viewport viewport, std::uint64_t updateNumber)
 		: worldId_(world.Identity()),
+		  updateNumber_(updateNumber),
 		  camera_(camera),
 		  viewport_(viewport)
 	{
@@ -47,7 +48,7 @@ namespace KT::World
 	{
 		if (stage_ != expected)
 		{
-			throw std::logic_error("Scene System order is invalid or this update has failed.");
+			throw std::logic_error("Sceneの更新処理順が不正、またはこのCPU更新が失敗済みです。");
 		}
 	}
 
@@ -55,7 +56,7 @@ namespace KT::World
 	{
 		if (stage_ == Stage::Failed || stage_ < minimum)
 		{
-			throw std::logic_error("Requested Scene result is not complete.");
+			throw std::logic_error("要求したSceneのCPU結果が未完成、またはこのCPU更新が失敗済みです。");
 		}
 	}
 
@@ -86,6 +87,12 @@ namespace KT::World
 	const WorldFrame& SceneUpdateContext::GetFrame() const
 	{
 		RequireStage(Stage::Camera);
+		return frame_;
+	}
+
+	const WorldFrame& SceneUpdateContext::GetCpuFrame() const
+	{
+		RequireAtLeast(Stage::Transform);
 		return frame_;
 	}
 }

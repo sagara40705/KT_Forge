@@ -12,6 +12,7 @@ namespace KT::World
 		void Update(SceneUpdateContext& context) const;
 
 	private:
+		friend class World;
 		// 親編集と同じ検証を共有する。Worldへの反映は編集関数で行う。
 		friend HierarchySnapshot ValidateHierarchy(const World& world);
 		friend void SetParent(World& world, Entity child, Entity parent);

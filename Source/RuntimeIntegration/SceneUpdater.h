@@ -4,12 +4,13 @@
 
 namespace KT::RuntimeIntegration
 {
-	// 固定順で5 Systemを呼び、完成RenderFrameだけを所有/公開する薄い入口。
+	// 完成CPU結果からCameraと描画用の値を計算する。World更新はSceneが担当する。
 	// 失敗時は旧/途中Frameを公開しない。戻り参照は次Updateまで。保持には値コピーを使う。
 	class SceneUpdater : private KT::Core::NonCopyable
 	{
 	public:
-		const RenderFrame& Update(const KT::World::World& world, std::optional<KT::World::Entity> camera, KT::World::Viewport viewport);
+		const RenderFrame& Update(
+			const KT::World::SceneUpdateContext& cpu, std::optional<KT::World::Entity> camera, KT::World::Viewport viewport);
 		const RenderFrame& Get() const;
 
 		bool HasFrame() const noexcept
@@ -18,6 +19,7 @@ namespace KT::RuntimeIntegration
 		}
 
 	private:
+		// Camera計算と描画抽出が全て成功したFrameだけを所有する。
 		std::optional<RenderFrame> frame_;
 	};
 }

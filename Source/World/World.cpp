@@ -1,4 +1,7 @@
 #include <World/World.h>
+#include <World/Scene/Hierarchy.h>
+#include <World/Systems/HierarchySystem.h>
+#include <algorithm>
 #include <atomic>
 #include <exception>
 #include <limits>
@@ -151,6 +154,23 @@ namespace KT::World
 		}
 	}
 
+	std::vector<std::type_index> World::ComponentTypes(Entity entity) const
+	{
+		RequireReadable();
+		RequireAlive(entity);
+
+		// component実体を借用せず、保存窓口に型の一覧だけを渡す。
+		const auto& components = slots_[entity.index].data->components;
+		std::vector<std::type_index> types;
+		types.reserve(components.size());
+		for (const auto& [type, component] : components)
+		{
+			(void)component;
+			types.push_back(type);
+		}
+		return types;
+	}
+
 	void World::RequireAlive(Entity entity) const
 	{
 		if (!IsAliveUnchecked(entity))
@@ -167,38 +187,136 @@ namespace KT::World
 	Entity World::CreateEntity()
 	{
 		MutationGuard guard(*this);
+		return PublishEntity(std::make_unique<EntityData>());
+	}
 
-		// 世代が有効な空きスロットを探す。
-		std::size_t index = 0;
-		for (; index < slots_.size(); ++index)
+	Entity World::CreateSceneEntity(ObjectUuid uuid, std::string name)
+	{
+		MutationGuard guard(*this);
+		if (!uuid.IsValid())
 		{
-			if (!slots_[index].data && slots_[index].generation != 0)
+			throw std::invalid_argument("生成するSceneオブジェクトのUUIDが空です。");
+		}
+
+		// 同じWorld内で永続UUIDが重複しないことを、公開前に確認する。
+		for (const auto& slot : slots_)
+		{
+			if (slot.data)
 			{
-				break;
+				const auto* identity = FindIn<PersistentId>(*slot.data);
+				if (identity && identity->value == uuid)
+				{
+					throw std::invalid_argument("生成するSceneオブジェクトのUUIDが同じWorld内で重複しています。");
+				}
 			}
 		}
 
-		(void)CheckedIndex(index);
-
-		// 確保は公開前に済ませる。vector拡張失敗でも生存数/既存slotは変わらない。
+		// 必須componentの構築と登録を済ませてから、Entityを公開する。
 		auto data = std::make_unique<EntityData>();
-		if (index == slots_.size())
+		data->components.emplace(typeid(PersistentId), std::make_unique<ComponentBox<PersistentId>>(uuid));
+		data->components.emplace(typeid(Name), std::make_unique<ComponentBox<Name>>(std::move(name)));
+		return PublishEntity(std::move(data));
+	}
+
+	Entity World::PublishEntity(std::unique_ptr<EntityData> data)
+	{
+		// 空きslotの取得は定数時間。確保失敗時はfree listを消費しない。
+		const auto index = freeSlots_.empty() ? CheckedIndex(slots_.size()) : freeSlots_.back();
+		if (freeSlots_.empty())
 		{
+			// 各slotを破棄時に確保なしで戻せる容量を、作成時に用意する。
+			const auto required = slots_.size() + 1;
+			if (freeSlots_.capacity() < required)
+			{
+				const auto growth = freeSlots_.capacity() + freeSlots_.capacity() / 2 + 1;
+				freeSlots_.reserve((std::max)(required, growth));
+			}
 			slots_.emplace_back();
 		}
+		else
+		{
+			freeSlots_.pop_back();
+		}
 
-		// 確保したEntityを公開し、生存数を更新する。
 		slots_[index].data = std::move(data);
 		++count_;
-
 		return At(index);
+	}
+
+	void World::SetParent(Entity child, Entity parent)
+	{
+		RequireStructuralChange();
+		RequireAlive(child);
+		if (parent != Entity{})
+		{
+			RequireAlive(parent);
+		}
+
+		// 親の置換後の全階層を検証し、循環を作らない。
+		SceneUpdateContext context(*this, std::nullopt, {});
+		(void)HierarchySystem::Build(context.Inputs(), std::pair{child, parent});
+		MutationGuard guard(*this);
+		auto& data = *slots_[child.index].data;
+		if (auto* hierarchy = FindIn<Hierarchy>(data))
+		{
+			hierarchy->parent = parent;
+		}
+		else
+		{
+			data.components.emplace(typeid(Hierarchy), std::make_unique<ComponentBox<Hierarchy>>(parent));
+		}
 	}
 
 	void World::DestroyEntity(Entity entity)
 	{
-		MutationGuard guard(*this);
+		std::vector<Entity> destroyed;
+		DestroyEntity(entity, destroyed);
+	}
+
+	void World::DestroyEntity(Entity entity, std::vector<Entity>& destroyed)
+	{
+		RequireStructuralChange();
 		RequireAlive(entity);
 
+		// 全階層を検証し、削除対象の全子孫を親から順に集める。
+		const auto hierarchy = ValidateHierarchy(*this);
+		std::vector<std::size_t> subtree;
+		for (std::size_t index = 0; index < hierarchy.nodes.size(); ++index)
+		{
+			if (hierarchy.nodes[index].entity == entity)
+			{
+				subtree.push_back(index);
+				break;
+			}
+		}
+		for (std::size_t index = 0; index < subtree.size(); ++index)
+		{
+			for (const auto child : hierarchy.nodes[subtree[index]].children)
+			{
+				subtree.push_back(child);
+			}
+		}
+
+		// 対象記録も破棄前に確保し、commit中に例外を発生させない。
+		if (subtree.size() > destroyed.max_size() - destroyed.size())
+		{
+			throw std::overflow_error("部分木削除のEntity記録数がコンテナーの上限を超えます。");
+		}
+
+		destroyed.reserve(destroyed.size() + subtree.size());
+
+		// 対象を逆順に破棄し、子のcomponentを親より先に破棄する。
+		MutationGuard guard(*this);
+		for (auto iterator = subtree.rbegin(); iterator != subtree.rend(); ++iterator)
+		{
+			const auto target = hierarchy.nodes[*iterator].entity;
+			destroyed.push_back(target);
+			DestroySlot(target);
+		}
+	}
+
+	void World::DestroySlot(Entity entity) noexcept
+	{
 		// componentを破棄してから世代を進め、古いEntityを失効させる。
 		auto& slot = slots_[entity.index];
 		slot.data.reset();
@@ -206,5 +324,9 @@ namespace KT::World
 		// 上限世代のslotは0で退役。古いhandleと一致する世代へ循環させない。
 		slot.generation = NextGeneration(slot.generation);
 		--count_;
+		if (slot.generation != 0)
+		{
+			freeSlots_.push_back(entity.index);
+		}
 	}
 }
