@@ -45,14 +45,50 @@ namespace KT::World
 		}
 	}
 
-	std::unique_ptr<SceneUpdateContext> Scene::ComputeCpu(std::uint64_t updateNumber, const SceneUpdateContext* previous) const
+	void Scene::RecycleCpu(std::unique_ptr<SceneUpdateContext> context) noexcept
+	{
+		for (auto& scratch : cpuScratch_)
+		{
+			if (!scratch)
+			{
+				scratch = std::move(context);
+				return;
+			}
+		}
+	}
+
+	std::unique_ptr<SceneUpdateContext> Scene::ComputeCpu(std::uint64_t updateNumber, const SceneUpdateContext* previous)
 	{
 		// Worldを一度捕捉し、階層・有効状態・World行列をこの順に確定する。
-		auto context = std::make_unique<SceneUpdateContext>(world_, std::nullopt, Viewport{}, updateNumber, previous);
-		HierarchySystem{}.Update(*context);
-		ActivationSystem{}.Update(*context);
-		TransformSystem{}.Update(*context);
-		return context;
+		std::unique_ptr<SceneUpdateContext> context;
+		for (auto& scratch : cpuScratch_)
+		{
+			if (scratch)
+			{
+				context = std::move(scratch);
+				break;
+			}
+		}
+		try
+		{
+			if (context)
+			{
+				context->Capture(world_, std::nullopt, Viewport{}, updateNumber, previous);
+			}
+			else
+			{
+				context = std::make_unique<SceneUpdateContext>(world_, std::nullopt, Viewport{}, updateNumber, previous);
+			}
+			HierarchySystem{}.Update(*context);
+			ActivationSystem{}.Update(*context);
+			TransformSystem{}.Update(*context);
+			return context;
+		}
+		catch (...)
+		{
+			RecycleCpu(std::move(context));
+			throw;
+		}
 	}
 
 	const SceneUpdateContext& Scene::Update(double deltaSeconds, const GameUpdate& gameUpdate)
@@ -80,6 +116,7 @@ namespace KT::World
 		snapshotValid_ = false;
 		commandResults_ = {};
 		++updateNumber_;
+		std::unique_ptr<SceneUpdateContext> input;
 		try
 		{
 			world_.BeginTransaction();
@@ -90,10 +127,10 @@ namespace KT::World
 				std::rethrow_exception(commandResults_[0].error);
 			}
 
-			auto input = ComputeCpu(updateNumber_, previousSnapshot.get());
+			input = ComputeCpu(updateNumber_, previousSnapshot.get());
 
 			// 更新対象を確定してから呼ぶ。生成・削除は後段のFlushまで反映しない。
-			std::vector<std::pair<Entity, ScriptBehaviour*>> scripts;
+			scriptScratch_.clear();
 			for (const auto& entity : input->GetTransforms())
 			{
 				const auto* component = world_.FindComponent<ScriptComponent>(entity.entity);
@@ -109,7 +146,7 @@ namespace KT::World
 						}
 						if (entity.active.value && entry.definition.enabled && entry.instance)
 						{
-							scripts.emplace_back(entity.entity, entry.instance.get());
+							scriptScratch_.emplace_back(entity.entity, entry.instance.get());
 						}
 					}
 				}
@@ -118,7 +155,7 @@ namespace KT::World
 			// Scriptを対象確定時の順序で呼び、その後にゲーム固有の更新を行う。
 			gamePhase_ = true;
 			gameInput_ = input.get();
-			for (const auto& [entity, script] : scripts)
+			for (const auto& [entity, script] : scriptScratch_)
 			{
 				script->Update(*this, entity, deltaSeconds, *input);
 			}
@@ -130,6 +167,7 @@ namespace KT::World
 
 			gamePhase_ = false;
 			gameInput_ = nullptr;
+			scriptScratch_.clear();
 
 			// 終了境界の予約と値編集を反映し、再計算が成功した結果だけを公開する。
 			commandResults_[1] = commands_.Flush();
@@ -143,6 +181,9 @@ namespace KT::World
 			snapshot_ = std::move(completedSnapshot);
 			snapshotValid_ = true;
 			state_ = State::Ready;
+			// commit後だけ旧公開結果とゲーム入力を作業用へ戻す。rollback基準は上書きしない。
+			RecycleCpu(std::move(previousSnapshot));
+			RecycleCpu(std::move(input));
 			return *snapshot_;
 		}
 		catch (...)
@@ -151,9 +192,11 @@ namespace KT::World
 			const auto updateError = std::current_exception();
 			gamePhase_ = false;
 			gameInput_ = nullptr;
+			scriptScratch_.clear();
 			state_ = State::Failed;
 			commands_.accepting_ = false;
 			world_.RollbackTransaction();
+			RecycleCpu(std::move(input));
 			snapshot_ = std::move(previousSnapshot);
 			snapshotValid_ = previousSnapshotValid;
 			for (auto& result : commandResults_)

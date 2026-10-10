@@ -11,34 +11,21 @@ namespace KT::World
 
 		try
 		{
-			// 親のDirtyを子へ伝播し、必要な部分木だけLocal * Parentで再計算する。
-			auto transforms = context.frame_.entities;
-			auto dirty = context.transformDirty_;
-			std::size_t calculated = 0;
-			for (auto nodeIndex : context.hierarchy_->parentFirst)
+			// 親を先に計算する部分木集合だけを、従来のMath APIで検証・計算する。
+			for (auto nodeIndex : context.transformWork_)
 			{
 				const auto& input = context.inputs_[nodeIndex];
 				const auto parentIndex = context.hierarchy_->nodes[nodeIndex].parent;
-
-				dirty[nodeIndex] = dirty[nodeIndex] || (parentIndex != NoParent && dirty[parentIndex]);
-				if (dirty[nodeIndex])
-				{
-					// 変更入力は従来と同じMath APIで検証し、無効なLocalや合成overflowを拒否する。
-					const auto localMatrix = KT::Core::Math::LocalMatrix(input.local.position, input.local.rotation, input.local.scale);
-					transforms[nodeIndex].transform.matrix = parentIndex == NoParent ? localMatrix :
-						KT::Core::Math::Multiply(localMatrix, transforms[parentIndex].transform.matrix);
-					++calculated;
-				}
-
-				// ActiveSelfだけの変更でも完成結果の有効状態を反映する。
-				transforms[nodeIndex].entity = input.entity;
-				transforms[nodeIndex].active.value = context.active_[nodeIndex];
+				const auto localMatrix = KT::Core::Math::LocalMatrix(input.local.position, input.local.rotation, input.local.scale);
+				context.frame_.entities[nodeIndex].transform.matrix = parentIndex == NoParent ? localMatrix :
+					KT::Core::Math::Multiply(localMatrix, context.frame_.entities[parentIndex].transform.matrix);
 			}
-
-			// 全件の計算後に結果と更新段階を反映する。
-			context.frame_.entities = std::move(transforms);
-			context.transformDirty_ = std::move(dirty);
-			context.statistics_.transformCalculated = calculated;
+			// ActiveSelfだけの変更も完成結果へ反映する。
+			for (auto nodeIndex : context.activationWork_)
+			{
+				context.frame_.entities[nodeIndex].active.value = context.active_[nodeIndex];
+			}
+			context.statistics_.transformCalculated = context.transformWork_.size();
 			context.stage_ = SceneUpdateContext::Stage::Transform;
 		}
 		catch (...)

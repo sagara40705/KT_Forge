@@ -22,13 +22,15 @@ namespace KT::World
 		CpuChangeState changes;
 	};
 
-	// 今回のcontextで値比較・再計算したEntity数。入力捕捉・結果コピーは含めない。
+	// 今回のcontextで読取・値比較・再計算したEntity数。時間測定には使わない。
 	struct CpuUpdateStatistics
 	{
 		std::size_t activationCalculated = 0;
 		std::size_t transformCalculated = 0;
 		std::size_t activationCompared = 0;
 		std::size_t transformCompared = 0;
+		std::size_t activationRead = 0;
+		std::size_t transformRead = 0;
 	};
 
 	// World入力を一度コピーし、今回の派生結果とともに所有する。World参照は保持しない。
@@ -37,7 +39,7 @@ namespace KT::World
 	class SceneUpdateContext : private KT::Core::NonCopyable
 	{
 	public:
-		// 完了した更新段階。Failedになったcontextは再利用しない。
+		// 完了した更新段階。Failed中は結果参照とSystemの続行を拒否する。
 		enum class Stage
 		{
 			Captured,
@@ -79,6 +81,7 @@ namespace KT::World
 		[[nodiscard]] const CpuUpdateStatistics& GetCpuUpdateStatistics() const;
 
 	private:
+		friend class Scene;
 		friend class HierarchySystem;
 		friend class ActivationSystem;
 		friend class TransformSystem;
@@ -86,6 +89,11 @@ namespace KT::World
 
 		void RequireStage(Stage expected) const;
 		void RequireAtLeast(Stage minimum) const;
+		// 公開・比較に使わなくなったcontextだけを再捕捉し、配列容量を再利用する。
+		void Capture(const World& world, std::optional<Entity> camera, Viewport viewport,
+			std::uint64_t updateNumber, const SceneUpdateContext* previous);
+		// Dirtyの部分木区間を統合し、重複なしの従来順へ並べる。
+		void CollectDirty(std::vector<std::size_t>& seeds, std::vector<std::size_t>& work);
 
 		void Fail() noexcept
 		{
@@ -104,9 +112,11 @@ namespace KT::World
 		std::vector<SceneEntityInput> inputs_;
 		// 入力と同時に捕捉した親子索引・階層順序。Worldの後続変更とは独立して保持する。
 		std::shared_ptr<const HierarchySnapshot> hierarchy_;
-		// 入力照合で判定し、各Systemで親から子へ伝播する。入力配列と同じindexを使う。
-		std::vector<bool> activationDirty_;
-		std::vector<bool> transformDirty_;
+		// 変更した根と、重複する部分木を統合した計算対象。入力配列のindexを使う。
+		std::vector<std::size_t> activationSeeds_;
+		std::vector<std::size_t> transformSeeds_;
+		std::vector<std::size_t> activationWork_;
+		std::vector<std::size_t> transformWork_;
 		CpuUpdateStatistics statistics_;
 		// 祖先の有効状態を反映した、Entityごとの最終有効状態。
 		std::vector<bool> active_;

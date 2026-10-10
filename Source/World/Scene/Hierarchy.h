@@ -29,6 +29,12 @@ namespace KT::World
 		std::vector<HierarchyNode> nodes;
 		// 根と兄弟はslot順。親を子より先に処理する幅優先の順序。
 		std::vector<std::size_t> parentFirst;
+		// 部分木を連続区間で扱う深さ優先順。公開の幅優先順とは分けて保持する。
+		std::vector<std::size_t> subtreeOrder;
+		std::vector<std::size_t> subtreeBegin;
+		std::vector<std::size_t> subtreeEnd;
+		// 部分更新でも従来の計算順を維持するための幅優先順位。
+		std::vector<std::size_t> parentFirstPosition;
 		// slotから密なノード番号を引く。空きslotはNoParent、世代・Worldはnodesで照合する。
 		std::vector<std::size_t> nodeByEntityIndex;
 

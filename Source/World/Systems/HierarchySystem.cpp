@@ -66,6 +66,39 @@ namespace KT::World
 			throw std::invalid_argument("階層の親子関係が循環しています。");
 		}
 
+		// 再帰を使わず、部分木の半開区間を構造変更時だけ作る。
+		snapshot.subtreeOrder.reserve(inputs.size());
+		snapshot.subtreeBegin.resize(inputs.size());
+		snapshot.subtreeEnd.resize(inputs.size());
+		snapshot.parentFirstPosition.resize(inputs.size());
+		std::vector<std::pair<std::size_t, std::size_t>> stack;
+		stack.reserve(inputs.size());
+		for (std::size_t position = 0; position < snapshot.parentFirst.size(); ++position)
+		{
+			const auto root = snapshot.parentFirst[position];
+			snapshot.parentFirstPosition[root] = position;
+			if (snapshot.nodes[root].parent != NoParent)
+			{
+				continue;
+			}
+			snapshot.subtreeBegin[root] = snapshot.subtreeOrder.size();
+			snapshot.subtreeOrder.push_back(root);
+			stack.emplace_back(root, 0);
+			while (!stack.empty())
+			{
+				auto& [node, nextChild] = stack.back();
+				if (nextChild == snapshot.nodes[node].children.size())
+				{
+					snapshot.subtreeEnd[node] = snapshot.subtreeOrder.size();
+					stack.pop_back();
+					continue;
+				}
+				const auto child = snapshot.nodes[node].children[nextChild++];
+				snapshot.subtreeBegin[child] = snapshot.subtreeOrder.size();
+				snapshot.subtreeOrder.push_back(child);
+				stack.emplace_back(child, 0);
+			}
+		}
 		return snapshot;
 	}
 

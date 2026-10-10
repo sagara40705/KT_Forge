@@ -10,26 +10,14 @@ namespace KT::World
 
 		try
 		{
-			// 親のDirtyを子へ伝播し、影響のないEntityは捕捉時にコピーした結果を使う。
-			auto activeStates = context.active_;
-			auto dirty = context.activationDirty_;
-			std::size_t calculated = 0;
-			for (auto nodeIndex : context.hierarchy_->parentFirst)
+			// 統合した部分木だけを処理する。失敗contextは外へ公開しない。
+			for (auto nodeIndex : context.activationWork_)
 			{
 				const auto parentIndex = context.hierarchy_->nodes[nodeIndex].parent;
-				dirty[nodeIndex] = dirty[nodeIndex] || (parentIndex != NoParent && dirty[parentIndex]);
-				if (dirty[nodeIndex])
-				{
-					activeStates[nodeIndex] =
-						context.inputs_[nodeIndex].activeSelf.value && (parentIndex == NoParent || activeStates[parentIndex]);
-					++calculated;
-				}
+				context.active_[nodeIndex] = context.inputs_[nodeIndex].activeSelf.value &&
+					(parentIndex == NoParent || context.active_[parentIndex]);
 			}
-
-			// 全件の計算後に結果と更新段階を反映する。
-			context.active_ = std::move(activeStates);
-			context.activationDirty_ = std::move(dirty);
-			context.statistics_.activationCalculated = calculated;
+			context.statistics_.activationCalculated = context.activationWork_.size();
 			context.stage_ = SceneUpdateContext::Stage::Activation;
 		}
 		catch (...)

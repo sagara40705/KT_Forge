@@ -1,5 +1,6 @@
 #pragma once
 #include <Core/Utility/NonCopyable.h>
+#include <Core/Math/Matrix4.h>
 #include <World/Entity.h>
 #include <World/Scene/ObjectIdentity.h>
 #include <World/Scene/RollbackState.h>
@@ -188,6 +189,21 @@ namespace KT::World
 		{
 			// Worldのslotと同じ番号で保持する。新規slotの領域は生成前に確保する。
 			std::vector<HierarchyLinks> links;
+			// KeepWorld間で再利用する幅優先順。生成・削除・親変更で失効する。
+			std::vector<std::uint32_t> parentFirst;
+			bool orderDirty = true;
+			// slotごとの完成行列と照合値。実体世代と親・Transform世代で再利用を判定する。
+			struct TransformCache
+			{
+				KT::Core::Math::Matrix4 matrix;
+				Entity entity;
+				std::uint32_t parent = Entity::InvalidIndex;
+				std::uint64_t version = 0;
+				bool valid = false;
+				// 今回の計算中に親から子へ再計算を伝播する。
+				bool changed = false;
+			};
+			std::vector<TransformCache> transforms;
 			// 既存の兄弟リンクを外し、新しい親の先頭へつなぐ。確保・例外を伴わない。
 			void SetParent(std::uint32_t child, std::uint32_t parent) noexcept;
 			void Remove(std::uint32_t entity) noexcept;
@@ -494,35 +510,40 @@ namespace KT::World
 				return;
 			}
 
-			// SetParentの構造変更中も使う。捕捉callbackからの再入は拒否する。
-			std::optional<MutationGuard> guard;
-			if (!mutating_)
+			// 対応型の後処理だけを生成し、未対応型でもDebugのC4702を発生させない。
+			if constexpr (requires(T& target) { { target.CaptureRollback() } -> std::same_as<std::unique_ptr<RollbackState>>; } ||
+				(std::is_copy_constructible_v<T> && std::is_nothrow_swappable_v<T>))
 			{
-				guard.emplace(*this);
-			}
-			ReserveValues(1);
-			auto& value = static_cast<ComponentBox<T>&>(*component).value;
-			std::unique_ptr<RollbackState> saved;
+				// SetParentの構造変更中も使う。捕捉callbackからの再入は拒否する。
+				std::optional<MutationGuard> guard;
+				if (!mutating_)
+				{
+					guard.emplace(*this);
+				}
+				ReserveValues(1);
+				auto& value = static_cast<ComponentBox<T>&>(*component).value;
+				std::unique_ptr<RollbackState> saved;
 
-			// 値編集でだけ復元を要求する。非copy型の構造変更にはコピーを要求しない。
-			if constexpr (requires(T& target) { { target.CaptureRollback() } -> std::same_as<std::unique_ptr<RollbackState>>; })
-			{
-				saved = value.CaptureRollback();
-			}
-			else if constexpr (std::is_copy_constructible_v<T> && std::is_nothrow_swappable_v<T>)
-			{
-				saved = std::make_unique<ValueRollback<T>>(value);
+				// 値編集でだけ復元を要求する。非copy型の構造変更にはコピーを要求しない。
+				if constexpr (requires(T& target) { { target.CaptureRollback() } -> std::same_as<std::unique_ptr<RollbackState>>; })
+				{
+					saved = value.CaptureRollback();
+				}
+				else if constexpr (std::is_copy_constructible_v<T> && std::is_nothrow_swappable_v<T>)
+				{
+					saved = std::make_unique<ValueRollback<T>>(value);
+				}
+				if (!saved)
+				{
+					throw std::logic_error(std::string("ComponentのCaptureRollbackが復元記録を返しませんでした: ") + typeid(T).name());
+				}
+				transaction_->values.push_back(std::move(saved));
+				component->capturedTransaction = transaction_->number;
 			}
 			else
 			{
 				throw std::logic_error(std::string("Component値の編集にはCaptureRollbackの実装が必要です: ") + typeid(T).name());
 			}
-			if (!saved)
-			{
-				throw std::logic_error(std::string("ComponentのCaptureRollbackが復元記録を返しませんでした: ") + typeid(T).name());
-			}
-			transaction_->values.push_back(std::move(saved));
-			component->capturedTransaction = transaction_->number;
 		}
 		Entity CreateSceneEntity(ObjectUuid uuid, std::string name);
 		Entity PublishEntity(std::unique_ptr<EntityData> data);

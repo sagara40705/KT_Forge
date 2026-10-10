@@ -670,6 +670,8 @@ namespace KT::World
 			return;
 		}
 
+		orderDirty = true;
+
 		// 現在の親と兄弟から外す。根は兄弟リストを持たない。
 		if (childLinks.parent != Entity::InvalidIndex)
 		{
@@ -707,6 +709,7 @@ namespace KT::World
 		// 子を先に削除した対象だけを外し、再利用するslotにリンクを残さない。
 		SetParent(entity, Entity::InvalidIndex);
 		links[entity] = {};
+		orderDirty = true;
 	}
 
 	void World::BeginHierarchyBatch()
@@ -763,6 +766,8 @@ namespace KT::World
 		{
 			throw std::invalid_argument("階層予約batchの開始時の親子関係が循環しています。");
 		}
+		batch->parentFirst = std::move(reached);
+		batch->orderDirty = false;
 		hierarchyBatch_ = std::move(batch);
 	}
 
@@ -775,38 +780,57 @@ namespace KT::World
 	void World::ComputeBatchWorld(Entity child, Entity parent, KT::Core::Math::Matrix4& oldWorld,
 		KT::Core::Math::Matrix4& parentWorld) const
 	{
-		// 公開階層snapshotを作らず、反映済みリンクの根から処理順を広げる。
-		std::vector<std::uint32_t> parentFirst;
-		parentFirst.reserve(count_);
-		for (std::size_t index = 0; index < hierarchyBatch_->links.size(); ++index)
+		// 構造変更後だけ作業順を再構築し、行列の領域もbatch内で再利用する。
+		auto& batch = *hierarchyBatch_;
+		if (batch.orderDirty)
 		{
-			const auto& links = hierarchyBatch_->links[index];
-			if (links.alive && links.parent == Entity::InvalidIndex)
+			batch.parentFirst.clear();
+			batch.parentFirst.reserve(count_);
+			for (std::size_t index = 0; index < batch.links.size(); ++index)
 			{
-				parentFirst.push_back(At(index).index);
+				if (batch.links[index].alive && batch.links[index].parent == Entity::InvalidIndex)
+				{
+					batch.parentFirst.push_back(At(index).index);
+				}
+			}
+			for (std::size_t index = 0; index < batch.parentFirst.size(); ++index)
+			{
+				for (auto descendant = batch.links[batch.parentFirst[index]].firstChild; descendant != Entity::InvalidIndex;
+					descendant = batch.links[descendant].nextSibling)
+				{
+					batch.parentFirst.push_back(descendant);
+				}
+			}
+			batch.orderDirty = false;
+		}
+		batch.transforms.resize(batch.links.size());
+		for (auto entityIndex : batch.parentFirst)
+		{
+			const auto entity = At(entityIndex);
+			const auto& links = batch.links[entityIndex];
+			const auto changes = GetCpuChangeState(entity);
+			auto& cached = batch.transforms[entityIndex];
+			cached.changed = !cached.valid || cached.entity != entity || cached.parent != links.parent ||
+				cached.version != changes.versions.transform || changes.transformBorrowed ||
+				(links.parent != Entity::InvalidIndex && batch.transforms[links.parent].changed);
+			if (cached.changed)
+			{
+				const auto* transform = FindIn<LocalTransform>(*slots_[entityIndex].data);
+				const auto local = transform ? *transform : LocalTransform{};
+				const auto matrix = KT::Core::Math::LocalMatrix(local.position, local.rotation, local.scale);
+				cached.matrix = links.parent == Entity::InvalidIndex ? matrix :
+					KT::Core::Math::Multiply(matrix, batch.transforms[links.parent].matrix);
+				cached.entity = entity;
+				cached.parent = links.parent;
+				cached.version = changes.versions.transform;
+				cached.valid = true;
 			}
 		}
-		std::vector<KT::Core::Math::Matrix4> transforms(hierarchyBatch_->links.size());
-		for (std::size_t index = 0; index < parentFirst.size(); ++index)
-		{
-			const auto entityIndex = parentFirst[index];
-			const auto& links = hierarchyBatch_->links[entityIndex];
-			const auto* transform = FindIn<LocalTransform>(*slots_[entityIndex].data);
-			const auto local = transform ? *transform : LocalTransform{};
-			const auto matrix = KT::Core::Math::LocalMatrix(local.position, local.rotation, local.scale);
-			transforms[entityIndex] = links.parent == Entity::InvalidIndex ? matrix :
-				KT::Core::Math::Multiply(matrix, transforms[links.parent]);
-			for (auto descendant = links.firstChild; descendant != Entity::InvalidIndex;
-				descendant = hierarchyBatch_->links[descendant].nextSibling)
-			{
-				parentFirst.push_back(descendant);
-			}
-		}
-		// 対象以外の不正Transformも従来どおり拒否し、全件成功後に結果だけを返す。
-		oldWorld = transforms[child.index];
+		// 対象外も初回・変更・可変借用時には検証し、全件成功後に結果を返す。
+		oldWorld = batch.transforms[child.index].matrix;
 		if (parent != Entity{})
 		{
-			parentWorld = transforms[parent.index];
+			parentWorld = batch.transforms[parent.index].matrix;
 		}
 	}
 
@@ -888,6 +912,7 @@ namespace KT::World
 		{
 			hierarchyBatch_->links[index] = {};
 			hierarchyBatch_->links[index].alive = true;
+			hierarchyBatch_->orderDirty = true;
 		}
 		hierarchyCache_.reset();
 		return At(index);

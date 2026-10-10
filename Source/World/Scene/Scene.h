@@ -25,6 +25,7 @@ namespace KT::World
 		WorldCommandBuffer& Commands();
 		// 開始反映→CPU入力確定→Script・ゲーム更新→終了反映→CPU結果公開の順で行う。
 		// 例外時は一回の更新全体を復元する。予約・更新番号・発行済み世代は消費する。
+		// 返すcontextは次の成功更新・idle値編集・Scene破棄まで有効。ゲーム入力はcallback内だけ借用する。
 		const SceneUpdateContext& Update(double deltaSeconds, const GameUpdate& gameUpdate = {});
 		[[nodiscard]] const SceneUpdateContext& GetSnapshot() const;
 
@@ -140,7 +141,8 @@ namespace KT::World
 			}
 		}
 		std::unique_ptr<SceneUpdateContext> ComputeCpu(
-			std::uint64_t updateNumber, const SceneUpdateContext* previous = nullptr) const;
+			std::uint64_t updateNumber, const SceneUpdateContext* previous = nullptr);
+		void RecycleCpu(std::unique_ptr<SceneUpdateContext> context) noexcept;
 
 		// Entity・component・Script実体の唯一の所有先。
 		World world_;
@@ -149,6 +151,10 @@ namespace KT::World
 		WorldCommandBuffer commands_;
 		// 成功したCPU結果。idle編集後も差分比較用に保持し、公開だけ失効させる。
 		std::unique_ptr<SceneUpdateContext> snapshot_;
+		// 完成結果とrollback比較元を除く二つの作業context。容量を高水位で保持する。
+		std::array<std::unique_ptr<SceneUpdateContext>, 2> cpuScratch_;
+		// 固定したScript対象の作業配列。更新境界内だけ実体を借用し、容量を再利用する。
+		std::vector<std::pair<Entity, ScriptBehaviour*>> scriptScratch_;
 		// idle編集後の比較元を現在の完成結果として公開しない。
 		bool snapshotValid_ = true;
 		// 開始境界と終了境界の反映結果を、この順で保持する。
