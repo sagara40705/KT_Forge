@@ -221,6 +221,130 @@ namespace KT::World
 		}
 	}
 
+	void World::EntityIndex::Prepare(std::uint32_t slot)
+	{
+		// denseと公開順の高水位容量を先に確保し、rollbackでの再追加も収容する。
+		if (dense.size() >= Entity::InvalidIndex)
+		{
+			throw std::overflow_error("Entity所属索引の要素数が上限を超えます。");
+		}
+		const auto required = dense.size() + 1;
+		const auto limit = (std::min)(dense.max_size(), ordered.max_size());
+		if (required > limit)
+		{
+			throw std::overflow_error("Entity所属索引の配列容量が上限を超えます。");
+		}
+		const auto increment = (std::min)(dense.capacity() / 2 + 1, limit - dense.capacity());
+		const auto capacity = (std::max)(required, dense.capacity() + increment);
+		if (dense.capacity() < required)
+		{
+			dense.reserve(capacity);
+		}
+		if (ordered.capacity() < required)
+		{
+			ordered.reserve(capacity);
+		}
+
+		// 空き位置は明示し、同じslotの別世代を所属済みと見なさない。
+		const auto sparseRequired = static_cast<std::size_t>(slot) + 1;
+		if (sparseRequired > sparse.max_size())
+		{
+			throw std::overflow_error("Entity所属索引のslot範囲が上限を超えます。");
+		}
+		if (sparse.capacity() < sparseRequired)
+		{
+			const auto growth = (std::min)(sparse.capacity() / 2 + 1, sparse.max_size() - sparse.capacity());
+			sparse.reserve((std::max)(sparseRequired, sparse.capacity() + growth));
+		}
+		if (sparse.size() < sparseRequired)
+		{
+			sparse.resize(sparseRequired, Entity::InvalidIndex);
+		}
+	}
+
+	bool World::EntityIndex::Contains(Entity entity) const noexcept
+	{
+		if (!entity.IsValid() || entity.index >= sparse.size())
+		{
+			return false;
+		}
+		const auto position = sparse[entity.index];
+		return position < dense.size() && dense[position] == entity;
+	}
+
+	void World::EntityIndex::Add(Entity entity) noexcept
+	{
+		// 正常な逆順復元では、元の所属数が過去の確保容量を超えることはない。
+		if (entity.index >= sparse.size() || sparse[entity.index] != Entity::InvalidIndex ||
+			dense.size() == dense.capacity() || ordered.capacity() < dense.size() + 1)
+		{
+			std::terminate();
+		}
+		sparse[entity.index] = static_cast<std::uint32_t>(dense.size());
+		dense.push_back(entity);
+		orderDirty = true;
+	}
+
+	void World::EntityIndex::Remove(Entity entity) noexcept
+	{
+		if (!Contains(entity))
+		{
+			std::terminate();
+		}
+		// 末尾を穴へ移し、移したEntityの逆引きも定数時間で修正する。
+		const auto position = sparse[entity.index];
+		const auto last = dense.back();
+		dense[position] = last;
+		sparse[last.index] = position;
+		dense.pop_back();
+		sparse[entity.index] = Entity::InvalidIndex;
+		orderDirty = true;
+	}
+
+	const std::vector<Entity>& World::EntityIndex::Ordered() const noexcept
+	{
+		if (orderDirty)
+		{
+			// Prepareで確保した領域だけを使い、入れ子列挙も同じ完成順を借用する。
+			ordered.assign(dense.begin(), dense.end());
+			std::sort(ordered.begin(), ordered.end(),
+				[](Entity first, Entity second)
+				{
+					return first.index < second.index;
+				});
+			orderDirty = false;
+		}
+		return ordered;
+	}
+
+	void World::PrepareComponentIndex(std::uint32_t slot, std::type_index type)
+	{
+		componentIndexes_[type].Prepare(slot);
+	}
+
+	const World::EntityIndex* World::FindComponentIndex(std::type_index type) const noexcept
+	{
+		const auto found = componentIndexes_.find(type);
+		return found == componentIndexes_.end() ? nullptr : &found->second;
+	}
+
+	const World::EntityIndex* World::SmallestIndex(std::span<const EntityIndex* const> indexes) noexcept
+	{
+		const EntityIndex* smallest = nullptr;
+		for (const auto* index : indexes)
+		{
+			if (!index)
+			{
+				return nullptr;
+			}
+			if (!smallest || index->dense.size() < smallest->dense.size())
+			{
+				smallest = index;
+			}
+		}
+		return smallest;
+	}
+
 	World::World()
 		: worldId_(AcquireWorldId())
 	{
@@ -356,14 +480,16 @@ namespace KT::World
 		}
 	}
 
-	void World::RecordAdded(EntityData& data, std::type_index type) noexcept
+	void World::RecordAdded(Entity entity, EntityData& data, std::type_index type) noexcept
 	{
+		componentIndexes_.find(type)->second.Add(entity);
 		if (transaction_)
 		{
 			// 登録済みの実体に印を付ける。同型を追加し直した場合も元の実体と区別する。
 			data.components.find(type)->second->createdTransaction = transaction_->number;
 			auto& action = transaction_->actions.emplace_back(UndoAction::Kind::Add);
 			action.data = &data;
+			action.entity = entity;
 			action.type = type;
 		}
 	}
@@ -432,6 +558,12 @@ namespace KT::World
 			switch (action.kind)
 			{
 			case UndoAction::Kind::Create:
+				for (const auto& [type, component] : slots_[action.index].data->components)
+				{
+					(void)component;
+					componentIndexes_.find(type)->second.Remove(At(action.index));
+				}
+				liveEntities_.Remove(At(action.index));
 				if (const auto* identity = FindIn<PersistentId>(*slots_[action.index].data))
 				{
 					uuidIndex_.erase(identity->value);
@@ -443,6 +575,12 @@ namespace KT::World
 			case UndoAction::Kind::Destroy:
 				slots_[action.index].data = std::move(action.destroyed);
 				slots_[action.index].generation = action.generation;
+				liveEntities_.Add(At(action.index));
+				for (const auto& [type, component] : slots_[action.index].data->components)
+				{
+					(void)component;
+					componentIndexes_.find(type)->second.Add(At(action.index));
+				}
 				++count_;
 				if (!action.removedUuid.empty())
 				{
@@ -456,9 +594,11 @@ namespace KT::World
 				}
 				break;
 			case UndoAction::Kind::Add:
+				componentIndexes_.find(action.type)->second.Remove(action.entity);
 				action.data->components.erase(action.type);
 				break;
 			case UndoAction::Kind::Remove:
+				componentIndexes_.find(action.removed.key())->second.Add(action.entity);
 				action.data->components.insert(std::move(action.removed));
 				break;
 			case UndoAction::Kind::CpuChanges:
@@ -563,18 +703,8 @@ namespace KT::World
 	{
 		RequireReadable();
 
-		// 生存Entityだけを、スロット順の値として集める。
-		std::vector<Entity> entities;
-		entities.reserve(count_);
-		for (std::size_t index = 0; index < slots_.size(); ++index)
-		{
-			if (slots_[index].data)
-			{
-				entities.push_back(At(index));
-			}
-		}
-
-		return entities;
+		// 空きslotを走査せず、所属変更後だけ整列した生存handleをコピーする。
+		return liveEntities_.Ordered();
 	}
 
 	void World::RequireStructuralChange() const
@@ -720,38 +850,32 @@ namespace KT::World
 			throw std::logic_error("Worldの階層予約batchが既に開始されています。");
 		}
 
-		// 作業索引は一度だけ全slotから作り、途中失敗した索引は公開しない。
+		// slot位置の領域は残し、生存Entityの所属からだけ作業リンクを作る。
 		auto batch = std::make_unique<HierarchyBatch>();
 		batch->links.resize(slots_.size());
-		for (std::size_t index = 0; index < slots_.size(); ++index)
+		const auto& entities = liveEntities_.Ordered();
+		for (const auto entity : entities)
 		{
-			if (slots_[index].data)
-			{
-				batch->links[index].alive = true;
-			}
+			batch->links[entity.index].alive = true;
 		}
-		for (std::size_t index = 0; index < slots_.size(); ++index)
+		for (const auto entity : entities)
 		{
-			if (!slots_[index].data)
-			{
-				continue;
-			}
-			const auto* hierarchy = FindIn<Hierarchy>(*slots_[index].data);
+			const auto* hierarchy = FindIn<Hierarchy>(*slots_[entity.index].data);
 			if (hierarchy && hierarchy->parent != Entity{})
 			{
 				RequireAlive(hierarchy->parent);
-				batch->SetParent(At(index).index, hierarchy->parent.index);
+				batch->SetParent(entity.index, hierarchy->parent.index);
 			}
 		}
 
 		// 根からの到達数で循環を検査する。以後の親変更は祖先列だけを検査する。
 		std::vector<std::uint32_t> reached;
 		reached.reserve(count_);
-		for (std::size_t index = 0; index < batch->links.size(); ++index)
+		for (const auto entity : entities)
 		{
-			if (batch->links[index].alive && batch->links[index].parent == Entity::InvalidIndex)
+			if (batch->links[entity.index].parent == Entity::InvalidIndex)
 			{
-				reached.push_back(At(index).index);
+				reached.push_back(entity.index);
 			}
 		}
 		for (std::size_t index = 0; index < reached.size(); ++index)
@@ -786,11 +910,11 @@ namespace KT::World
 		{
 			batch.parentFirst.clear();
 			batch.parentFirst.reserve(count_);
-			for (std::size_t index = 0; index < batch.links.size(); ++index)
+			for (const auto entity : liveEntities_.Ordered())
 			{
-				if (batch.links[index].alive && batch.links[index].parent == Entity::InvalidIndex)
+				if (batch.links[entity.index].parent == Entity::InvalidIndex)
 				{
-					batch.parentFirst.push_back(At(index).index);
+					batch.parentFirst.push_back(entity.index);
 				}
 			}
 			for (std::size_t index = 0; index < batch.parentFirst.size(); ++index)
@@ -842,13 +966,10 @@ namespace KT::World
 			// 親だけをslot順で捕捉し、値編集に依存しない派生索引を作る。
 			std::vector<HierarchyInput> inputs;
 			inputs.reserve(count_);
-			for (std::size_t index = 0; index < slots_.size(); ++index)
+			for (const auto entity : liveEntities_.Ordered())
 			{
-				if (slots_[index].data)
-				{
-					const auto* hierarchy = FindIn<Hierarchy>(*slots_[index].data);
-					inputs.push_back({At(index), hierarchy ? hierarchy->parent : Entity{}});
-				}
+				const auto* hierarchy = FindIn<Hierarchy>(*slots_[entity.index].data);
+				inputs.push_back({entity, hierarchy ? hierarchy->parent : Entity{}});
 			}
 
 			// 検証と確保が全て成功した値だけを公開し、失敗時は未構築のまま保つ。
@@ -863,6 +984,13 @@ namespace KT::World
 		// 空きslotの取得は定数時間。確保失敗時はfree listを消費しない。
 		const auto index = freeSlots_.empty() ? CheckedIndex(slots_.size()) : freeSlots_.back();
 		ReserveUndo(1);
+		// 生存・型別索引の確保が全て成功するまで、slotと所有実体を公開しない。
+		liveEntities_.Prepare(index);
+		for (const auto& [type, component] : data->components)
+		{
+			(void)component;
+			PrepareComponentIndex(index, type);
+		}
 		// 作業索引の追加領域も、slotやfree listを変更する前に確保する。
 		if (hierarchyBatch_ && index >= hierarchyBatch_->links.size())
 		{
@@ -907,6 +1035,12 @@ namespace KT::World
 		}
 		slots_[index].data = std::move(data);
 		slots_[index].lastIssuedGeneration = slots_[index].generation;
+		liveEntities_.Add(At(index));
+		for (const auto& [type, component] : slots_[index].data->components)
+		{
+			(void)component;
+			componentIndexes_.find(type)->second.Add(At(index));
+		}
 		++count_;
 		if (hierarchyBatch_)
 		{
@@ -1008,6 +1142,13 @@ namespace KT::World
 				additions.emplace(typeid(LocalTransform), std::make_unique<ComponentBox<LocalTransform>>(local));
 			}
 
+			// 二型の所属領域も全て準備し、後半の確保失敗で片方だけ公開しない。
+			for (const auto& [type, component] : additions)
+			{
+				(void)component;
+				PrepareComponentIndex(child.index, type);
+			}
+
 			// type_indexの比較は例外を送出せず、node移動・値代入は確保を伴わない。
 			ReserveUndo(additions.size());
 			if (hierarchy)
@@ -1024,11 +1165,11 @@ namespace KT::World
 			data.components.merge(additions);
 			if (!hierarchy)
 			{
-				RecordAdded(data, typeid(Hierarchy));
+				RecordAdded(child, data, typeid(Hierarchy));
 			}
 			if (!transform)
 			{
-				RecordAdded(data, typeid(LocalTransform));
+				RecordAdded(child, data, typeid(LocalTransform));
 			}
 			if (hierarchy)
 			{
@@ -1059,9 +1200,10 @@ namespace KT::World
 		}
 		else
 		{
+			PrepareComponentIndex(child.index, typeid(Hierarchy));
 			ReserveUndo(1);
 			data.components.emplace(typeid(Hierarchy), std::make_unique<ComponentBox<Hierarchy>>(parent));
-			RecordAdded(data, typeid(Hierarchy));
+			RecordAdded(child, data, typeid(Hierarchy));
 		}
 		if (oldParent != parent)
 		{
@@ -1141,6 +1283,12 @@ namespace KT::World
 	{
 		// Entityを失効させる。更新中の実体解放は成功確定まで延期する。
 		auto& slot = slots_[entity.index];
+		for (const auto& [type, component] : slot.data->components)
+		{
+			(void)component;
+			componentIndexes_.find(type)->second.Remove(entity);
+		}
+		liveEntities_.Remove(entity);
 		const auto* identity = FindIn<PersistentId>(*slot.data);
 		if (transaction_)
 		{

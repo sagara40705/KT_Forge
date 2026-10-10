@@ -5,6 +5,7 @@
 #include <World/Scene/ObjectIdentity.h>
 #include <World/Scene/RollbackState.h>
 #include <algorithm>
+#include <array>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -12,6 +13,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <type_traits>
 #include <typeindex>
@@ -81,6 +83,24 @@ namespace KT::World
 	class World : private KT::Core::NonCopyable
 	{
 	private:
+		// Entityの所属だけを保持するdense/sparse索引。Componentの所有・アドレスは変えない。
+		struct EntityIndex
+		{
+			// 生存する完全なhandleと、slotからdense位置への逆引き。
+			std::vector<Entity> dense;
+			std::vector<std::uint32_t> sparse;
+			// swap削除に依存しない公開順。所属変更時だけslot順へ整列する。
+			mutable std::vector<Entity> ordered;
+			mutable bool orderDirty = false;
+
+			// 追加前に全領域を確保し、削除・復元・列挙では新規確保しない。
+			void Prepare(std::uint32_t slot);
+			void Add(Entity entity) noexcept;
+			void Remove(Entity entity) noexcept;
+			[[nodiscard]] bool Contains(Entity entity) const noexcept;
+			[[nodiscard]] const std::vector<Entity>& Ordered() const noexcept;
+		};
+
 		// 型を消した所有先から、実際のcomponentのデストラクタを呼ぶ基底。
 		struct ComponentBase
 		{
@@ -157,6 +177,8 @@ namespace KT::World
 			std::uint64_t generation = 0;
 			// Add/Remove/CpuChangesの対象。削除されてもjournal内で実体を保持する。
 			EntityData* data = nullptr;
+			// Add/Removeの所属復元に使う完全なhandle。slot再利用と区別する。
+			Entity entity;
 			// CpuChangesで戻す世代。借用済み印はComponent実体に保持して戻さない。
 			CpuChangeVersions previousCpuVersions;
 			// 追加したcomponentを逆操作で取り除く型。
@@ -304,7 +326,9 @@ namespace KT::World
 
 		template <ComponentType T> [[nodiscard]] bool HasComponent(Entity entity) const
 		{
-			return FindComponent<T>(entity) != nullptr;
+			RequireReadable();
+			const auto* index = FindComponentIndex(typeid(T));
+			return index && index->Contains(entity);
 		}
 
 		// Get・Removeは失効・別Worldにinvalid_argument、型なしにout_of_range。
@@ -357,10 +381,13 @@ namespace KT::World
 				ReserveUndo(1);
 				auto& action = transaction_->actions.emplace_back(UndoAction::Kind::Remove);
 				action.data = slots_[entity.index].data.get();
+				action.entity = entity;
 				action.removed = components.extract(componentIterator);
+				componentIndexes_.find(typeid(T))->second.Remove(entity);
 			}
 			else
 			{
+				componentIndexes_.find(typeid(T))->second.Remove(entity);
 				components.erase(componentIterator);
 			}
 		}
@@ -372,21 +399,26 @@ namespace KT::World
 			requires(sizeof...(Ts) > 0 && std::invocable<Fn&, Entity, BorrowedComponent<Ts>&...>)
 		void ForEach(Fn&& callback)
 		{
-			// 列挙中の構造変更を禁止し、生存スロットを順に調べる。
+			// 最少件数の型を候補にし、残る型の所属を定数時間で照合する。
 			EnumerationGuard guard(*this);
-
-			for (std::size_t index = 0; index < slots_.size(); ++index)
+			const std::array<const EntityIndex*, sizeof...(Ts)> indexes{FindComponentIndex(typeid(Ts))...};
+			const auto* candidates = SmallestIndex(indexes);
+			if (!candidates)
 			{
-				if (!slots_[index].data)
-				{
-					continue;
-				}
+				return;
+			}
 
-				auto& data = *slots_[index].data;
-				if ((FindIn<Ts>(data) && ...))
+			for (const auto entity : candidates->Ordered())
+			{
+				if (std::all_of(indexes.begin(), indexes.end(),
+					[entity](const EntityIndex* index)
+					{
+						return index->Contains(entity);
+					}))
 				{
+					auto& data = *slots_[entity.index].data;
 					(MarkMutableBorrow<Ts>(data), ...);
-					std::invoke(callback, At(index), static_cast<BorrowedComponent<Ts>&>(*FindIn<Ts>(data))...);
+					std::invoke(callback, entity, static_cast<BorrowedComponent<Ts>&>(*FindIn<Ts>(data))...);
 				}
 			}
 		}
@@ -395,20 +427,25 @@ namespace KT::World
 			requires(sizeof...(Ts) > 0 && std::invocable<Fn&, Entity, const Ts&...>)
 		void ForEach(Fn&& callback) const
 		{
-			// 列挙中の構造変更を禁止し、生存スロットを順に調べる。
+			// const列挙も同じ所属索引とslot順を使い、Component実体は読み取るだけにする。
 			EnumerationGuard guard(*this);
-
-			for (std::size_t index = 0; index < slots_.size(); ++index)
+			const std::array<const EntityIndex*, sizeof...(Ts)> indexes{FindComponentIndex(typeid(Ts))...};
+			const auto* candidates = SmallestIndex(indexes);
+			if (!candidates)
 			{
-				if (!slots_[index].data)
-				{
-					continue;
-				}
+				return;
+			}
 
-				const auto& data = std::as_const(*slots_[index].data);
-				if ((FindIn<Ts>(data) && ...))
+			for (const auto entity : candidates->Ordered())
+			{
+				if (std::all_of(indexes.begin(), indexes.end(),
+					[entity](const EntityIndex* index)
+					{
+						return index->Contains(entity);
+					}))
 				{
-					std::invoke(callback, At(index), *FindIn<Ts>(data)...);
+					const auto& data = std::as_const(*slots_[entity.index].data);
+					std::invoke(callback, entity, *FindIn<Ts>(data)...);
 				}
 			}
 		}
@@ -433,10 +470,11 @@ namespace KT::World
 			// 構築と記録領域の確保後に登録し、CPU入力の変更世代も通知する。
 			auto componentBox = std::make_unique<ComponentBox<T>>(std::forward<Args>(args)...);
 			auto* value = std::addressof(componentBox->value);
+			PrepareComponentIndex(entity.index, type);
 			NotifyCpuComponent<T>(data);
 			ReserveUndo(1);
 			data.components.emplace(type, std::move(componentBox));
-			RecordAdded(data, type);
+			RecordAdded(entity, data, type);
 			if (mutableBorrow)
 			{
 				MarkMutableBorrow<T>(data);
@@ -489,7 +527,11 @@ namespace KT::World
 		void ReserveValues(std::size_t count);
 		// 生存数の最大値までbucketを確保し、rollback中のrehashを防ぐ。
 		void ReserveUuidIndex(std::size_t count);
-		void RecordAdded(EntityData& data, std::type_index type) noexcept;
+		// 型索引を準備した後でだけComponentを公開する。空の型索引も容量ごと保持する。
+		void PrepareComponentIndex(std::uint32_t slot, std::type_index type);
+		const EntityIndex* FindComponentIndex(std::type_index type) const noexcept;
+		static const EntityIndex* SmallestIndex(std::span<const EntityIndex* const> indexes) noexcept;
+		void RecordAdded(Entity entity, EntityData& data, std::type_index type) noexcept;
 		void BackupScript(ScriptBehaviour& script);
 
 		template <ComponentType T> void BackupComponent(Entity entity)
@@ -578,6 +620,10 @@ namespace KT::World
 		std::vector<Slot> slots_{};
 		// 再利用できるindexを保持し、末尾から定数時間で取得する。
 		std::vector<std::uint32_t> freeSlots_{};
+		// 空きslotを走査せず生存handleを列挙する。削除後も復元用の容量を保つ。
+		EntityIndex liveEntities_;
+		// 型ごとの所属。索引は実体を所有せず、構造journalと同時に戻す。
+		std::map<std::type_index, EntityIndex> componentIndexes_;
 		// 永続UUIDの派生索引。生成・削除と同じjournalで復元し、列挙順には使わない。
 		UuidIndex uuidIndex_;
 		// reserve済みの要素数。削除で縮めず、復元時の最大生存数を収容する。
