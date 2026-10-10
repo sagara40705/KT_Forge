@@ -38,6 +38,7 @@ namespace KT::World
 
 	void Scene::RequireValueEditing() const
 	{
+		world_.RequireReadable();
 		if (state_ == State::Failed || (state_ == State::Updating && !gamePhase_))
 		{
 			throw std::logic_error("Sceneの失敗後、またはゲーム更新以外の更新処理中はcomponentを編集できません。");
@@ -72,13 +73,14 @@ namespace KT::World
 			throw std::overflow_error("Sceneの更新番号が上限に達しました。");
 		}
 
-		// 更新中は旧結果を公開しない。変更は巻き戻さず、失敗後の通常更新を止める。
+		// 更新中は旧結果を隠して保持し、今回の結果が完成するまで変更を仮反映する。
 		state_ = State::Updating;
-		snapshot_.reset();
+		auto previousSnapshot = std::move(snapshot_);
 		commandResults_ = {};
 		++updateNumber_;
 		try
 		{
+			world_.BeginTransaction();
 			// 開始境界の予約を反映し、今回のゲーム更新で使う固定CPU入力を作る。
 			commandResults_[0] = commands_.Flush();
 			if (!commandResults_[0].Succeeded())
@@ -93,11 +95,17 @@ namespace KT::World
 			for (const auto& entity : input->GetTransforms())
 			{
 				const auto* component = world_.FindComponent<ScriptComponent>(entity.entity);
-				if (entity.active.value && component)
+				if (component)
 				{
 					for (const auto& entry : component->entries_)
 					{
-						if (entry.definition.enabled && entry.instance)
+						// 無効なものも含め、ゲーム処理で参照できる全実体を更新前に捕捉する。
+						// 開始反映で除去した実体は未更新のままjournalが保持している。
+						if (entry.instance)
+						{
+							world_.BackupScript(*entry.instance);
+						}
+						if (entity.active.value && entry.definition.enabled && entry.instance)
 						{
 							scripts.emplace_back(entity.entity, entry.instance.get());
 						}
@@ -128,17 +136,31 @@ namespace KT::World
 				std::rethrow_exception(commandResults_[1].error);
 			}
 
-			snapshot_ = ComputeCpu(updateNumber_);
+			auto completedSnapshot = ComputeCpu(updateNumber_);
+			world_.CommitTransaction();
+			snapshot_ = std::move(completedSnapshot);
 			state_ = State::Ready;
 			return *snapshot_;
 		}
 		catch (...)
 		{
-			// Worldの適用済み変更を保持し、未反映予約を捨てて通常更新を止める。
+			// 元の実体・値・CPU結果を戻す。失敗中の予約は捨て、再開は明示操作に限定する。
+			const auto updateError = std::current_exception();
 			gamePhase_ = false;
 			gameInput_ = nullptr;
 			state_ = State::Failed;
 			commands_.accepting_ = false;
+			world_.RollbackTransaction();
+			snapshot_ = std::move(previousSnapshot);
+			for (auto& result : commandResults_)
+			{
+				result.rolledBack = true;
+				result.created.clear();
+				if (!result.error)
+				{
+					result.error = updateError;
+				}
+			}
 			commands_.Discard();
 			throw;
 		}
@@ -186,6 +208,7 @@ namespace KT::World
 	void Scene::ResetAfterFailure()
 	{
 		// 失敗状態からだけ復旧し、次のUpdateでWorldを再検証する。
+		world_.RequireReadable();
 		if (state_ != State::Failed || commands_.flushing_)
 		{
 			throw std::logic_error("Sceneが失敗状態でないか予約の反映中のため、ResetAfterFailureを実行できません。");
@@ -212,6 +235,7 @@ namespace KT::World
 		{
 			snapshot_.reset();
 		}
+		world_.BackupComponent<ScriptComponent>(entity);
 		component->entries_[scriptIndex].definition.enabled = enabled;
 	}
 }

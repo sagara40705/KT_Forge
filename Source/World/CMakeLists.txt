@@ -1,4 +1,5 @@
 target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/RollbackState.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/SceneValue.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/SceneValue.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/ComponentRegistry.h"

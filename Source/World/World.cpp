@@ -1,5 +1,6 @@
 #include <World/World.h>
 #include <World/Scene/Hierarchy.h>
+#include <World/Scene/ScriptComponent.h>
 #include <World/Systems/HierarchySystem.h>
 #include <World/Systems/ActivationSystem.h>
 #include <World/Systems/TransformSystem.h>
@@ -238,6 +239,149 @@ namespace KT::World
 		slots_.clear();
 	}
 
+	void World::BeginTransaction()
+	{
+		RequireStructuralChange();
+		if (transaction_)
+		{
+			throw std::logic_error("Worldの更新transactionが既に開始されています。");
+		}
+
+		// 空き順序と既存実体の識別だけを捕捉し、Worldの所有構造はコピーしない。
+		auto transaction = std::make_unique<Transaction>();
+		transaction->initialSlotCount = slots_.size();
+		transaction->freeSlots = freeSlots_;
+		transaction->freeSlots.reserve(slots_.size());
+		for (const auto& slot : slots_)
+		{
+			if (slot.data)
+			{
+				for (const auto& [type, component] : slot.data->components)
+				{
+					(void)type;
+					transaction->originalComponents.push_back(component.get());
+				}
+			}
+		}
+		transaction_ = std::move(transaction);
+	}
+
+	void World::ReserveUndo(std::size_t count)
+	{
+		if (!transaction_)
+		{
+			return;
+		}
+		auto& actions = transaction_->actions;
+		if (count > actions.max_size() - actions.size())
+		{
+			throw std::overflow_error("Worldの構造変更復元記録が上限を超えます。");
+		}
+		if (actions.capacity() < actions.size() + count)
+		{
+			const auto increment = (std::min)(actions.capacity() / 2 + 1, actions.max_size() - actions.capacity());
+			actions.reserve((std::max)(actions.size() + count, actions.capacity() + increment));
+		}
+	}
+
+	void World::RecordAdded(EntityData& data, std::type_index type) noexcept
+	{
+		if (transaction_)
+		{
+			auto& action = transaction_->actions.emplace_back(UndoAction::Kind::Add);
+			action.data = &data;
+			action.type = type;
+		}
+	}
+
+	bool World::IsOriginalComponent(ComponentBase* component) const noexcept
+	{
+		return transaction_ && std::find(transaction_->originalComponents.begin(), transaction_->originalComponents.end(), component) !=
+			transaction_->originalComponents.end();
+	}
+
+	void World::BackupScript(ScriptBehaviour& script)
+	{
+		MutationGuard guard(*this);
+		transaction_->values.reserve(transaction_->values.size() + 1);
+		auto saved = script.CaptureRollback();
+		if (!saved)
+		{
+			throw std::logic_error(std::string("ScriptのCaptureRollbackが復元記録を返しませんでした: ") + typeid(script).name());
+		}
+		transaction_->values.push_back(std::move(saved));
+	}
+
+	void World::CommitTransaction() noexcept
+	{
+		mutating_ = true;
+		// 復元記録の借用先を保持したまま記録を破棄し、削除実体は操作順で解放する。
+		transaction_->values.clear();
+		for (auto& action : transaction_->actions)
+		{
+			action.destroyed.reset();
+			action.removed = {};
+		}
+		transaction_.reset();
+		mutating_ = false;
+	}
+
+	void World::RollbackTransaction() noexcept
+	{
+		if (!transaction_)
+		{
+			return;
+		}
+		mutating_ = true;
+
+		// 削除した実体も生存している間に値を戻し、構造を逆順で復元する。
+		for (auto iterator = transaction_->values.rbegin(); iterator != transaction_->values.rend(); ++iterator)
+		{
+			(*iterator)->Restore();
+		}
+		transaction_->values.clear();
+		for (auto iterator = transaction_->actions.rbegin(); iterator != transaction_->actions.rend(); ++iterator)
+		{
+			auto& action = *iterator;
+			switch (action.kind)
+			{
+			case UndoAction::Kind::Create:
+				slots_[action.index].data.reset();
+				slots_[action.index].generation = NextGeneration(slots_[action.index].lastIssuedGeneration);
+				--count_;
+				break;
+			case UndoAction::Kind::Destroy:
+				slots_[action.index].data = std::move(action.destroyed);
+				slots_[action.index].generation = action.generation;
+				++count_;
+				break;
+			case UndoAction::Kind::Add:
+				action.data->components.erase(action.type);
+				break;
+			case UndoAction::Kind::Remove:
+				action.data->components.insert(std::move(action.removed));
+				break;
+			}
+		}
+
+		// 発行した世代は消費したままにし、失敗中のhandleが再び有効になるのを防ぐ。
+		auto& restoredFreeSlots = transaction_->freeSlots;
+		std::erase_if(restoredFreeSlots, [this](std::uint32_t index)
+			{
+				return slots_[index].generation == 0;
+			});
+		for (std::size_t index = transaction_->initialSlotCount; index < slots_.size(); ++index)
+		{
+			if (slots_[index].generation != 0)
+			{
+				restoredFreeSlots.push_back(static_cast<std::uint32_t>(index));
+			}
+		}
+		freeSlots_.swap(restoredFreeSlots);
+		transaction_.reset();
+		mutating_ = false;
+	}
+
 	void World::RequireReadable() const
 	{
 		if (mutating_)
@@ -394,6 +538,7 @@ namespace KT::World
 	{
 		// 空きslotの取得は定数時間。確保失敗時はfree listを消費しない。
 		const auto index = freeSlots_.empty() ? CheckedIndex(slots_.size()) : freeSlots_.back();
+		ReserveUndo(1);
 		if (freeSlots_.empty())
 		{
 			// 各slotを破棄時に確保なしで戻せる容量を、作成時に用意する。
@@ -403,6 +548,10 @@ namespace KT::World
 				const auto growth = freeSlots_.capacity() + freeSlots_.capacity() / 2 + 1;
 				freeSlots_.reserve((std::max)(required, growth));
 			}
+			if (transaction_)
+			{
+				transaction_->freeSlots.reserve(required);
+			}
 			slots_.emplace_back();
 		}
 		else
@@ -410,7 +559,13 @@ namespace KT::World
 			freeSlots_.pop_back();
 		}
 
+		if (transaction_)
+		{
+			auto& action = transaction_->actions.emplace_back(UndoAction::Kind::Create);
+			action.index = index;
+		}
 		slots_[index].data = std::move(data);
+		slots_[index].lastIssuedGeneration = slots_[index].generation;
 		++count_;
 		return At(index);
 	}
@@ -482,7 +637,24 @@ namespace KT::World
 			}
 
 			// type_indexの比較は例外を送出せず、node移動・値代入は確保を伴わない。
+			ReserveUndo(additions.size());
+			if (hierarchy)
+			{
+				BackupComponent<Hierarchy>(child);
+			}
+			if (transform)
+			{
+				BackupComponent<LocalTransform>(child);
+			}
 			data.components.merge(additions);
+			if (!hierarchy)
+			{
+				RecordAdded(data, typeid(Hierarchy));
+			}
+			if (!transform)
+			{
+				RecordAdded(data, typeid(LocalTransform));
+			}
 			if (hierarchy)
 			{
 				hierarchy->parent = parent;
@@ -499,11 +671,14 @@ namespace KT::World
 		auto& data = *slots_[child.index].data;
 		if (auto* hierarchy = FindIn<Hierarchy>(data))
 		{
+			BackupComponent<Hierarchy>(child);
 			hierarchy->parent = parent;
 		}
 		else
 		{
+			ReserveUndo(1);
 			data.components.emplace(typeid(Hierarchy), std::make_unique<ComponentBox<Hierarchy>>(parent));
+			RecordAdded(data, typeid(Hierarchy));
 		}
 	}
 
@@ -544,6 +719,7 @@ namespace KT::World
 		}
 
 		destroyed.reserve(destroyed.size() + subtree.size());
+		ReserveUndo(subtree.size());
 
 		// 対象を逆順に破棄し、子のcomponentを親より先に破棄する。
 		MutationGuard guard(*this);
@@ -557,12 +733,22 @@ namespace KT::World
 
 	void World::DestroySlot(Entity entity) noexcept
 	{
-		// componentを破棄してから世代を進め、古いEntityを失効させる。
+		// Entityを失効させる。更新中の実体解放は成功確定まで延期する。
 		auto& slot = slots_[entity.index];
-		slot.data.reset();
+		if (transaction_)
+		{
+			auto& action = transaction_->actions.emplace_back(UndoAction::Kind::Destroy);
+			action.index = entity.index;
+			action.generation = slot.generation;
+			action.destroyed = std::move(slot.data);
+		}
+		else
+		{
+			slot.data.reset();
+		}
 
 		// 上限世代のslotは0で退役。古いhandleと一致する世代へ循環させない。
-		slot.generation = NextGeneration(slot.generation);
+		slot.generation = NextGeneration(slot.lastIssuedGeneration);
 		--count_;
 		if (slot.generation != 0)
 		{

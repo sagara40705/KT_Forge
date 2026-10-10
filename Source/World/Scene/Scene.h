@@ -24,6 +24,7 @@ namespace KT::World
 
 		WorldCommandBuffer& Commands();
 		// 開始反映→CPU入力確定→Script・ゲーム更新→終了反映→CPU結果公開の順で行う。
+		// 例外時は一回の更新全体を復元する。予約・更新番号・発行済み世代は消費する。
 		const SceneUpdateContext& Update(double deltaSeconds, const GameUpdate& gameUpdate = {});
 		[[nodiscard]] const SceneUpdateContext& GetSnapshot() const;
 
@@ -51,7 +52,7 @@ namespace KT::World
 			return commandResults_;
 		}
 
-		// 失敗後の再開は明示する。値を修復／予約してから、次Updateで再検証する。
+		// 復元後も再開は明示する。失敗原因を修正してから次Updateで再検証する。
 		void ResetAfterFailure();
 		void SetScriptEnabled(Entity entity, std::size_t scriptIndex, bool enabled);
 
@@ -70,6 +71,7 @@ namespace KT::World
 			++valueEdits_;
 			try
 			{
+				world_.BackupComponent<T>(entity);
 				std::invoke(std::forward<Fn>(edit), world_.GetComponent<T>(entity));
 				--valueEdits_;
 			}
@@ -95,6 +97,8 @@ namespace KT::World
 			{
 				if (entity.active.value && (world_.HasComponent<Ts>(entity.entity) && ...))
 				{
+					// callbackへ可変参照を渡す前に、対象の既存値を全て捕捉する。
+					(BackupEditable<Ts>(entity.entity), ...);
 					std::invoke(update, entity.entity, world_.GetComponent<Ts>(entity.entity)...);
 				}
 			}
@@ -112,6 +116,13 @@ namespace KT::World
 			Failed
 		};
 		void RequireValueEditing() const;
+		template <ComponentType T> void BackupEditable(Entity entity)
+		{
+			if constexpr (!ReadOnlyComponent<T>)
+			{
+				world_.BackupComponent<T>(entity);
+			}
+		}
 		std::unique_ptr<SceneUpdateContext> ComputeCpu(std::uint64_t updateNumber) const;
 
 		// Entity・component・Script実体の唯一の所有先。
@@ -119,7 +130,7 @@ namespace KT::World
 		std::string name_;
 		// 構造変更を所有し、更新の開始・終了境界で順に反映する。
 		WorldCommandBuffer commands_;
-		// 更新が全て成功したCPU結果。値編集や次の更新開始で失効する。
+		// 成功したCPU結果。更新中と失敗後は隠し、rollback後の明示復旧で再公開する。
 		std::unique_ptr<SceneUpdateContext> snapshot_;
 		// 開始境界と終了境界の反映結果を、この順で保持する。
 		std::array<CommandFlushResult, 2> commandResults_;

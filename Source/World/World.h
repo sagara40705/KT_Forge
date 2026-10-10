@@ -2,11 +2,14 @@
 #include <Core/Utility/NonCopyable.h>
 #include <World/Entity.h>
 #include <World/Scene/ObjectIdentity.h>
+#include <World/Scene/RollbackState.h>
+#include <algorithm>
 #include <concepts>
 #include <cstddef>
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <typeindex>
@@ -17,6 +20,7 @@ namespace KT::World
 {
 	struct Hierarchy;
 	class ScriptComponent;
+	class ScriptBehaviour;
 	class WorldCommandBuffer;
 	class Scene;
 
@@ -80,8 +84,57 @@ namespace KT::World
 		{
 			// 世代が上限に達したスロットは0として再利用しない。
 			std::uint64_t generation = 1;
+			// rollback後も発行済み世代を再利用しない。生存中のgenerationと区別する。
+			std::uint64_t lastIssuedGeneration = 0;
 			// 生存中だけデータを所有する。空なら未使用または退役済み。
 			std::unique_ptr<EntityData> data{};
+		};
+
+		// 構造変更の逆操作と、削除した実体・map nodeを成功確定まで所有する。
+		struct UndoAction
+		{
+			// 記録順の構造変更に対応する逆操作。
+			enum class Kind
+			{
+				Create,
+				Destroy,
+				Add,
+				Remove
+			};
+			Kind kind;
+			// Create/Destroyで変更したslot。
+			std::uint32_t index = 0;
+			// 削除したEntityを同じ世代で復元するための値。
+			std::uint64_t generation = 0;
+			// Add/Removeの対象。Entityが削除されてもjournal内で実体を保持する。
+			EntityData* data = nullptr;
+			// 追加したcomponentを逆操作で取り除く型。
+			std::type_index type{typeid(void)};
+			// 破棄を仮反映したEntityの、元の所有実体。
+			std::unique_ptr<EntityData> destroyed;
+			// 削除を仮反映したcomponentの、元のmap node。
+			std::map<std::type_index, std::unique_ptr<ComponentBase>>::node_type removed;
+
+			explicit UndoAction(Kind actionKind) noexcept
+				: kind(actionKind)
+			{
+			}
+		};
+
+		// 一回のScene更新を戻すための構造・値の記録。World自体はコピーしない。
+		struct Transaction
+		{
+			std::size_t initialSlotCount = 0;
+			// 更新開始前の空き順序。新規slotも確保なしで戻せる容量を用意する。
+			std::vector<std::uint32_t> freeSlots;
+			// 新規componentの値は実体破棄で戻せるため、既存componentだけを捕捉する。
+			std::vector<ComponentBase*> originalComponents;
+			// 値編集前の捕捉が完了したcomponentの識別値。
+			std::vector<ComponentBase*> capturedComponents;
+			// 元の実体を借用する、値とScript内部状態の復元記録。
+			std::vector<std::unique_ptr<RollbackState>> values;
+			// 逆順で取り消す構造変更。削除した実体の所有もここへ移す。
+			std::vector<UndoAction> actions;
 		};
 
 		// 構造変更の間だけ再入を拒否し、例外時も変更中の状態を解除する。
@@ -149,7 +202,9 @@ namespace KT::World
 			// 構築に成功したcomponentだけを登録する。
 			auto componentBox = std::make_unique<ComponentBox<T>>(std::forward<Args>(args)...);
 			auto* value = std::addressof(componentBox->value);
+			ReserveUndo(1);
 			components.emplace(type, std::move(componentBox));
+			RecordAdded(*slots_[entity.index].data, type);
 
 			return *value;
 		}
@@ -215,7 +270,17 @@ namespace KT::World
 				throw std::out_of_range("要求したcomponentがありません。");
 			}
 
-			components.erase(componentIterator);
+			if (transaction_)
+			{
+				ReserveUndo(1);
+				auto& action = transaction_->actions.emplace_back(UndoAction::Kind::Remove);
+				action.data = slots_[entity.index].data.get();
+				action.removed = components.extract(componentIterator);
+			}
+			else
+			{
+				components.erase(componentIterator);
+			}
 		}
 
 		// 要求型をすべて持つEntityをスロット順に列挙する。型なしはコンパイル時に拒否する。
@@ -268,6 +333,62 @@ namespace KT::World
 	private:
 		friend class WorldCommandBuffer;
 		friend class Scene;
+		void BeginTransaction();
+		void CommitTransaction() noexcept;
+		void RollbackTransaction() noexcept;
+		void ReserveUndo(std::size_t count);
+		void RecordAdded(EntityData& data, std::type_index type) noexcept;
+		bool IsOriginalComponent(ComponentBase* component) const noexcept;
+		void BackupScript(ScriptBehaviour& script);
+
+		template <ComponentType T> void BackupComponent(Entity entity)
+		{
+			RequireAlive(entity);
+			auto& data = *slots_[entity.index].data;
+			const auto iterator = data.components.find(typeid(T));
+			if (iterator == data.components.end())
+			{
+				throw std::out_of_range("復元値を捕捉するComponentがありません。");
+			}
+			auto* component = iterator->second.get();
+			if (!IsOriginalComponent(component) ||
+				std::find(transaction_->capturedComponents.begin(), transaction_->capturedComponents.end(), component) !=
+					transaction_->capturedComponents.end())
+			{
+				return;
+			}
+
+			// SetParentの構造変更中も使う。捕捉callbackからの再入は拒否する。
+			std::optional<MutationGuard> guard;
+			if (!mutating_)
+			{
+				guard.emplace(*this);
+			}
+			transaction_->capturedComponents.reserve(transaction_->capturedComponents.size() + 1);
+			transaction_->values.reserve(transaction_->values.size() + 1);
+			auto& value = static_cast<ComponentBox<T>&>(*component).value;
+			std::unique_ptr<RollbackState> saved;
+
+			// 値編集でだけ復元を要求する。非copy型の構造変更にはコピーを要求しない。
+			if constexpr (requires(T& target) { { target.CaptureRollback() } -> std::same_as<std::unique_ptr<RollbackState>>; })
+			{
+				saved = value.CaptureRollback();
+			}
+			else if constexpr (std::is_copy_constructible_v<T> && std::is_nothrow_swappable_v<T>)
+			{
+				saved = std::make_unique<ValueRollback<T>>(value);
+			}
+			else
+			{
+				throw std::logic_error(std::string("Component値の編集にはCaptureRollbackの実装が必要です: ") + typeid(T).name());
+			}
+			if (!saved)
+			{
+				throw std::logic_error(std::string("ComponentのCaptureRollbackが復元記録を返しませんでした: ") + typeid(T).name());
+			}
+			transaction_->values.push_back(std::move(saved));
+			transaction_->capturedComponents.push_back(component);
+		}
 		Entity CreateSceneEntity(ObjectUuid uuid, std::string name);
 		Entity PublishEntity(std::unique_ptr<EntityData> data);
 		void DestroyEntity(Entity entity, std::vector<Entity>& destroyed);
@@ -307,5 +428,7 @@ namespace KT::World
 		mutable std::size_t enumerations_ = 0;
 		// componentの構築・破棄を含む構造変更中は、読み取りも拒否する。
 		bool mutating_ = false;
+		// Scene更新中だけ存在する。復元用領域は変更前に確保する。
+		std::unique_ptr<Transaction> transaction_;
 	};
 }

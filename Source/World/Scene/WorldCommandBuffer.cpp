@@ -28,6 +28,10 @@ namespace KT::World
 
 	Entity CommandFlushResult::Resolve(DeferredEntity reservation) const
 	{
+		if (rolledBack)
+		{
+			throw std::invalid_argument("Scene更新を復元したため、この生成予約のEntityは取得できません。");
+		}
 		for (const auto& entry : created)
 		{
 			if (entry.reservation == reservation)
@@ -118,6 +122,7 @@ namespace KT::World
 
 	void WorldCommandBuffer::RequireAccepting() const
 	{
+		world_.RequireReadable();
 		if (!accepting_ || flushing_)
 		{
 			throw std::logic_error("予約の反映・破棄中、または受付停止中はWorldCommandBufferへコマンドを追加できません。");
@@ -229,7 +234,7 @@ namespace KT::World
 		}
 		catch (...)
 		{
-			// 適用済みの変更を保持し、最初の失敗位置と例外を記録する。
+			// 最初の失敗位置を記録する。Sceneはこの境界を含む更新全体を戻す。
 			context.result.failedCommand = index;
 			context.result.error = std::current_exception();
 			accepting_ = false;

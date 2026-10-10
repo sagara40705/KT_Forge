@@ -49,23 +49,25 @@ namespace KT::World
 		Entity entity;
 	};
 
-	// 適用済み変更は保持する。失敗した操作と残りは廃棄し、再実行しない。
+	// 境界ごとの実行診断。変更の確定はSceneの更新全体が成功したときに行う。
 	struct CommandFlushResult
 	{
 		// この反映で生成できたEntity。後続の削除で失効する場合がある。
 		std::vector<CreatedEntity> created;
-		// 状態変更まで完了したコマンド数。
+		// 状態変更まで実行したコマンド数。rolledBack時は変更が残っていない。
 		std::size_t applied = 0;
 		// 同じ反映内ですでに破棄したEntityへの重複削除数。
 		std::size_t skipped = 0;
 		// 失敗したコマンド位置。事前確保の失敗は先頭位置として記録する。
 		std::optional<std::size_t> failedCommand;
-		// 反映を止めた例外を保持し、Sceneへ伝える。
+		// 反映の例外。rolledBack時は、この反映またはScene更新全体の失敗原因を保持する。
 		std::exception_ptr error;
+		// Scene更新の失敗で、この境界の変更も全て戻したことを表す。
+		bool rolledBack = false;
 
 		[[nodiscard]] bool Succeeded() const noexcept
 		{
-			return !error;
+			return !error && !rolledBack;
 		}
 
 		[[nodiscard]] Entity Resolve(DeferredEntity reservation) const;

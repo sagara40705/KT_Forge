@@ -1,6 +1,7 @@
 #pragma once
 #include <World/Entity.h>
 #include <World/Scene/ObjectIdentity.h>
+#include <World/Scene/RollbackState.h>
 #include <map>
 #include <memory>
 #include <variant>
@@ -31,6 +32,9 @@ namespace KT::World
 	{
 	public:
 		virtual ~ScriptBehaviour() = default;
+		// 内部状態を変更せず捕捉する。未実装・nullptrは更新前に拒否する。
+		// 無状態でもStatelessRollbackを明示的に返す。外部副作用の復元は実装側の責務。
+		virtual std::unique_ptr<RollbackState> CaptureRollback();
 		virtual void Update(Scene& scene, Entity entity, double deltaSeconds, const SceneUpdateContext& input) = 0;
 	};
 
@@ -47,6 +51,8 @@ namespace KT::World
 	{
 	public:
 		explicit ScriptComponent(std::vector<ScriptEntry> entries);
+		// Sceneが変更できるenabled値だけを捕捉する。実体の内部状態は別に捕捉する。
+		std::unique_ptr<RollbackState> CaptureRollback();
 
 		[[nodiscard]] const std::vector<ScriptEntry>& Entries() const noexcept
 		{
