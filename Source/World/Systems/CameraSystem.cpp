@@ -11,18 +11,11 @@ namespace KT::World
 		std::optional<CameraViewData> cameraView;
 		if (cameraEntity)
 		{
-			// 指定Cameraを捕捉済みの入力から探す。
-			std::size_t cameraIndex = NoParent;
-			for (std::size_t inputIndex = 0; inputIndex < context.inputs_.size(); ++inputIndex)
-			{
-				if (context.inputs_[inputIndex].entity == *cameraEntity)
-				{
-					cameraIndex = inputIndex;
-				}
-			}
+			// 捕捉済みの索引でCameraのWorld・slot・世代を照合する。
+			const auto cameraIndex = context.hierarchy_->FindNode(*cameraEntity);
 
 			// Cameraの生存・有効状態と、描画に必要な入力を検査する。
-			if (cameraIndex == NoParent || !context.active_[cameraIndex])
+			if (!context.active_[cameraIndex])
 			{
 				throw std::invalid_argument("指定したCameraのEntityが捕捉結果にないか、無効状態です。");
 			}
@@ -35,7 +28,7 @@ namespace KT::World
 
 			// Cameraと祖先の拡縮を拒否し、viewの前提をそろえる。
 			for (auto ancestorIndex = cameraIndex; ancestorIndex != NoParent;
-				ancestorIndex = context.hierarchy_.nodes[ancestorIndex].parent)
+				ancestorIndex = context.hierarchy_->nodes[ancestorIndex].parent)
 			{
 				const auto scale = context.inputs_[ancestorIndex].local.scale;
 				if (scale.x != 1 || scale.y != 1 || scale.z != 1)

@@ -1,49 +1,53 @@
 #include <World/Systems/HierarchySystem.h>
-#include <map>
+#include <algorithm>
 #include <stdexcept>
-#include <utility>
 
 namespace KT::World
 {
-	HierarchySnapshot HierarchySystem::Build(std::span<const SceneEntityInput> inputs, std::optional<std::pair<Entity, Entity>> replacement)
+	HierarchySnapshot HierarchySystem::Build(std::span<const HierarchyInput> inputs)
 	{
 		// Entityのスロットindexと、今回のノードindexを対応付ける。
 		HierarchySnapshot snapshot;
-		std::map<std::uint32_t, std::size_t> nodeByEntityIndex;
 		snapshot.nodes.reserve(inputs.size());
 		snapshot.parentFirst.reserve(inputs.size());
+		std::size_t slotCount = 0;
 		for (const auto& input : inputs)
 		{
-			nodeByEntityIndex.emplace(input.entity.index, snapshot.nodes.size());
+			if (!input.entity.IsValid())
+			{
+				throw std::invalid_argument("階層のEntityが無効です。");
+			}
+			slotCount = (std::max)(slotCount, static_cast<std::size_t>(input.entity.index) + 1);
+		}
+		snapshot.nodeByEntityIndex.resize(slotCount, NoParent);
+		for (const auto& input : inputs)
+		{
+			auto& nodeIndex = snapshot.nodeByEntityIndex[input.entity.index];
+			if (nodeIndex != NoParent)
+			{
+				throw std::invalid_argument("階層のEntity slotが重複しています。");
+			}
+			nodeIndex = snapshot.nodes.size();
 			snapshot.nodes.push_back({input.entity, NoParent, {}});
 		}
 
 		// 親の生存と所属を検査し、親子のindexを登録する。
 		for (std::size_t nodeIndex = 0; nodeIndex < inputs.size(); ++nodeIndex)
 		{
-			auto parent = inputs[nodeIndex].hierarchy.parent;
-			if (replacement && replacement->first == inputs[nodeIndex].entity)
-			{
-				parent = replacement->second;
-			}
+			const auto parent = inputs[nodeIndex].parent;
 			if (parent == Entity{})
 			{
 				snapshot.parentFirst.push_back(nodeIndex);
 				continue;
 			}
 
-			const auto parentIterator = nodeByEntityIndex.find(parent.index);
-			if (parentIterator == nodeByEntityIndex.end() || inputs[parentIterator->second].entity != parent)
-			{
-				throw std::invalid_argument("Hierarchy parent is stale, invalid or from another World.");
-			}
+			const auto parentIndex = snapshot.FindNode(parent);
 
 			if (parent == inputs[nodeIndex].entity)
 			{
-				throw std::invalid_argument("Entity cannot be its own parent.");
+				throw std::invalid_argument("Entity自身を階層の親に指定できません。");
 			}
 
-			const auto parentIndex = parentIterator->second;
 			snapshot.nodes[nodeIndex].parent = parentIndex;
 			snapshot.nodes[parentIndex].children.push_back(nodeIndex);
 		}
@@ -59,7 +63,7 @@ namespace KT::World
 
 		if (snapshot.parentFirst.size() != inputs.size())
 		{
-			throw std::invalid_argument("Hierarchy contains a cycle.");
+			throw std::invalid_argument("階層の親子関係が循環しています。");
 		}
 
 		return snapshot;
@@ -72,8 +76,11 @@ namespace KT::World
 
 		try
 		{
-			auto snapshot = Build(context.inputs_);
-			context.hierarchy_ = std::move(snapshot);
+			// 入力と同時にWorldから捕捉したconst階層を再利用し、再構築しない。
+			if (!context.hierarchy_)
+			{
+				throw std::logic_error("CPU入力に検証済みの階層がありません。");
+			}
 			context.stage_ = SceneUpdateContext::Stage::Hierarchy;
 		}
 		catch (...)

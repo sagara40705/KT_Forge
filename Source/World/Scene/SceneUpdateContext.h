@@ -88,8 +88,8 @@ namespace KT::World
 		Viewport viewport_;
 		// 捕捉時のスロット順で保持し、全派生結果のindexと対応させる。
 		std::vector<SceneEntityInput> inputs_;
-		// 検証済みの親子関係と、親から処理する順序。
-		HierarchySnapshot hierarchy_;
+		// 入力と同時に捕捉した親子索引・階層順序。Worldの後続変更とは独立して保持する。
+		std::shared_ptr<const HierarchySnapshot> hierarchy_;
 		// 祖先の有効状態を反映した、Entityごとの最終有効状態。
 		std::vector<bool> active_;
 		// CPU派生結果と、任意のCamera計算結果を所有する。

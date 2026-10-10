@@ -259,6 +259,7 @@ namespace KT::World
 		transaction->initialSlotCount = slots_.size();
 		transaction->freeSlots = freeSlots_;
 		transaction->freeSlots.reserve(slots_.size());
+		transaction->previousHierarchy = hierarchyCache_;
 		transaction_ = std::move(transaction);
 	}
 
@@ -432,6 +433,8 @@ namespace KT::World
 			}
 		}
 		freeSlots_.swap(restoredFreeSlots);
+		// 元の階層とEntity世代を戻してから、更新前の索引を確保なしで再公開する。
+		hierarchyCache_ = std::move(transaction_->previousHierarchy);
 		transaction_.reset();
 		mutating_ = false;
 	}
@@ -611,6 +614,30 @@ namespace KT::World
 		}
 	}
 
+	std::shared_ptr<const HierarchySnapshot> World::GetHierarchy() const
+	{
+		RequireReadable();
+		if (!hierarchyCache_)
+		{
+			// 親だけをslot順で捕捉し、値編集に依存しない派生索引を作る。
+			std::vector<HierarchyInput> inputs;
+			inputs.reserve(count_);
+			for (std::size_t index = 0; index < slots_.size(); ++index)
+			{
+				if (slots_[index].data)
+				{
+					const auto* hierarchy = FindIn<Hierarchy>(*slots_[index].data);
+					inputs.push_back({At(index), hierarchy ? hierarchy->parent : Entity{}});
+				}
+			}
+
+			// 検証と確保が全て成功した値だけを公開し、失敗時は未構築のまま保つ。
+			auto snapshot = std::make_shared<const HierarchySnapshot>(HierarchySystem::Build(inputs));
+			hierarchyCache_ = std::move(snapshot);
+		}
+		return hierarchyCache_;
+	}
+
 	Entity World::PublishEntity(std::unique_ptr<EntityData> data)
 	{
 		// 空きslotの取得は定数時間。確保失敗時はfree listを消費しない。
@@ -656,6 +683,7 @@ namespace KT::World
 		slots_[index].data = std::move(data);
 		slots_[index].lastIssuedGeneration = slots_[index].generation;
 		++count_;
+		hierarchyCache_.reset();
 		return At(index);
 	}
 
@@ -672,9 +700,21 @@ namespace KT::World
 			throw std::invalid_argument("親変更の変換維持方法が不正です。");
 		}
 
-		// 親の置換後の全階層を検証し、循環を作らない。
-		SceneUpdateContext context(*this, std::nullopt, {});
-		(void)HierarchySystem::Build(context.Inputs(), std::pair{child, parent});
+		// 検証済みの親索引で新親の祖先だけを辿り、循環を作る変更を拒否する。
+		const auto topology = GetHierarchy();
+		const auto childIndex = topology->FindNode(child);
+		const auto oldParentIndex = topology->nodes[childIndex].parent;
+		const auto oldParent = oldParentIndex == NoParent ? Entity{} : topology->nodes[oldParentIndex].entity;
+		if (parent != Entity{})
+		{
+			for (auto ancestor = topology->FindNode(parent); ancestor != NoParent; ancestor = topology->nodes[ancestor].parent)
+			{
+				if (ancestor == childIndex)
+				{
+					throw std::invalid_argument("親変更によって階層の親子関係が循環します。");
+				}
+			}
+		}
 
 		if (mode == ParentChangeMode::KeepWorld)
 		{
@@ -686,21 +726,16 @@ namespace KT::World
 			}
 
 			// 現在のWorldを再計算する。予約より前のsnapshotを使わず、先行操作を含める。
+			SceneUpdateContext context(*this, std::nullopt, {});
 			HierarchySystem{}.Update(context);
 			ActivationSystem{}.Update(context);
 			TransformSystem{}.Update(context);
-			KT::Core::Math::Matrix4 oldWorld;
+			const auto& transforms = context.GetTransforms();
+			const auto oldWorld = transforms[childIndex].transform.matrix;
 			KT::Core::Math::Matrix4 parentWorld;
-			for (const auto& finalized : context.GetTransforms())
+			if (parent != Entity{})
 			{
-				if (finalized.entity == child)
-				{
-					oldWorld = finalized.transform.matrix;
-				}
-				if (finalized.entity == parent)
-				{
-					parentWorld = finalized.transform.matrix;
-				}
+				parentWorld = transforms[topology->FindNode(parent)].transform.matrix;
 			}
 
 			const auto localMatrix = KT::Core::Math::Multiply(oldWorld, KT::Core::Math::Inverse(parentWorld));
@@ -752,6 +787,7 @@ namespace KT::World
 			{
 				*transform = local;
 			}
+			hierarchyCache_.reset();
 			return;
 		}
 
@@ -769,6 +805,10 @@ namespace KT::World
 			data.components.emplace(typeid(Hierarchy), std::make_unique<ComponentBox<Hierarchy>>(parent));
 			RecordAdded(data, typeid(Hierarchy));
 		}
+		if (oldParent != parent)
+		{
+			hierarchyCache_.reset();
+		}
 	}
 
 	void World::DestroyEntity(Entity entity)
@@ -783,19 +823,12 @@ namespace KT::World
 		RequireAlive(entity);
 
 		// 全階層を検証し、削除対象の全子孫を親から順に集める。
-		const auto hierarchy = ValidateHierarchy(*this);
+		const auto hierarchy = GetHierarchy();
 		std::vector<std::size_t> subtree;
-		for (std::size_t index = 0; index < hierarchy.nodes.size(); ++index)
-		{
-			if (hierarchy.nodes[index].entity == entity)
-			{
-				subtree.push_back(index);
-				break;
-			}
-		}
+		subtree.push_back(hierarchy->FindNode(entity));
 		for (std::size_t index = 0; index < subtree.size(); ++index)
 		{
-			for (const auto child : hierarchy.nodes[subtree[index]].children)
+			for (const auto child : hierarchy->nodes[subtree[index]].children)
 			{
 				subtree.push_back(child);
 			}
@@ -814,7 +847,7 @@ namespace KT::World
 		MutationGuard guard(*this);
 		for (auto iterator = subtree.rbegin(); iterator != subtree.rend(); ++iterator)
 		{
-			const auto target = hierarchy.nodes[*iterator].entity;
+			const auto target = hierarchy->nodes[*iterator].entity;
 			destroyed.push_back(target);
 			DestroySlot(target);
 		}
@@ -849,6 +882,7 @@ namespace KT::World
 		// 上限世代のslotは0で退役。古いhandleと一致する世代へ循環させない。
 		slot.generation = NextGeneration(slot.lastIssuedGeneration);
 		--count_;
+		hierarchyCache_.reset();
 		if (slot.generation != 0)
 		{
 			freeSlots_.push_back(entity.index);

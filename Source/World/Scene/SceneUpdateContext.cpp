@@ -9,20 +9,18 @@ namespace KT::World
 		  camera_(camera),
 		  viewport_(viewport)
 	{
-		// 生存Entityの入力をコピーし、以降のSystemでWorldを再読取しない。
-		const auto entities = world.Entities();
-		inputs_.reserve(entities.size());
+		// 階層と同じslot順で値を捕捉し、以降のSystemでWorldを再読取しない。
+		hierarchy_ = world.GetHierarchy();
+		inputs_.reserve(hierarchy_->nodes.size());
 
-		for (auto entity : entities)
+		for (const auto& node : hierarchy_->nodes)
 		{
+			const auto entity = node.entity;
 			SceneEntityInput input;
 			input.entity = entity;
 
 			// 任意componentがある場合だけ、既定値を入力で置き換える。
-			if (const auto* hierarchy = world.FindComponent<Hierarchy>(entity))
-			{
-				input.hierarchy = *hierarchy;
-			}
+			input.hierarchy.parent = node.parent == NoParent ? Entity{} : hierarchy_->nodes[node.parent].entity;
 			if (const auto* activeSelf = world.FindComponent<ActiveSelf>(entity))
 			{
 				input.activeSelf = *activeSelf;
@@ -69,7 +67,7 @@ namespace KT::World
 	const HierarchySnapshot& SceneUpdateContext::GetHierarchy() const
 	{
 		RequireAtLeast(Stage::Hierarchy);
-		return hierarchy_;
+		return *hierarchy_;
 	}
 
 	const std::vector<bool>& SceneUpdateContext::GetActivation() const

@@ -13,10 +13,10 @@ namespace KT::World
 		{
 			// 親のWorld行列を先に求め、Local * Parentの順で合成する。
 			std::vector<FinalizedEntity> transforms(context.inputs_.size());
-			for (auto nodeIndex : context.hierarchy_.parentFirst)
+			for (auto nodeIndex : context.hierarchy_->parentFirst)
 			{
 				const auto& input = context.inputs_[nodeIndex];
-				const auto parentIndex = context.hierarchy_.nodes[nodeIndex].parent;
+				const auto parentIndex = context.hierarchy_->nodes[nodeIndex].parent;
 
 				const auto localMatrix = KT::Core::Math::LocalMatrix(input.local.position, input.local.rotation, input.local.scale);
 				transforms[nodeIndex] = {input.entity, {context.active_[nodeIndex]},

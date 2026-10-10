@@ -12,9 +12,9 @@ namespace KT::World
 		{
 			// 親から順に有効状態を計算し、無効な親の子も無効にする。
 			std::vector<bool> activeStates(context.inputs_.size());
-			for (auto nodeIndex : context.hierarchy_.parentFirst)
+			for (auto nodeIndex : context.hierarchy_->parentFirst)
 			{
-				const auto parentIndex = context.hierarchy_.nodes[nodeIndex].parent;
+				const auto parentIndex = context.hierarchy_->nodes[nodeIndex].parent;
 				activeStates[nodeIndex] =
 					context.inputs_[nodeIndex].activeSelf.value && (parentIndex == NoParent || activeStates[parentIndex]);
 			}

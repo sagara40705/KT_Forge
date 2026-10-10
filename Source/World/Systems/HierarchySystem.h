@@ -1,11 +1,10 @@
 #pragma once
 #include <World/Scene/SceneUpdateContext.h>
 #include <span>
-#include <utility>
 
 namespace KT::World
 {
-	// 捕捉済みの親を検証し、子のindexと親から処理する順序をcontextへ返す。
+	// 捕捉時に検証済みの親子索引と階層順序を、CPU計算で使用可能にする。
 	class HierarchySystem
 	{
 	public:
@@ -13,9 +12,7 @@ namespace KT::World
 
 	private:
 		friend class World;
-		// 親編集と同じ検証を共有する。Worldへの反映は編集関数で行う。
-		friend HierarchySnapshot ValidateHierarchy(const World& world);
-		friend void SetParent(World& world, Entity child, Entity parent, ParentChangeMode mode);
-		static HierarchySnapshot Build(std::span<const SceneEntityInput> inputs, std::optional<std::pair<Entity, Entity>> replacement = {});
+		// Worldの派生値を全件検証して作る。完成後はconstとして共有する。
+		static HierarchySnapshot Build(std::span<const HierarchyInput> inputs);
 	};
 }

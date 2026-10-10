@@ -21,6 +21,7 @@
 namespace KT::World
 {
 	struct Hierarchy;
+	struct HierarchySnapshot;
 	class ScriptComponent;
 	class ScriptBehaviour;
 	class WorldCommandBuffer;
@@ -150,6 +151,8 @@ namespace KT::World
 			std::size_t initialSlotCount = 0;
 			// 更新開始前の空き順序。新規slotも確保なしで戻せる容量を用意する。
 			std::vector<std::uint32_t> freeSlots;
+			// 更新前の検証済み階層。復元時は共有所有権だけを戻し、再構築しない。
+			std::shared_ptr<const HierarchySnapshot> previousHierarchy;
 			// 元の実体を借用する、値とScript内部状態の復元記録。
 			std::vector<std::unique_ptr<RollbackState>> values;
 			// 逆順で取り消す構造変更。削除した実体の所有もここへ移す。
@@ -188,6 +191,9 @@ namespace KT::World
 		[[nodiscard]] bool IsAlive(Entity entity) const;
 		// 生存中の保存UUIDを平均定数時間で検索する。無効・未登録はnullopt。
 		[[nodiscard]] std::optional<Entity> FindByUuid(ObjectUuid uuid) const;
+		// 親子索引と階層順序を遅延構築する。構造が同じ間は同じconst値を共有する。
+		// 戻り値はWorldの変更・破棄後も捕捉時の階層を保持し、Worldを借用しない。
+		[[nodiscard]] std::shared_ptr<const HierarchySnapshot> GetHierarchy() const;
 		// 生存Entityをスロット順にコピーする。component参照は保持しない。
 		[[nodiscard]] std::vector<Entity> Entities() const;
 		// 保存窓口が未対応の型を検出できるよう、型だけをコピーする。
@@ -197,7 +203,7 @@ namespace KT::World
 		[[nodiscard]] Entity CreateEntity();
 		// 全子孫も子から順に破棄する。検証・確保失敗時は一体も変更しない。
 		void DestroyEntity(Entity entity);
-		// 全階層を検証する。KeepWorldの計算・確保失敗時はcomponentの有無も保持する。
+		// 検証済み階層で循環を検査する。KeepWorldの計算・確保失敗時はcomponentの有無も保持する。
 		// 同じ親へのKeepWorldは何も変更しない。新しいLocalが必要ならcomponentを追加する。
 		// 基底は行ごと、平行移動は成分ごとに相対誤差2e-5。平行移動は絶対誤差1e-5も許容する。
 		// +1 scaleは誤差1e-6以内で1にそろえ、再構成したLocalとWorldの行列を検査する。
@@ -450,6 +456,8 @@ namespace KT::World
 		UuidIndex uuidIndex_;
 		// reserve済みの要素数。削除で縮めず、復元時の最大生存数を収容する。
 		std::size_t uuidIndexCapacity_ = 0;
+		// Entity生成・削除・親変更で失効する派生値。値編集では再利用する。
+		mutable std::shared_ptr<const HierarchySnapshot> hierarchyCache_;
 		// データを所有している生存スロット数。
 		std::size_t count_ = 0;
 		// const列挙も含めた実行中の列挙数。
