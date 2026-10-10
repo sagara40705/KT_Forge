@@ -16,12 +16,14 @@ namespace KT::World
 	// Scene保存対象の設定。実行中のScript状態はここへ混ぜない。
 	struct ScriptDefinition
 	{
-		// 読込時にScriptFactoryへ渡すクラス識別名。
+		// 読込時にScriptRegistryで検索する永続クラスID。
 		std::string className;
 		// 次のゲーム更新で対象を確定するときに参照する有効設定。
 		bool enabled = true;
 		// Scriptごとの設定値。実体を生成できなくても保持する。
 		std::map<std::string, ScriptValue> settings;
+		// 未登録クラスでも保存する設定形式のversion。
+		std::uint32_t version = 1;
 	};
 
 	// Sceneの固定CPU入力を受け取り、値編集や構造変更の予約を行う実行窓口。

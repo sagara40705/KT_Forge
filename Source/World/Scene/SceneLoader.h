@@ -1,16 +1,21 @@
 #pragma once
 #include <World/Scene/Scene.h>
 #include <World/Scene/SceneAsset.h>
+#include <World/Scene/ComponentRegistry.h>
 
 namespace KT::World
 {
-	// ファイル形式とEditor Registryは別の窓口。ここではCPU定義とWorldを変換する。
+	// 固定Registryを通してCPU定義とWorldを変換する。JSON処理はSceneJsonへ分ける。
 	class SceneLoader
 	{
 	public:
-		// 設定から実体を生成する。未登録のクラスはnullptrを返して設定を残す。
-		using ScriptFactory = std::function<std::unique_ptr<ScriptBehaviour>(const ScriptDefinition&)>;
-		[[nodiscard]] static std::unique_ptr<Scene> Load(const SceneAsset& asset, const ScriptFactory& scripts = {});
+		// 固定した登録を借用し、設定の検査後に独立した候補Sceneを生成する。
+		static void Validate(const SceneAsset& asset, const ComponentRegistry& components, const ScriptRegistry& scripts);
+		[[nodiscard]] static std::unique_ptr<Scene> Load(
+			const SceneAsset& asset, const ComponentRegistry& components, const ScriptRegistry& scripts);
+		[[nodiscard]] static SceneAsset Capture(const Scene& scene, const ComponentRegistry& components, const ScriptRegistry& scripts);
+		// 組込みComponentとMissing Scriptだけを扱う簡易窓口。登録表は呼出中だけ所有する。
+		[[nodiscard]] static std::unique_ptr<Scene> Load(const SceneAsset& asset);
 		[[nodiscard]] static SceneAsset Capture(const Scene& scene);
 	};
 }

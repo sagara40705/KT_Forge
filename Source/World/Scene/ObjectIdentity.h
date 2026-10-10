@@ -2,6 +2,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace KT::World
 {
@@ -12,6 +13,8 @@ namespace KT::World
 		std::array<std::uint8_t, 16> bytes{};
 		[[nodiscard]] bool IsValid() const noexcept;
 		[[nodiscard]] static ObjectUuid Generate();
+		[[nodiscard]] static ObjectUuid Parse(std::string_view text);
+		[[nodiscard]] std::string ToString() const;
 		auto operator<=>(const ObjectUuid&) const = default;
 	};
 

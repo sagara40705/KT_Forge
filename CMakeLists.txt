@@ -36,6 +36,16 @@ FetchContent_Declare(directx_headers
 )
 FetchContent_MakeAvailable(directx_headers)
 
+# SceneのJSON入出力に使用するnlohmann/json 3.12.0のコミットを固定する。
+set(JSON_BuildTests OFF CACHE BOOL "JSON tests" FORCE)
+set(JSON_Install OFF CACHE BOOL "JSON install" FORCE)
+FetchContent_Declare(nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG 55f93686c01528224f448c19128836e7df245f72
+    EXCLUDE_FROM_ALL
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 # 製品ターゲットは1つとし、各モジュールのディレクトリではソースを明示的に登録する。
 add_executable(KT_Forge)
 include(cmake/ShaderBuild.cmake)
@@ -47,6 +57,7 @@ target_include_directories(KT_Forge BEFORE PRIVATE "${directx_headers_SOURCE_DIR
 target_compile_options(KT_Forge PRIVATE /W4 /utf-8)
 target_compile_definitions(KT_Forge PRIVATE GLFW_INCLUDE_NONE)
 target_link_libraries(KT_Forge PRIVATE glfw Microsoft::DirectX-Headers d3d12 dxgi)
+target_link_libraries(KT_Forge PRIVATE nlohmann_json::nlohmann_json)
 
 set_target_properties(KT_Forge PROPERTIES
     CXX_EXTENSIONS OFF

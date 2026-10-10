@@ -1,4 +1,13 @@
 target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/SceneValue.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/SceneValue.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/ComponentRegistry.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/ComponentRegistry.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/EngineComponents.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/ScriptRegistry.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/ScriptRegistry.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/SceneJson.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/SceneJson.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/ObjectIdentity.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/ObjectIdentity.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/WorldCommandBuffer.h"

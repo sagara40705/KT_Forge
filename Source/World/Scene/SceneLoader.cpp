@@ -1,64 +1,111 @@
 #include <World/Scene/SceneLoader.h>
-#include <map>
+#include <algorithm>
 
 namespace KT::World
 {
-	std::unique_ptr<Scene> SceneLoader::Load(const SceneAsset& asset, const ScriptFactory& scripts)
+	void SceneLoader::Validate(const SceneAsset& asset, const ComponentRegistry& components, const ScriptRegistry& scripts)
 	{
-		// 候補Sceneを別に作り、全成功するまで使用中のSceneへ触れない。
-		auto scene = std::make_unique<Scene>(asset.name);
-		std::map<ObjectUuid, DeferredEntity> reservations;
-		for (const auto& object : asset.objects)
+		if (!components.IsFrozen() || !scripts.IsFrozen())
 		{
-			if (!object.uuid.IsValid() || reservations.contains(object.uuid))
-			{
-				throw std::invalid_argument("Scene定義のオブジェクトUUIDが空、または重複しています。");
-			}
-			reservations.emplace(object.uuid, scene->Commands().CreateEntity(object.name, object.uuid));
+			throw std::logic_error("Scene読込・保存前に二つのRegistryをFreezeしてください。");
+		}
+		if (asset.version != 1)
+		{
+			throw std::invalid_argument("Sceneファイルのversionが未対応です。");
 		}
 
-		// 全Entityの生成を先に記録し、参照先の保存順序に依存しない。
+		// 全IDを先に検査し、保存順に依存せず参照先と階層を検査する。
+		ValidateSceneText(asset.name);
+		std::set<ObjectUuid> objects;
+		std::map<ObjectUuid, std::optional<ObjectUuid>> parents;
+		for (const auto& object : asset.objects)
+		{
+			ValidateSceneText(object.name);
+			if (!object.uuid.IsValid() || !objects.insert(object.uuid).second)
+			{
+				throw std::invalid_argument("SceneのオブジェクトUUIDが空、または重複しています。");
+			}
+			parents.emplace(object.uuid, object.parent);
+		}
+		for (const auto& object : asset.objects)
+		{
+			if (object.parent && (!object.parent->IsValid() || !objects.contains(*object.parent)))
+			{
+				throw std::invalid_argument("Sceneの親UUIDに対応するオブジェクトがありません: " + object.uuid.ToString());
+			}
+		}
+
+		// 確定済み経路を共有し、深い階層でも再帰せず循環を検出する。
+		std::set<ObjectUuid> completed;
+		for (const auto& object : asset.objects)
+		{
+			std::set<ObjectUuid> path;
+			auto current = std::optional<ObjectUuid>(object.uuid);
+			while (current && !completed.contains(*current))
+			{
+				if (!path.insert(*current).second)
+				{
+					throw std::invalid_argument("Sceneの親子関係が循環しています: " + current->ToString());
+				}
+				current = parents.at(*current);
+			}
+			completed.insert(path.begin(), path.end());
+		}
+
+		// Component設定をすべて検査し、候補生成やScript factoryの実行と分離する。
+		const SceneReadContext context{objects, scripts};
+		for (const auto& object : asset.objects)
+		{
+			std::set<std::string> types;
+			for (const auto& component : object.components)
+			{
+				if (!types.insert(component.type).second)
+				{
+					throw std::invalid_argument("SceneオブジェクトのComponent型が重複しています: " + component.type);
+				}
+				try
+				{
+					components.Validate(component, context);
+				}
+				catch (const std::invalid_argument& error)
+				{
+					throw std::invalid_argument("Sceneオブジェクト " + object.uuid.ToString() + " / " + error.what());
+				}
+			}
+		}
+	}
+
+	std::unique_ptr<Scene> SceneLoader::Load(const SceneAsset& asset, const ComponentRegistry& components, const ScriptRegistry& scripts)
+	{
+		Validate(asset, components, scripts);
+		auto scene = std::make_unique<Scene>(asset.name);
+		std::map<ObjectUuid, DeferredEntity> reservations;
+		std::set<ObjectUuid> objects;
+		for (const auto& object : asset.objects)
+		{
+			reservations.emplace(object.uuid, scene->Commands().CreateEntity(object.name, object.uuid));
+			objects.insert(object.uuid);
+		}
+
+		// 全生成の後にComponentを復元し、最後に親を設定する。
+		const SceneReadContext context{objects, scripts};
 		for (const auto& object : asset.objects)
 		{
 			const auto entity = reservations.at(object.uuid);
-			if (object.active)
+			for (const auto& component : object.components)
 			{
-				scene->Commands().AddComponent<ActiveSelf>(entity, *object.active);
+				components.Find(component.type).restore(*scene, entity, component.data, context);
 			}
-			if (object.transform)
-			{
-				scene->Commands().AddComponent<LocalTransform>(entity, *object.transform);
-			}
-			if (object.camera)
-			{
-				scene->Commands().AddComponent<Camera>(entity, *object.camera);
-			}
-			if (object.mesh)
-			{
-				scene->Commands().AddComponent<MeshRenderer>(entity, *object.mesh);
-			}
-			if (!object.scripts.empty())
-			{
-				std::vector<ScriptEntry> entries;
-				entries.reserve(object.scripts.size());
-				for (const auto& definition : object.scripts)
-				{
-					entries.push_back({definition, scripts ? scripts(definition) : nullptr});
-				}
-				scene->Commands().AddComponent<ScriptComponent>(entity, std::move(entries));
-			}
+		}
+		for (const auto& object : asset.objects)
+		{
 			if (object.parent)
 			{
-				const auto parent = reservations.find(*object.parent);
-				if (parent == reservations.end())
-				{
-					throw std::invalid_argument("Scene定義の親UUIDに対応するオブジェクトが同じScene内にありません。");
-				}
-				scene->Commands().SetParent(entity, parent->second);
+				scene->Commands().SetParent(reservations.at(object.uuid), reservations.at(*object.parent));
 			}
 		}
 
-		// 読込ではScript更新を行わず、構造とCPU入力だけを検証する。
+		// 完成した候補だけを返す。読込中はScriptのゲーム更新を呼ばない。
 		scene->commandResults_[0] = scene->commands_.Flush();
 		if (!scene->commandResults_[0].Succeeded())
 		{
@@ -69,75 +116,62 @@ namespace KT::World
 		return scene;
 	}
 
-	SceneAsset SceneLoader::Capture(const Scene& scene)
+	SceneAsset SceneLoader::Capture(const Scene& scene, const ComponentRegistry& components, const ScriptRegistry& scripts)
 	{
-		// 完成結果と予約の反映完了を確認し、途中のWorldを保存しない。
 		(void)scene.GetSnapshot();
 		if (scene.commands_.PendingCount() != 0)
 		{
-			throw std::logic_error("Sceneに未反映の予約コマンドがあるため保存用の定義を取得できません。");
+			throw std::logic_error("Sceneに未反映の予約があるため保存できません。");
 		}
 
-		// Entity参照をUUIDへ戻し、入力componentとScriptの設定だけをコピーする。
 		SceneAsset asset;
 		asset.name = scene.GetName();
 		const auto& world = scene.GetWorld();
 		for (const auto entity : world.Entities())
 		{
-			// 未対応componentを黙って捨てない。汎用Registryの保存窓口は後で追加する。
-			for (const auto type : world.ComponentTypes(entity))
-			{
-				if (type != typeid(PersistentId) && type != typeid(Name) && type != typeid(Hierarchy) && type != typeid(ActiveSelf) &&
-					type != typeid(LocalTransform) && type != typeid(Camera) && type != typeid(MeshRenderer) &&
-					type != typeid(ScriptComponent))
-				{
-					throw std::logic_error("Sceneのcomponentに保存処理が未対応の型があるため保存用の定義を取得できません。");
-				}
-			}
-
 			SceneObjectDefinition object;
 			object.uuid = world.GetComponent<PersistentId>(entity).value;
-			if (const auto* name = world.FindComponent<Name>(entity))
-			{
-				object.name = name->value;
-			}
+			object.name = world.GetComponent<Name>(entity).value;
 			if (const auto* hierarchy = world.FindComponent<Hierarchy>(entity); hierarchy && hierarchy->parent != Entity{})
 			{
 				object.parent = world.GetComponent<PersistentId>(hierarchy->parent).value;
 			}
-			if (const auto* active = world.FindComponent<ActiveSelf>(entity))
+			for (const auto type : world.ComponentTypes(entity))
 			{
-				object.active = *active;
-			}
-			else
-			{
-				object.active.reset();
-			}
-			if (const auto* transform = world.FindComponent<LocalTransform>(entity))
-			{
-				object.transform = *transform;
-			}
-			else
-			{
-				object.transform.reset();
-			}
-			if (const auto* camera = world.FindComponent<Camera>(entity))
-			{
-				object.camera = *camera;
-			}
-			if (const auto* mesh = world.FindComponent<MeshRenderer>(entity))
-			{
-				object.mesh = *mesh;
-			}
-			if (const auto* scripts = world.FindComponent<ScriptComponent>(entity))
-			{
-				for (const auto& entry : scripts->Entries())
+				if (type == typeid(PersistentId) || type == typeid(Name) || type == typeid(Hierarchy))
 				{
-					object.scripts.push_back(entry.definition);
+					continue;
 				}
+				const auto& descriptor = components.Find(type);
+				object.components.push_back({descriptor.type, descriptor.version, descriptor.capture(world, entity)});
 			}
+			std::sort(object.components.begin(), object.components.end(),
+				[](const auto& first, const auto& second) { return first.type < second.type; });
 			asset.objects.push_back(std::move(object));
 		}
+		std::sort(
+			asset.objects.begin(), asset.objects.end(), [](const auto& first, const auto& second) { return first.uuid < second.uuid; });
+		Validate(asset, components, scripts);
 		return asset;
+	}
+
+	std::unique_ptr<Scene> SceneLoader::Load(const SceneAsset& asset)
+	{
+		ComponentRegistry components;
+		RegisterEngineComponents(components);
+		components.Freeze();
+		ScriptRegistry scripts;
+		scripts.Freeze();
+		return Load(asset, components, scripts);
+	}
+
+	SceneAsset SceneLoader::Capture(const Scene& scene)
+	{
+		ComponentRegistry components;
+		RegisterEngineComponents(components);
+		components.Freeze();
+		ScriptRegistry scripts;
+		scripts.Freeze();
+		return Capture(scene, components, scripts);
 	}
 }
