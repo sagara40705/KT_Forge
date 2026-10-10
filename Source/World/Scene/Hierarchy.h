@@ -1,6 +1,6 @@
 #pragma once
 #include <World/World.h>
-#include <World/SceneComponents.h>
+#include <World/Scene/SceneComponents.h>
 #include <limits>
 #include <vector>
 
@@ -15,7 +15,7 @@ namespace KT::World
 		std::vector<std::size_t> children;
 	};
 
-	// 値snapshot。親正本はHierarchy componentだけ。この派生indexはECSへ保存しない。
+	// 階層を値として保持する。親の正本はHierarchy componentとし、派生indexはECSへ保存しない。
 	struct HierarchySnapshot
 	{
 		std::vector<HierarchyNode> nodes;
@@ -23,8 +23,10 @@ namespace KT::World
 	};
 
 	HierarchySnapshot ValidateHierarchy(const World& world);
-	void SetParent(World& world, Entity child, Entity parent = {}); // KeepLocalのみ。検証後commit。
+	// ローカルTransformを保ち、階層全体の検証後に親を変更する。
+	void SetParent(World& world, Entity child, Entity parent = {});
 	Entity GetParent(const World& world, Entity child);
 	std::vector<Entity> GetChildren(const World& world, Entity parent);
-	void DestroySubtree(World& world, Entity root); // 全検証/作業領域確保後、子から破棄。
+	// 全件検証と作業領域の確保を済ませ、子から順に破棄する。
+	void DestroySubtree(World& world, Entity root);
 }

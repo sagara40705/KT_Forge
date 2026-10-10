@@ -1,9 +1,10 @@
 #pragma once
-#include <World/Systems/SceneUpdateContext.h>
+#include <World/Scene/SceneUpdateContext.h>
 
 namespace KT::World
 {
-	// 明示1台のCamera、active、World行列からview/projectionを導出する。代替Cameraは選ばない。
+	// 指定された1台のCameraと有効状態・World行列から、viewとprojectionを求める。
+	// 指定が不正な場合は、別のCameraへ切り替えない。
 	class CameraSystem
 	{
 	public:

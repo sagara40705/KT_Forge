@@ -22,21 +22,24 @@ namespace KT::World
 			{
 				throw std::overflow_error("Entity indexが枯渇しました。");
 			}
+
 			return static_cast<std::uint32_t>(index);
 		}
 
 		std::uint64_t AcquireWorldId()
 		{
-			auto candidate = nextWorldId.load(std::memory_order_relaxed);
+			// 他Worldと重複しないIDを取得し、最大値は発行しない。
+			auto candidateWorldId = nextWorldId.load(std::memory_order_relaxed);
 			for (;;)
 			{
-				if (candidate == (std::numeric_limits<std::uint64_t>::max)())
+				if (candidateWorldId == (std::numeric_limits<std::uint64_t>::max)())
 				{
 					throw std::overflow_error("World IDが枯渇しました。");
 				}
-				if (nextWorldId.compare_exchange_weak(candidate, candidate + 1, std::memory_order_relaxed))
+
+				if (nextWorldId.compare_exchange_weak(candidateWorldId, candidateWorldId + 1, std::memory_order_relaxed))
 				{
-					return candidate;
+					return candidateWorldId;
 				}
 			}
 		}
@@ -54,6 +57,7 @@ namespace KT::World
 		{
 			std::terminate();
 		}
+
 		// component破棄中も内部状態が有効な間に再入を拒否する。
 		mutating_ = true;
 		slots_.clear();
@@ -87,6 +91,7 @@ namespace KT::World
 		{
 			throw std::overflow_error("列挙の入れ子数が上限に達しました。");
 		}
+
 		++world_.enumerations_;
 	}
 
@@ -122,16 +127,19 @@ namespace KT::World
 	std::vector<Entity> World::Entities() const
 	{
 		RequireReadable();
-		std::vector<Entity> result;
-		result.reserve(count_);
+
+		// 生存Entityだけを、スロット順の値として集める。
+		std::vector<Entity> entities;
+		entities.reserve(count_);
 		for (std::size_t index = 0; index < slots_.size(); ++index)
 		{
 			if (slots_[index].data)
 			{
-				result.push_back(At(index));
+				entities.push_back(At(index));
 			}
 		}
-		return result;
+
+		return entities;
 	}
 
 	void World::RequireStructuralChange() const
@@ -159,6 +167,8 @@ namespace KT::World
 	Entity World::CreateEntity()
 	{
 		MutationGuard guard(*this);
+
+		// 世代が有効な空きスロットを探す。
 		std::size_t index = 0;
 		for (; index < slots_.size(); ++index)
 		{
@@ -167,15 +177,20 @@ namespace KT::World
 				break;
 			}
 		}
+
 		(void)CheckedIndex(index);
+
 		// 確保は公開前に済ませる。vector拡張失敗でも生存数/既存slotは変わらない。
 		auto data = std::make_unique<EntityData>();
 		if (index == slots_.size())
 		{
 			slots_.emplace_back();
 		}
+
+		// 確保したEntityを公開し、生存数を更新する。
 		slots_[index].data = std::move(data);
 		++count_;
+
 		return At(index);
 	}
 
@@ -183,8 +198,11 @@ namespace KT::World
 	{
 		MutationGuard guard(*this);
 		RequireAlive(entity);
+
+		// componentを破棄してから世代を進め、古いEntityを失効させる。
 		auto& slot = slots_[entity.index];
 		slot.data.reset();
+
 		// 上限世代のslotは0で退役。古いhandleと一致する世代へ循環させない。
 		slot.generation = NextGeneration(slot.generation);
 		--count_;

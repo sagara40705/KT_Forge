@@ -1,4 +1,4 @@
-#include <World/Systems/SceneUpdateContext.h>
+#include <World/Scene/SceneUpdateContext.h>
 #include <stdexcept>
 
 namespace KT::World
@@ -8,32 +8,37 @@ namespace KT::World
 		  camera_(camera),
 		  viewport_(viewport)
 	{
+		// 生存Entityの入力をコピーし、以降のSystemでWorldを再読取しない。
 		const auto entities = world.Entities();
 		inputs_.reserve(entities.size());
+
 		for (auto entity : entities)
 		{
 			SceneEntityInput input;
 			input.entity = entity;
-			if (const auto* value = world.FindComponent<Hierarchy>(entity))
+
+			// 任意componentがある場合だけ、既定値を入力で置き換える。
+			if (const auto* hierarchy = world.FindComponent<Hierarchy>(entity))
 			{
-				input.hierarchy = *value;
+				input.hierarchy = *hierarchy;
 			}
-			if (const auto* value = world.FindComponent<ActiveSelf>(entity))
+			if (const auto* activeSelf = world.FindComponent<ActiveSelf>(entity))
 			{
-				input.activeSelf = *value;
+				input.activeSelf = *activeSelf;
 			}
-			if (const auto* value = world.FindComponent<LocalTransform>(entity))
+			if (const auto* localTransform = world.FindComponent<LocalTransform>(entity))
 			{
-				input.local = *value;
+				input.local = *localTransform;
 			}
-			if (const auto* value = world.FindComponent<Camera>(entity))
+			if (const auto* cameraComponent = world.FindComponent<Camera>(entity))
 			{
-				input.camera = *value;
+				input.camera = *cameraComponent;
 			}
-			if (const auto* value = world.FindComponent<MeshRenderer>(entity))
+			if (const auto* meshRenderer = world.FindComponent<MeshRenderer>(entity))
 			{
-				input.mesh = *value;
+				input.mesh = *meshRenderer;
 			}
+
 			inputs_.push_back(input);
 		}
 	}

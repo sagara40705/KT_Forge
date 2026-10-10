@@ -6,8 +6,9 @@
 
 namespace KT::World
 {
-	// 入力のみ。欠落Hierarchy=root、ActiveSelf=true、LocalTransform=identity。
-	// 直接編集も可能だが、描画前のHierarchySystem/TransformSystemで全件検証する。
+	// シーンの入力を保持する。派生結果はSceneDataへ分ける。
+	// 階層とTransformは、直接編集した場合も描画前に全件検証する。
+	// 欠落時は親なし・有効・単位Transformとして扱う。
 	struct Hierarchy
 	{
 		Entity parent{};
@@ -21,7 +22,8 @@ namespace KT::World
 	struct LocalTransform
 	{
 		KT::Core::Math::Vector3 position{};
-		KT::Core::Math::Quaternion rotation{}; // xyzw、TransformSystemで正規化、入力は変更しない。
+		// xyzwを保持し、TransformSystemで入力を変えずに正規化する。
+		KT::Core::Math::Quaternion rotation{};
 		KT::Core::Math::Vector3 scale{1, 1, 1};
 	};
 
@@ -34,7 +36,9 @@ namespace KT::World
 
 	struct MeshRenderer
 	{
-		std::uint64_t meshId = 0, materialId = 0; // 非0の識別情報のみ。asset/GPU所有なし。
+		// 非0のアセットIDを保持する。アセットやGPU資源は所有しない。
+		std::uint64_t meshId = 0;
+		std::uint64_t materialId = 0;
 		bool visible = true;
 	};
 }

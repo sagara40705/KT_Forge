@@ -4,10 +4,12 @@
 
 namespace KT::World
 {
-	// World固有の非所有handle。形式と生存は別で、生存はWorld::IsAliveで調べる。
+	// Entityの所有権は持たず、World・スロット・世代を識別する。
+	// IsValidは形式だけを検査し、生存はWorld::IsAliveで確認する。
 	struct Entity
 	{
 		static constexpr std::uint32_t InvalidIndex = (std::numeric_limits<std::uint32_t>::max)();
+
 		std::uint64_t worldId = 0;
 		std::uint32_t index = InvalidIndex;
 		std::uint64_t generation = 0;

@@ -14,16 +14,17 @@
 
 namespace KT::World
 {
-	// 完全な非const/非volatile object型。配列とthrowするデストラクタは非対応。
+	// const・volatileを含まない完全なobject型を受け付ける。
+	// 配列と、例外を送出するデストラクタは使用しない。
 	template <class T>
 	concept ComponentType =
 		std::is_object_v<T> && !std::is_array_v<T> && std::is_same_v<T, std::remove_cv_t<T>> && std::is_nothrow_destructible_v<T>;
 
-	// Entityとcomponentの唯一の所有者。単一threadで使用し、copy/moveしない。
-	// componentの構築/破棄中はこのWorldへ再入しない。
-	// 列挙/構造変更の実行中にWorld自身を破棄するとterminateする。
-	// 返す参照/pointerは同じcomponentのRemove、EntityのDestroy、Worldの破棄まで有効。
-	// 他のEntity/componentの追加削除では、component自体を移動しない。
+	// Entityとcomponentを所有する。単一スレッドで使い、コピー・ムーブしない。
+	// componentの構築・破棄中は、このWorldへの再入を拒否する。
+	// 列挙・構造変更中にWorld自身を破棄すると、terminateする。
+	// 返す参照やポインターは、そのcomponent・Entity・Worldの破棄まで有効。
+	// 別のEntityやcomponentを追加・削除しても、既存componentは移動しない。
 	class World : private KT::Core::NonCopyable
 	{
 	private:
@@ -50,7 +51,8 @@ namespace KT::World
 
 		struct Slot
 		{
-			std::uint64_t generation = 1; // 0は上限到達で退役したslot。
+			// 世代が上限に達したスロットは0として再利用しない。
+			std::uint64_t generation = 1;
 			std::unique_ptr<EntityData> data{};
 		};
 
@@ -80,33 +82,38 @@ namespace KT::World
 		[[nodiscard]] std::uint64_t Identity() const;
 		[[nodiscard]] std::size_t Count() const;
 		[[nodiscard]] bool IsAlive(Entity entity) const;
-		// 生存Entityのslot順snapshot。component参照を保持しない。
+		// 生存Entityをスロット順にコピーする。component参照は保持しない。
 		[[nodiscard]] std::vector<Entity> Entities() const;
-		// Hierarchy等の編集API用。列挙/構造変更中ならlogic_error。
+		// 階層などの編集前に、列挙・構造変更中でないことを確認する。
 		void RequireStructuralChange() const;
 		[[nodiscard]] Entity CreateEntity();
-		// 失効/別World/二重Destroyはinvalid_argument。componentを全て破棄する。
+		// 全componentを破棄する。失効・別World・二重破棄はinvalid_argument。
 		void DestroyEntity(Entity entity);
 
-		// 同じ型の重複Addはlogic_error。構築/確保失敗時は登録しない。
-		// move-onlyやimmovableのTも、constructor引数で直接構築できる。
+		// 同じ型の追加はlogic_error。構築・確保に失敗した場合は登録しない。
+		// コピー・ムーブできない型も、引数から直接構築する。
 		template <ComponentType T, class... Args> T& AddComponent(Entity entity, Args&&... args)
 		{
+			// 構造変更を開始し、対象Entityの生存を確認する。
 			MutationGuard guard(*this);
 			RequireAlive(entity);
+
 			auto& components = slots_[entity.index].data->components;
 			const std::type_index type(typeid(T));
 			if (components.contains(type))
 			{
 				throw std::logic_error("同じ型のcomponentが既に存在します。");
 			}
-			auto box = std::make_unique<ComponentBox<T>>(std::forward<Args>(args)...);
-			auto* value = std::addressof(box->value);
-			components.emplace(type, std::move(box));
+
+			// 構築に成功したcomponentだけを登録する。
+			auto componentBox = std::make_unique<ComponentBox<T>>(std::forward<Args>(args)...);
+			auto* value = std::addressof(componentBox->value);
+			components.emplace(type, std::move(componentBox));
+
 			return *value;
 		}
 
-		// 無効/失効/別World/型なしはいずれもnullptr。内部を借用する。
+		// componentを借用する。無効・失効・別World・型なしはnullptr。
 		template <ComponentType T> [[nodiscard]] T* FindComponent(Entity entity)
 		{
 			RequireReadable();
@@ -124,16 +131,18 @@ namespace KT::World
 			return FindComponent<T>(entity) != nullptr;
 		}
 
-		// Get/Removeは失効/別Worldにinvalid_argument、型なしにout_of_range。
+		// Get・Removeは失効・別Worldにinvalid_argument、型なしにout_of_range。
 		template <ComponentType T> [[nodiscard]] T& GetComponent(Entity entity)
 		{
 			RequireReadable();
 			RequireAlive(entity);
+
 			auto* value = FindIn<T>(*slots_[entity.index].data);
 			if (!value)
 			{
 				throw std::out_of_range("要求したcomponentがありません。");
 			}
+
 			return *value;
 		}
 
@@ -141,41 +150,49 @@ namespace KT::World
 		{
 			RequireReadable();
 			RequireAlive(entity);
+
 			const auto* value = FindIn<T>(std::as_const(*slots_[entity.index].data));
 			if (!value)
 			{
 				throw std::out_of_range("要求したcomponentがありません。");
 			}
+
 			return *value;
 		}
 
 		template <ComponentType T> void RemoveComponent(Entity entity)
 		{
+			// 構造変更を開始し、対象Entityの生存を確認する。
 			MutationGuard guard(*this);
 			RequireAlive(entity);
+
 			auto& components = slots_[entity.index].data->components;
-			const auto found = components.find(std::type_index(typeid(T)));
-			if (found == components.end())
+			const auto componentIterator = components.find(std::type_index(typeid(T)));
+			if (componentIterator == components.end())
 			{
 				throw std::out_of_range("要求したcomponentがありません。");
 			}
-			components.erase(found);
+
+			components.erase(componentIterator);
 		}
 
-		// 要求型全てを持つEntityをslot順に列挙。空queryはコンパイル時に拒否。
-		// 値編集/入れ子列挙は可能、Create/Destroy/Add/Removeはlogic_error。
-		// callback例外は伝播するがguardは解除する。同じ型の重複指定は同じ参照を渡す。
+		// 要求型をすべて持つEntityをスロット順に列挙する。型なしはコンパイル時に拒否する。
+		// 値の編集・入れ子列挙は許可し、Create・Destroy・Add・Removeはlogic_error。
+		// callbackの例外は伝播し、列挙状態を解除する。同じ型の重複指定は同じ参照を渡す。
 		template <ComponentType... Ts, class Fn>
 			requires(sizeof...(Ts) > 0 && std::invocable<Fn&, Entity, Ts&...>)
 		void ForEach(Fn&& callback)
 		{
+			// 列挙中の構造変更を禁止し、生存スロットを順に調べる。
 			EnumerationGuard guard(*this);
+
 			for (std::size_t index = 0; index < slots_.size(); ++index)
 			{
 				if (!slots_[index].data)
 				{
 					continue;
 				}
+
 				auto& data = *slots_[index].data;
 				if ((FindIn<Ts>(data) && ...))
 				{
@@ -188,13 +205,16 @@ namespace KT::World
 			requires(sizeof...(Ts) > 0 && std::invocable<Fn&, Entity, const Ts&...>)
 		void ForEach(Fn&& callback) const
 		{
+			// 列挙中の構造変更を禁止し、生存スロットを順に調べる。
 			EnumerationGuard guard(*this);
+
 			for (std::size_t index = 0; index < slots_.size(); ++index)
 			{
 				if (!slots_[index].data)
 				{
 					continue;
 				}
+
 				const auto& data = std::as_const(*slots_[index].data);
 				if ((FindIn<Ts>(data) && ...))
 				{
@@ -206,14 +226,18 @@ namespace KT::World
 	private:
 		template <ComponentType T> static T* FindIn(EntityData& data)
 		{
-			const auto found = data.components.find(std::type_index(typeid(T)));
-			return found == data.components.end() ? nullptr : std::addressof(static_cast<ComponentBox<T>&>(*found->second).value);
+			const auto componentIterator = data.components.find(std::type_index(typeid(T)));
+			return componentIterator == data.components.end() ?
+				nullptr :
+				std::addressof(static_cast<ComponentBox<T>&>(*componentIterator->second).value);
 		}
 
 		template <ComponentType T> static const T* FindIn(const EntityData& data)
 		{
-			const auto found = data.components.find(std::type_index(typeid(T)));
-			return found == data.components.end() ? nullptr : std::addressof(static_cast<const ComponentBox<T>&>(*found->second).value);
+			const auto componentIterator = data.components.find(std::type_index(typeid(T)));
+			return componentIterator == data.components.end() ?
+				nullptr :
+				std::addressof(static_cast<const ComponentBox<T>&>(*componentIterator->second).value);
 		}
 
 		void RequireReadable() const;

@@ -1,9 +1,10 @@
 #pragma once
-#include <World/Systems/SceneUpdateContext.h>
+#include <World/Scene/SceneUpdateContext.h>
 
 namespace KT::World
 {
-	// Local TRSと階層から非activeも含む全World行列を導出する。shearを保つためTRSへ再分解しない。
+	// ローカルTRSと階層から、無効なEntityも含めてWorld行列を求める。
+	// shearを保つため、結果をTRSへ再分解しない。
 	class TransformSystem
 	{
 	public:

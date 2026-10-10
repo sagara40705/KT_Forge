@@ -1,6 +1,6 @@
 #pragma once
 #include <RuntimeIntegration/RenderFrame.h>
-#include <World/Systems/SceneUpdateContext.h>
+#include <World/Scene/SceneUpdateContext.h>
 
 namespace KT::RuntimeIntegration
 {

@@ -1,9 +1,9 @@
 #pragma once
-#include <World/Systems/SceneUpdateContext.h>
+#include <World/Scene/SceneUpdateContext.h>
 
 namespace KT::World
 {
-	// 検証済み階層とActiveSelfから親継承activeを導出する。ActiveSelfへ書き戻さない。
+	// 検証済み階層とActiveSelfから、親の有効状態を継承する。入力へ書き戻さない。
 	class ActivationSystem
 	{
 	public:
