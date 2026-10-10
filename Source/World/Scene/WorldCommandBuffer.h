@@ -136,7 +136,8 @@ namespace KT::World
 	public:
 		[[nodiscard]] DeferredEntity CreateEntity(std::string name = {}, ObjectUuid uuid = {});
 		void DestroyEntity(EntityTarget entity);
-		void SetParent(EntityTarget child, EntityTarget parent = {});
+		// KeepWorldは記録時のsnapshotではなく、先行予約を反映した時点のWorld行列を維持する。
+		void SetParent(EntityTarget child, EntityTarget parent = {}, ParentChangeMode mode = ParentChangeMode::KeepLocal);
 
 		template <ComponentType T, class... Args> void AddComponent(EntityTarget entity, Args&&... arguments)
 		{

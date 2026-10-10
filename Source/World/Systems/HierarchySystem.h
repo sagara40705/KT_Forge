@@ -15,7 +15,7 @@ namespace KT::World
 		friend class World;
 		// 親編集と同じ検証を共有する。Worldへの反映は編集関数で行う。
 		friend HierarchySnapshot ValidateHierarchy(const World& world);
-		friend void SetParent(World& world, Entity child, Entity parent);
+		friend void SetParent(World& world, Entity child, Entity parent, ParentChangeMode mode);
 		static HierarchySnapshot Build(std::span<const SceneEntityInput> inputs, std::optional<std::pair<Entity, Entity>> replacement = {});
 	};
 }

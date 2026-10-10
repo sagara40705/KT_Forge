@@ -38,9 +38,9 @@ namespace KT::World
 		return HierarchySystem::Build(context.Inputs());
 	}
 
-	void SetParent(World& world, Entity child, Entity parent)
+	void SetParent(World& world, Entity child, Entity parent, ParentChangeMode mode)
 	{
-		world.SetParent(child, parent);
+		world.SetParent(child, parent, mode);
 	}
 
 	Entity GetParent(const World& world, Entity child)

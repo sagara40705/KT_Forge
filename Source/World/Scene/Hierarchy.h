@@ -23,8 +23,8 @@ namespace KT::World
 	};
 
 	HierarchySnapshot ValidateHierarchy(const World& world);
-	// ローカルTransformを保ち、階層全体の検証後に親を変更する。
-	void SetParent(World& world, Entity child, Entity parent = {});
+	// Worldと同じ失敗保持・変換維持の契約で、階層全体の検証後に親を変更する。
+	void SetParent(World& world, Entity child, Entity parent = {}, ParentChangeMode mode = ParentChangeMode::KeepLocal);
 	Entity GetParent(const World& world, Entity child);
 	std::vector<Entity> GetChildren(const World& world, Entity parent);
 	// 全件検証と作業領域の確保を済ませ、子から順に破棄する。

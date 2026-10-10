@@ -91,10 +91,13 @@ namespace KT::World
 	{
 		EntityTarget child;
 		EntityTarget parent;
+		// 行列は保存せず、反映時点で指定した維持方法を適用する。
+		ParentChangeMode mode;
 
-		ParentCommand(EntityTarget childTarget, EntityTarget parentTarget)
+		ParentCommand(EntityTarget childTarget, EntityTarget parentTarget, ParentChangeMode changeMode)
 			: child(childTarget),
-			  parent(parentTarget)
+			  parent(parentTarget),
+			  mode(changeMode)
 		{
 		}
 
@@ -102,7 +105,7 @@ namespace KT::World
 		{
 			const auto childEntity = buffer.ResolveTarget(child, context);
 			const auto parentEntity = buffer.ResolveTarget(parent, context, true);
-			buffer.world_.SetParent(childEntity, parentEntity);
+			buffer.world_.SetParent(childEntity, parentEntity, mode);
 			return true;
 		}
 	};
@@ -182,13 +185,17 @@ namespace KT::World
 		commands_.push_back(std::make_unique<DestroyCommand>(entity));
 	}
 
-	void WorldCommandBuffer::SetParent(EntityTarget child, EntityTarget parent)
+	void WorldCommandBuffer::SetParent(EntityTarget child, EntityTarget parent, ParentChangeMode mode)
 	{
 		RequireAccepting();
 		ValidateTarget(child);
 		ValidateTarget(parent, true);
+		if (mode != ParentChangeMode::KeepLocal && mode != ParentChangeMode::KeepWorld)
+		{
+			throw std::invalid_argument("親変更の変換維持方法が不正です。");
+		}
 
-		commands_.push_back(std::make_unique<ParentCommand>(child, parent));
+		commands_.push_back(std::make_unique<ParentCommand>(child, parent, mode));
 	}
 
 	CommandFlushResult WorldCommandBuffer::Flush()

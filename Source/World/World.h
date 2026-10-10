@@ -20,6 +20,14 @@ namespace KT::World
 	class WorldCommandBuffer;
 	class Scene;
 
+	// 親変更で維持する変換を指定する。KeepWorldは反映時点の行列をTRSで保持する。
+	enum class ParentChangeMode
+	{
+		KeepLocal,
+		// shear・特異な新親・表現不能な数値は拒否し、親とLocalを変更しない。
+		KeepWorld
+	};
+
 	// 親・UUID・Script所有は、借用した値から書き換えない。
 	template <class T>
 	inline constexpr bool ReadOnlyComponent =
@@ -115,7 +123,11 @@ namespace KT::World
 		[[nodiscard]] Entity CreateEntity();
 		// 全子孫も子から順に破棄する。検証・確保失敗時は一体も変更しない。
 		void DestroyEntity(Entity entity);
-		void SetParent(Entity child, Entity parent = {});
+		// 全階層を検証する。KeepWorldの計算・確保失敗時はcomponentの有無も保持する。
+		// 同じ親へのKeepWorldは何も変更しない。新しいLocalが必要ならcomponentを追加する。
+		// 基底は行ごと、平行移動は成分ごとに相対誤差2e-5。平行移動は絶対誤差1e-5も許容する。
+		// +1 scaleは誤差1e-6以内で1にそろえ、再構成したLocalとWorldの行列を検査する。
+		void SetParent(Entity child, Entity parent = {}, ParentChangeMode mode = ParentChangeMode::KeepLocal);
 
 		// 同じ型の追加はlogic_error。構築・確保に失敗した場合は登録しない。
 		// コピー・ムーブできない型も、引数から直接構築する。
