@@ -614,6 +614,154 @@ namespace KT::World
 		}
 	}
 
+	void World::HierarchyBatch::SetParent(std::uint32_t child, std::uint32_t parent) noexcept
+	{
+		auto& childLinks = links[child];
+		if (childLinks.parent == parent)
+		{
+			return;
+		}
+
+		// 現在の親と兄弟から外す。根は兄弟リストを持たない。
+		if (childLinks.parent != Entity::InvalidIndex)
+		{
+			if (childLinks.previousSibling == Entity::InvalidIndex)
+			{
+				links[childLinks.parent].firstChild = childLinks.nextSibling;
+			}
+			else
+			{
+				links[childLinks.previousSibling].nextSibling = childLinks.nextSibling;
+			}
+			if (childLinks.nextSibling != Entity::InvalidIndex)
+			{
+				links[childLinks.nextSibling].previousSibling = childLinks.previousSibling;
+			}
+		}
+
+		// 新親の子リストへ定数時間で挿入し、列挙順の整列は削除対象の収集時に行う。
+		childLinks.parent = parent;
+		childLinks.previousSibling = Entity::InvalidIndex;
+		childLinks.nextSibling = Entity::InvalidIndex;
+		if (parent != Entity::InvalidIndex)
+		{
+			childLinks.nextSibling = links[parent].firstChild;
+			if (childLinks.nextSibling != Entity::InvalidIndex)
+			{
+				links[childLinks.nextSibling].previousSibling = child;
+			}
+			links[parent].firstChild = child;
+		}
+	}
+
+	void World::HierarchyBatch::Remove(std::uint32_t entity) noexcept
+	{
+		// 子を先に削除した対象だけを外し、再利用するslotにリンクを残さない。
+		SetParent(entity, Entity::InvalidIndex);
+		links[entity] = {};
+	}
+
+	void World::BeginHierarchyBatch()
+	{
+		RequireStructuralChange();
+		if (hierarchyBatch_)
+		{
+			throw std::logic_error("Worldの階層予約batchが既に開始されています。");
+		}
+
+		// 作業索引は一度だけ全slotから作り、途中失敗した索引は公開しない。
+		auto batch = std::make_unique<HierarchyBatch>();
+		batch->links.resize(slots_.size());
+		for (std::size_t index = 0; index < slots_.size(); ++index)
+		{
+			if (slots_[index].data)
+			{
+				batch->links[index].alive = true;
+			}
+		}
+		for (std::size_t index = 0; index < slots_.size(); ++index)
+		{
+			if (!slots_[index].data)
+			{
+				continue;
+			}
+			const auto* hierarchy = FindIn<Hierarchy>(*slots_[index].data);
+			if (hierarchy && hierarchy->parent != Entity{})
+			{
+				RequireAlive(hierarchy->parent);
+				batch->SetParent(At(index).index, hierarchy->parent.index);
+			}
+		}
+
+		// 根からの到達数で循環を検査する。以後の親変更は祖先列だけを検査する。
+		std::vector<std::uint32_t> reached;
+		reached.reserve(count_);
+		for (std::size_t index = 0; index < batch->links.size(); ++index)
+		{
+			if (batch->links[index].alive && batch->links[index].parent == Entity::InvalidIndex)
+			{
+				reached.push_back(At(index).index);
+			}
+		}
+		for (std::size_t index = 0; index < reached.size(); ++index)
+		{
+			for (auto child = batch->links[reached[index]].firstChild; child != Entity::InvalidIndex;
+				child = batch->links[child].nextSibling)
+			{
+				reached.push_back(child);
+			}
+		}
+		if (reached.size() != count_)
+		{
+			throw std::invalid_argument("階層予約batchの開始時の親子関係が循環しています。");
+		}
+		hierarchyBatch_ = std::move(batch);
+	}
+
+	void World::EndHierarchyBatch() noexcept
+	{
+		// 親の正本とjournalはWorldに残し、作業索引だけを破棄する。
+		hierarchyBatch_.reset();
+	}
+
+	void World::ComputeBatchWorld(Entity child, Entity parent, KT::Core::Math::Matrix4& oldWorld,
+		KT::Core::Math::Matrix4& parentWorld) const
+	{
+		// 公開階層snapshotを作らず、反映済みリンクの根から処理順を広げる。
+		std::vector<std::uint32_t> parentFirst;
+		parentFirst.reserve(count_);
+		for (std::size_t index = 0; index < hierarchyBatch_->links.size(); ++index)
+		{
+			const auto& links = hierarchyBatch_->links[index];
+			if (links.alive && links.parent == Entity::InvalidIndex)
+			{
+				parentFirst.push_back(At(index).index);
+			}
+		}
+		std::vector<KT::Core::Math::Matrix4> transforms(hierarchyBatch_->links.size());
+		for (std::size_t index = 0; index < parentFirst.size(); ++index)
+		{
+			const auto entityIndex = parentFirst[index];
+			const auto& links = hierarchyBatch_->links[entityIndex];
+			const auto* transform = FindIn<LocalTransform>(*slots_[entityIndex].data);
+			const auto local = transform ? *transform : LocalTransform{};
+			const auto matrix = KT::Core::Math::LocalMatrix(local.position, local.rotation, local.scale);
+			transforms[entityIndex] = links.parent == Entity::InvalidIndex ? matrix :
+				KT::Core::Math::Multiply(matrix, transforms[links.parent]);
+			for (auto descendant = links.firstChild; descendant != Entity::InvalidIndex;
+				descendant = hierarchyBatch_->links[descendant].nextSibling)
+			{
+				parentFirst.push_back(descendant);
+			}
+		}
+		// 対象以外の不正Transformも従来どおり拒否し、全件成功後に結果だけを返す。
+		oldWorld = transforms[child.index];
+		if (parent != Entity{})
+		{
+			parentWorld = transforms[parent.index];
+		}
+	}
+
 	std::shared_ptr<const HierarchySnapshot> World::GetHierarchy() const
 	{
 		RequireReadable();
@@ -643,6 +791,11 @@ namespace KT::World
 		// 空きslotの取得は定数時間。確保失敗時はfree listを消費しない。
 		const auto index = freeSlots_.empty() ? CheckedIndex(slots_.size()) : freeSlots_.back();
 		ReserveUndo(1);
+		// 作業索引の追加領域も、slotやfree listを変更する前に確保する。
+		if (hierarchyBatch_ && index >= hierarchyBatch_->links.size())
+		{
+			hierarchyBatch_->links.resize(static_cast<std::size_t>(index) + 1);
+		}
 		if (freeSlots_.empty())
 		{
 			// 各slotを破棄時に確保なしで戻せる容量を、作成時に用意する。
@@ -683,6 +836,11 @@ namespace KT::World
 		slots_[index].data = std::move(data);
 		slots_[index].lastIssuedGeneration = slots_[index].generation;
 		++count_;
+		if (hierarchyBatch_)
+		{
+			hierarchyBatch_->links[index] = {};
+			hierarchyBatch_->links[index].alive = true;
+		}
 		hierarchyCache_.reset();
 		return At(index);
 	}
@@ -701,41 +859,58 @@ namespace KT::World
 		}
 
 		// 検証済みの親索引で新親の祖先だけを辿り、循環を作る変更を拒否する。
-		const auto topology = GetHierarchy();
-		const auto childIndex = topology->FindNode(child);
-		const auto oldParentIndex = topology->nodes[childIndex].parent;
-		const auto oldParent = oldParentIndex == NoParent ? Entity{} : topology->nodes[oldParentIndex].entity;
-		if (parent != Entity{})
+		std::shared_ptr<const HierarchySnapshot> topology;
+		if (!hierarchyBatch_)
 		{
-			for (auto ancestor = topology->FindNode(parent); ancestor != NoParent; ancestor = topology->nodes[ancestor].parent)
+			topology = GetHierarchy();
+		}
+		auto& data = *slots_[child.index].data;
+		auto* hierarchy = FindIn<Hierarchy>(data);
+		const auto oldParent = hierarchy ? hierarchy->parent : Entity{};
+		for (auto ancestor = parent; ancestor != Entity{};)
+		{
+			if (ancestor == child)
 			{
-				if (ancestor == childIndex)
-				{
-					throw std::invalid_argument("親変更によって階層の親子関係が循環します。");
-				}
+				throw std::invalid_argument("親変更によって階層の親子関係が循環します。");
+			}
+			if (hierarchyBatch_)
+			{
+				const auto parentIndex = hierarchyBatch_->links[ancestor.index].parent;
+				ancestor = parentIndex == Entity::InvalidIndex ? Entity{} : At(parentIndex);
+			}
+			else
+			{
+				const auto parentIndex = topology->nodes[topology->FindNode(ancestor)].parent;
+				ancestor = parentIndex == NoParent ? Entity{} : topology->nodes[parentIndex].entity;
 			}
 		}
 
 		if (mode == ParentChangeMode::KeepWorld)
 		{
-			auto& data = *slots_[child.index].data;
-			auto* hierarchy = FindIn<Hierarchy>(data);
-			if ((hierarchy ? hierarchy->parent : Entity{}) == parent)
+			if (oldParent == parent)
 			{
 				return;
 			}
 
 			// 現在のWorldを再計算する。予約より前のsnapshotを使わず、先行操作を含める。
-			SceneUpdateContext context(*this, std::nullopt, {});
-			HierarchySystem{}.Update(context);
-			ActivationSystem{}.Update(context);
-			TransformSystem{}.Update(context);
-			const auto& transforms = context.GetTransforms();
-			const auto oldWorld = transforms[childIndex].transform.matrix;
+			KT::Core::Math::Matrix4 oldWorld;
 			KT::Core::Math::Matrix4 parentWorld;
-			if (parent != Entity{})
+			if (hierarchyBatch_)
 			{
-				parentWorld = transforms[topology->FindNode(parent)].transform.matrix;
+				ComputeBatchWorld(child, parent, oldWorld, parentWorld);
+			}
+			else
+			{
+				SceneUpdateContext context(*this, std::nullopt, {});
+				HierarchySystem{}.Update(context);
+				ActivationSystem{}.Update(context);
+				TransformSystem{}.Update(context);
+				const auto& transforms = context.GetTransforms();
+				oldWorld = transforms[topology->FindNode(child)].transform.matrix;
+				if (parent != Entity{})
+				{
+					parentWorld = transforms[topology->FindNode(parent)].transform.matrix;
+				}
 			}
 
 			const auto localMatrix = KT::Core::Math::Multiply(oldWorld, KT::Core::Math::Inverse(parentWorld));
@@ -787,14 +962,17 @@ namespace KT::World
 			{
 				*transform = local;
 			}
+			if (hierarchyBatch_)
+			{
+				hierarchyBatch_->SetParent(child.index, parent.index);
+			}
 			hierarchyCache_.reset();
 			return;
 		}
 
 		// KeepLocalは既存のローカル値とcomponent欠落を保つ。
 		MutationGuard guard(*this);
-		auto& data = *slots_[child.index].data;
-		if (auto* hierarchy = FindIn<Hierarchy>(data))
+		if (hierarchy)
 		{
 			BackupComponent<Hierarchy>(child);
 			hierarchy->parent = parent;
@@ -807,6 +985,10 @@ namespace KT::World
 		}
 		if (oldParent != parent)
 		{
+			if (hierarchyBatch_)
+			{
+				hierarchyBatch_->SetParent(child.index, parent.index);
+			}
 			hierarchyCache_.reset();
 		}
 	}
@@ -823,14 +1005,36 @@ namespace KT::World
 		RequireAlive(entity);
 
 		// 全階層を検証し、削除対象の全子孫を親から順に集める。
-		const auto hierarchy = GetHierarchy();
-		std::vector<std::size_t> subtree;
-		subtree.push_back(hierarchy->FindNode(entity));
-		for (std::size_t index = 0; index < subtree.size(); ++index)
+		std::vector<Entity> subtree;
+		subtree.push_back(entity);
+		if (hierarchyBatch_)
 		{
-			for (const auto child : hierarchy->nodes[subtree[index]].children)
+			for (std::size_t index = 0; index < subtree.size(); ++index)
 			{
-				subtree.push_back(child);
+				const auto childrenBegin = subtree.size();
+				for (auto child = hierarchyBatch_->links[subtree[index].index].firstChild; child != Entity::InvalidIndex;
+					child = hierarchyBatch_->links[child].nextSibling)
+				{
+					subtree.push_back(At(child));
+				}
+				// 作業リンクの挿入順に依存せず、既存と同じslot順で兄弟を収集する。
+				if (childrenBegin > static_cast<std::size_t>((std::numeric_limits<std::ptrdiff_t>::max)()))
+				{
+					throw std::overflow_error("部分木の兄弟列の位置がiterator差分型の上限を超えます。");
+				}
+				std::sort(subtree.begin() + static_cast<std::ptrdiff_t>(childrenBegin), subtree.end(),
+					[](Entity first, Entity second) { return first.index < second.index; });
+			}
+		}
+		else
+		{
+			const auto hierarchy = GetHierarchy();
+			for (std::size_t index = 0; index < subtree.size(); ++index)
+			{
+				for (const auto child : hierarchy->nodes[hierarchy->FindNode(subtree[index])].children)
+				{
+					subtree.push_back(hierarchy->nodes[child].entity);
+				}
 			}
 		}
 
@@ -847,7 +1051,7 @@ namespace KT::World
 		MutationGuard guard(*this);
 		for (auto iterator = subtree.rbegin(); iterator != subtree.rend(); ++iterator)
 		{
-			const auto target = hierarchy->nodes[*iterator].entity;
+			const auto target = *iterator;
 			destroyed.push_back(target);
 			DestroySlot(target);
 		}
@@ -882,6 +1086,10 @@ namespace KT::World
 		// 上限世代のslotは0で退役。古いhandleと一致する世代へ循環させない。
 		slot.generation = NextGeneration(slot.lastIssuedGeneration);
 		--count_;
+		if (hierarchyBatch_)
+		{
+			hierarchyBatch_->Remove(entity.index);
+		}
 		hierarchyCache_.reset();
 		if (slot.generation != 0)
 		{

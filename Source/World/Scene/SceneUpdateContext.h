@@ -20,6 +20,13 @@ namespace KT::World
 		std::optional<MeshRenderer> mesh;
 	};
 
+	// 今回のcontextで実際に再計算したEntity数。入力捕捉・結果コピーの件数は含めない。
+	struct CpuUpdateStatistics
+	{
+		std::size_t activationCalculated = 0;
+		std::size_t transformCalculated = 0;
+	};
+
 	// World入力を一度コピーし、今回の派生結果とともに所有する。World参照は保持しない。
 	// 対応するSystemだけが結果を更新し、別Worldや別更新の結果を混ぜない。
 	// 更新順序と失敗後の続行を検査する。計算に失敗したら新しいcontextでやり直す。
@@ -37,7 +44,9 @@ namespace KT::World
 			Failed
 		};
 
-		SceneUpdateContext(const World& world, std::optional<Entity> camera, Viewport viewport, std::uint64_t updateNumber = 0);
+		// previousは同じWorldの完成CPU結果。構築中に値をコピーし、後から借用しない。
+		SceneUpdateContext(const World& world, std::optional<Entity> camera, Viewport viewport,
+			std::uint64_t updateNumber = 0, const SceneUpdateContext* previous = nullptr);
 
 		[[nodiscard]] std::uint64_t UpdateNumber() const noexcept
 		{
@@ -63,6 +72,7 @@ namespace KT::World
 		const WorldFrame& GetFrame() const;
 		// Cameraの実行なしでCPU計算を利用できる。結果はこのcontextが所有する。
 		const WorldFrame& GetCpuFrame() const;
+		[[nodiscard]] const CpuUpdateStatistics& GetCpuUpdateStatistics() const;
 
 	private:
 		friend class HierarchySystem;
@@ -90,6 +100,10 @@ namespace KT::World
 		std::vector<SceneEntityInput> inputs_;
 		// 入力と同時に捕捉した親子索引・階層順序。Worldの後続変更とは独立して保持する。
 		std::shared_ptr<const HierarchySnapshot> hierarchy_;
+		// 入力照合で判定し、各Systemで親から子へ伝播する。入力配列と同じindexを使う。
+		std::vector<bool> activationDirty_;
+		std::vector<bool> transformDirty_;
+		CpuUpdateStatistics statistics_;
 		// 祖先の有効状態を反映した、Entityごとの最終有効状態。
 		std::vector<bool> active_;
 		// CPU派生結果と、任意のCamera計算結果を所有する。

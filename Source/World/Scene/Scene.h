@@ -30,7 +30,7 @@ namespace KT::World
 
 		[[nodiscard]] bool HasSnapshot() const noexcept
 		{
-			return state_ == State::Ready && snapshot_ != nullptr;
+			return state_ == State::Ready && snapshot_ != nullptr && snapshotValid_;
 		}
 
 		[[nodiscard]] bool IsUpdating() const noexcept
@@ -64,7 +64,7 @@ namespace KT::World
 			RequireValueEditing();
 			if (state_ == State::Ready)
 			{
-				snapshot_.reset();
+				snapshotValid_ = false;
 			}
 
 			// 編集callback中の更新・破棄を防ぎ、例外時も編集中の数を戻す。
@@ -123,15 +123,18 @@ namespace KT::World
 				world_.BackupComponent<T>(entity);
 			}
 		}
-		std::unique_ptr<SceneUpdateContext> ComputeCpu(std::uint64_t updateNumber) const;
+		std::unique_ptr<SceneUpdateContext> ComputeCpu(
+			std::uint64_t updateNumber, const SceneUpdateContext* previous = nullptr) const;
 
 		// Entity・component・Script実体の唯一の所有先。
 		World world_;
 		std::string name_;
 		// 構造変更を所有し、更新の開始・終了境界で順に反映する。
 		WorldCommandBuffer commands_;
-		// 成功したCPU結果。更新中と失敗後は隠し、rollback後の明示復旧で再公開する。
+		// 成功したCPU結果。idle編集後も差分比較用に保持し、公開だけ失効させる。
 		std::unique_ptr<SceneUpdateContext> snapshot_;
+		// idle編集後の比較元を現在の完成結果として公開しない。
+		bool snapshotValid_ = true;
 		// 開始境界と終了境界の反映結果を、この順で保持する。
 		std::array<CommandFlushResult, 2> commandResults_;
 		// CPU更新の識別番号。失敗した更新でも番号は消費する。

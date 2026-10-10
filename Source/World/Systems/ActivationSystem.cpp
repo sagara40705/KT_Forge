@@ -10,17 +10,26 @@ namespace KT::World
 
 		try
 		{
-			// 親から順に有効状態を計算し、無効な親の子も無効にする。
-			std::vector<bool> activeStates(context.inputs_.size());
+			// 親のDirtyを子へ伝播し、影響のないEntityは捕捉時にコピーした結果を使う。
+			auto activeStates = context.active_;
+			auto dirty = context.activationDirty_;
+			std::size_t calculated = 0;
 			for (auto nodeIndex : context.hierarchy_->parentFirst)
 			{
 				const auto parentIndex = context.hierarchy_->nodes[nodeIndex].parent;
-				activeStates[nodeIndex] =
-					context.inputs_[nodeIndex].activeSelf.value && (parentIndex == NoParent || activeStates[parentIndex]);
+				dirty[nodeIndex] = dirty[nodeIndex] || (parentIndex != NoParent && dirty[parentIndex]);
+				if (dirty[nodeIndex])
+				{
+					activeStates[nodeIndex] =
+						context.inputs_[nodeIndex].activeSelf.value && (parentIndex == NoParent || activeStates[parentIndex]);
+					++calculated;
+				}
 			}
 
 			// 全件の計算後に結果と更新段階を反映する。
 			context.active_ = std::move(activeStates);
+			context.activationDirty_ = std::move(dirty);
+			context.statistics_.activationCalculated = calculated;
 			context.stage_ = SceneUpdateContext::Stage::Activation;
 		}
 		catch (...)

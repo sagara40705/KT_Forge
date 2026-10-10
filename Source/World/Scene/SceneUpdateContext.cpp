@@ -1,14 +1,26 @@
 #include <World/Scene/SceneUpdateContext.h>
+#include <bit>
 #include <stdexcept>
 
 namespace KT::World
 {
-	SceneUpdateContext::SceneUpdateContext(const World& world, std::optional<Entity> camera, Viewport viewport, std::uint64_t updateNumber)
+	SceneUpdateContext::SceneUpdateContext(const World& world, std::optional<Entity> camera, Viewport viewport,
+		std::uint64_t updateNumber, const SceneUpdateContext* previous)
 		: worldId_(world.Identity()),
 		  updateNumber_(updateNumber),
 		  camera_(camera),
 		  viewport_(viewport)
 	{
+		// 完成した同じWorldの結果だけを比較元として受け付ける。
+		if (previous)
+		{
+			previous->RequireAtLeast(Stage::Transform);
+			if (previous->worldId_ != worldId_)
+			{
+				throw std::invalid_argument("差分更新の比較元が別のWorldのCPU結果です。");
+			}
+		}
+
 		// 階層と同じslot順で値を捕捉し、以降のSystemでWorldを再読取しない。
 		hierarchy_ = world.GetHierarchy();
 		inputs_.reserve(hierarchy_->nodes.size());
@@ -39,6 +51,50 @@ namespace KT::World
 			}
 
 			inputs_.push_back(input);
+		}
+
+		// 新規Entityは全計算し、生存世代が一致した入力だけ前回値を再利用する。
+		activationDirty_.assign(inputs_.size(), true);
+		transformDirty_.assign(inputs_.size(), true);
+		active_.resize(inputs_.size());
+		frame_.entities.resize(inputs_.size());
+		if (previous)
+		{
+			for (std::size_t nodeIndex = 0; nodeIndex < inputs_.size(); ++nodeIndex)
+			{
+				const auto& input = inputs_[nodeIndex];
+				if (input.entity.index >= previous->hierarchy_->nodeByEntityIndex.size())
+				{
+					continue;
+				}
+
+				const auto previousIndex = previous->hierarchy_->nodeByEntityIndex[input.entity.index];
+				if (previousIndex == NoParent || previous->inputs_[previousIndex].entity != input.entity)
+				{
+					continue;
+				}
+
+				const auto& oldInput = previous->inputs_[previousIndex];
+				const bool parentChanged = input.hierarchy.parent != oldInput.hierarchy.parent;
+				activationDirty_[nodeIndex] = parentChanged || input.activeSelf.value != oldInput.activeSelf.value;
+
+				// floatの各値を照合し、負の0も検出する。structのpaddingは比較しない。
+				const auto sameFloat = [](float first, float second)
+				{
+					return std::bit_cast<std::uint32_t>(first) == std::bit_cast<std::uint32_t>(second);
+				};
+				const auto& local = input.local;
+				const auto& oldLocal = oldInput.local;
+				transformDirty_[nodeIndex] = parentChanged ||
+					!sameFloat(local.position.x, oldLocal.position.x) || !sameFloat(local.position.y, oldLocal.position.y) ||
+					!sameFloat(local.position.z, oldLocal.position.z) || !sameFloat(local.rotation.x, oldLocal.rotation.x) ||
+					!sameFloat(local.rotation.y, oldLocal.rotation.y) || !sameFloat(local.rotation.z, oldLocal.rotation.z) ||
+					!sameFloat(local.rotation.w, oldLocal.rotation.w) || !sameFloat(local.scale.x, oldLocal.scale.x) ||
+					!sameFloat(local.scale.y, oldLocal.scale.y) || !sameFloat(local.scale.z, oldLocal.scale.z);
+
+				active_[nodeIndex] = previous->active_[previousIndex];
+				frame_.entities[nodeIndex] = previous->frame_.entities[previousIndex];
+			}
 		}
 	}
 
@@ -92,5 +148,11 @@ namespace KT::World
 	{
 		RequireAtLeast(Stage::Transform);
 		return frame_;
+	}
+
+	const CpuUpdateStatistics& SceneUpdateContext::GetCpuUpdateStatistics() const
+	{
+		RequireAtLeast(Stage::Transform);
+		return statistics_;
 	}
 }

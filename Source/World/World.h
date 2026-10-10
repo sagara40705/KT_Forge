@@ -18,6 +18,11 @@
 #include <utility>
 #include <vector>
 
+namespace KT::Core::Math
+{
+	struct Matrix4;
+}
+
 namespace KT::World
 {
 	struct Hierarchy;
@@ -141,6 +146,26 @@ namespace KT::World
 				: kind(actionKind)
 			{
 			}
+		};
+
+		// batch内だけの親子リンク。空きslotと根・兄弟の末尾はInvalidIndexで区別する。
+		struct HierarchyLinks
+		{
+			std::uint32_t parent = Entity::InvalidIndex;
+			std::uint32_t firstChild = Entity::InvalidIndex;
+			std::uint32_t previousSibling = Entity::InvalidIndex;
+			std::uint32_t nextSibling = Entity::InvalidIndex;
+			bool alive = false;
+		};
+
+		// FIFO反映の現在の親子関係。公開snapshotと分け、古いconst共有値を書き換えない。
+		struct HierarchyBatch
+		{
+			// Worldのslotと同じ番号で保持する。新規slotの領域は生成前に確保する。
+			std::vector<HierarchyLinks> links;
+			// 既存の兄弟リンクを外し、新しい親の先頭へつなぐ。確保・例外を伴わない。
+			void SetParent(std::uint32_t child, std::uint32_t parent) noexcept;
+			void Remove(std::uint32_t entity) noexcept;
 		};
 
 		// 一回のScene更新を戻すための構造・値の記録。World自体はコピーしない。
@@ -360,6 +385,12 @@ namespace KT::World
 	private:
 		friend class WorldCommandBuffer;
 		friend class Scene;
+		// 予約反映だけで作業索引を使う。失敗時も終了させてからSceneのrollbackへ戻る。
+		void BeginHierarchyBatch();
+		void EndHierarchyBatch() noexcept;
+		// 作業索引の親順で全件を検査・合成し、先行予約を含む対象と新親のWorld行列を求める。
+		void ComputeBatchWorld(Entity child, Entity parent, KT::Core::Math::Matrix4& oldWorld,
+			KT::Core::Math::Matrix4& parentWorld) const;
 		void BeginTransaction();
 		void CommitTransaction() noexcept;
 		void RollbackTransaction() noexcept;
@@ -458,6 +489,8 @@ namespace KT::World
 		std::size_t uuidIndexCapacity_ = 0;
 		// Entity生成・削除・親変更で失効する派生値。値編集では再利用する。
 		mutable std::shared_ptr<const HierarchySnapshot> hierarchyCache_;
+		// 親変更・削除を含む一回のFlushだけで保持し、更新前後へ持ち越さない。
+		std::unique_ptr<HierarchyBatch> hierarchyBatch_;
 		// データを所有している生存スロット数。
 		std::size_t count_ = 0;
 		// const列挙も含めた実行中の列挙数。

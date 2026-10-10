@@ -45,10 +45,10 @@ namespace KT::World
 		}
 	}
 
-	std::unique_ptr<SceneUpdateContext> Scene::ComputeCpu(std::uint64_t updateNumber) const
+	std::unique_ptr<SceneUpdateContext> Scene::ComputeCpu(std::uint64_t updateNumber, const SceneUpdateContext* previous) const
 	{
 		// Worldを一度捕捉し、階層・有効状態・World行列をこの順に確定する。
-		auto context = std::make_unique<SceneUpdateContext>(world_, std::nullopt, Viewport{}, updateNumber);
+		auto context = std::make_unique<SceneUpdateContext>(world_, std::nullopt, Viewport{}, updateNumber, previous);
 		HierarchySystem{}.Update(*context);
 		ActivationSystem{}.Update(*context);
 		TransformSystem{}.Update(*context);
@@ -76,6 +76,8 @@ namespace KT::World
 		// 更新中は旧結果を隠して保持し、今回の結果が完成するまで変更を仮反映する。
 		state_ = State::Updating;
 		auto previousSnapshot = std::move(snapshot_);
+		const bool previousSnapshotValid = snapshotValid_;
+		snapshotValid_ = false;
 		commandResults_ = {};
 		++updateNumber_;
 		try
@@ -88,7 +90,7 @@ namespace KT::World
 				std::rethrow_exception(commandResults_[0].error);
 			}
 
-			auto input = ComputeCpu(updateNumber_);
+			auto input = ComputeCpu(updateNumber_, previousSnapshot.get());
 
 			// 更新対象を確定してから呼ぶ。生成・削除は後段のFlushまで反映しない。
 			std::vector<std::pair<Entity, ScriptBehaviour*>> scripts;
@@ -136,9 +138,10 @@ namespace KT::World
 				std::rethrow_exception(commandResults_[1].error);
 			}
 
-			auto completedSnapshot = ComputeCpu(updateNumber_);
+			auto completedSnapshot = ComputeCpu(updateNumber_, input.get());
 			world_.CommitTransaction();
 			snapshot_ = std::move(completedSnapshot);
+			snapshotValid_ = true;
 			state_ = State::Ready;
 			return *snapshot_;
 		}
@@ -152,6 +155,7 @@ namespace KT::World
 			commands_.accepting_ = false;
 			world_.RollbackTransaction();
 			snapshot_ = std::move(previousSnapshot);
+			snapshotValid_ = previousSnapshotValid;
 			for (auto& result : commandResults_)
 			{
 				result.rolledBack = true;
@@ -225,7 +229,7 @@ namespace KT::World
 		// 待機中の完成結果を失効させ、有効設定を変更する。
 		if (state_ == State::Ready)
 		{
-			snapshot_.reset();
+			snapshotValid_ = false;
 		}
 		world_.BackupComponent<ScriptComponent>(entity);
 		component->entries_[scriptIndex].definition.enabled = enabled;

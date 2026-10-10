@@ -216,10 +216,22 @@ namespace KT::World
 		flushing_ = true;
 		ApplyContext context;
 		std::size_t index = 0;
+		bool hierarchyBatchStarted = false;
 		try
 		{
 			// 生成結果の記録領域を先に確保し、予約を記録順に反映する。
 			context.result.created.reserve(commands_.size());
+			// 親変更・削除を含むbatchだけ作業索引を作り、一件ごとのsnapshot再構築を避ける。
+			const bool needsHierarchy = std::any_of(commands_.begin(), commands_.end(), [](const auto& command)
+			{
+				return dynamic_cast<const ParentCommand*>(command.get()) != nullptr ||
+					dynamic_cast<const DestroyCommand*>(command.get()) != nullptr;
+			});
+			if (needsHierarchy)
+			{
+				world_.BeginHierarchyBatch();
+				hierarchyBatchStarted = true;
+			}
 			for (; index < commands_.size(); ++index)
 			{
 				if (commands_[index]->Apply(*this, context))
@@ -238,6 +250,12 @@ namespace KT::World
 			context.result.failedCommand = index;
 			context.result.error = std::current_exception();
 			accepting_ = false;
+		}
+
+		// 途中失敗でも作業索引を先に外し、Sceneのrollbackで再構築を要求しない。
+		if (hierarchyBatchStarted)
+		{
+			world_.EndHierarchyBatch();
 		}
 
 		// 失敗した操作と未実行操作も廃棄し、自動で再試行しない。
