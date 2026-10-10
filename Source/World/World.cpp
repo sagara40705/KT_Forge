@@ -281,6 +281,51 @@ namespace KT::World
 		}
 	}
 
+	void World::NotifyCpuChange(EntityData& data, bool activation, bool transform)
+	{
+		if (lastCpuChangeVersion_ == (std::numeric_limits<std::uint64_t>::max)())
+		{
+			throw std::overflow_error("WorldのCPU入力の変更世代が上限に達しました。");
+		}
+
+		// 元のEntity実体の世代を一度だけ記録し、値編集や構造変更より前に確保する。
+		if (transaction_ && data.capturedCpuTransaction != transaction_->number)
+		{
+			ReserveUndo(1);
+			auto& action = transaction_->actions.emplace_back(UndoAction::Kind::CpuChanges);
+			action.data = &data;
+			action.previousCpuVersions = data.cpuVersions;
+			data.capturedCpuTransaction = transaction_->number;
+		}
+
+		const auto version = ++lastCpuChangeVersion_;
+		if (activation)
+		{
+			data.cpuVersions.activation = version;
+		}
+		if (transform)
+		{
+			data.cpuVersions.transform = version;
+		}
+	}
+
+	CpuChangeState World::GetCpuChangeState(Entity entity) const
+	{
+		RequireReadable();
+		RequireAlive(entity);
+		const auto& data = *slots_[entity.index].data;
+		CpuChangeState state{data.cpuVersions, cpuValueEditing_, cpuValueEditing_};
+		if (const auto active = data.components.find(typeid(ActiveSelf)); active != data.components.end())
+		{
+			state.activationBorrowed = state.activationBorrowed || active->second->mutableBorrowed;
+		}
+		if (const auto transform = data.components.find(typeid(LocalTransform)); transform != data.components.end())
+		{
+			state.transformBorrowed = state.transformBorrowed || transform->second->mutableBorrowed;
+		}
+		return state;
+	}
+
 	void World::ReserveValues(std::size_t count)
 	{
 		auto& values = transaction_->values;
@@ -415,6 +460,9 @@ namespace KT::World
 				break;
 			case UndoAction::Kind::Remove:
 				action.data->components.insert(std::move(action.removed));
+				break;
+			case UndoAction::Kind::CpuChanges:
+				action.data->cpuVersions = action.previousCpuVersions;
 				break;
 			}
 		}
@@ -945,6 +993,9 @@ namespace KT::World
 			{
 				BackupComponent<LocalTransform>(child);
 			}
+			NotifyCpuChange(data, true, true);
+			// 世代の復元記録追加後に、Component追加分の空きを確認する。
+			ReserveUndo(additions.size());
 			data.components.merge(additions);
 			if (!hierarchy)
 			{
@@ -972,6 +1023,10 @@ namespace KT::World
 
 		// KeepLocalは既存のローカル値とcomponent欠落を保つ。
 		MutationGuard guard(*this);
+		if (oldParent != parent)
+		{
+			NotifyCpuChange(data, true, true);
+		}
 		if (hierarchy)
 		{
 			BackupComponent<Hierarchy>(child);

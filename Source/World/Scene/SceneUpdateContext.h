@@ -18,13 +18,17 @@ namespace KT::World
 		LocalTransform local{};
 		std::optional<Camera> camera;
 		std::optional<MeshRenderer> mesh;
+		// 入力と同時に捕捉した変更世代・借用状態。後からWorldを問い合わせない。
+		CpuChangeState changes;
 	};
 
-	// 今回のcontextで実際に再計算したEntity数。入力捕捉・結果コピーの件数は含めない。
+	// 今回のcontextで値比較・再計算したEntity数。入力捕捉・結果コピーは含めない。
 	struct CpuUpdateStatistics
 	{
 		std::size_t activationCalculated = 0;
 		std::size_t transformCalculated = 0;
+		std::size_t activationCompared = 0;
+		std::size_t transformCompared = 0;
 	};
 
 	// World入力を一度コピーし、今回の派生結果とともに所有する。World参照は保持しない。

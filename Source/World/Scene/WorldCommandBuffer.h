@@ -113,7 +113,7 @@ namespace KT::World
 			{
 				// 生成予約を解決してから、所有している値でcomponentを構築する。
 				const auto entity = buffer.ResolveTarget(target, context);
-				std::apply([&](auto&... values) { buffer.world_.AddComponent<T>(entity, std::move(values)...); }, arguments);
+				std::apply([&](auto&... values) { buffer.world_.AddComponentInternal<T>(entity, false, std::move(values)...); }, arguments);
 				return true;
 			}
 		};

@@ -30,6 +30,7 @@ namespace KT::World
 			const auto entity = node.entity;
 			SceneEntityInput input;
 			input.entity = entity;
+			input.changes = world.GetCpuChangeState(entity);
 
 			// 任意componentがある場合だけ、既定値を入力で置き換える。
 			input.hierarchy.parent = node.parent == NoParent ? Entity{} : hierarchy_->nodes[node.parent].entity;
@@ -75,22 +76,36 @@ namespace KT::World
 				}
 
 				const auto& oldInput = previous->inputs_[previousIndex];
-				const bool parentChanged = input.hierarchy.parent != oldInput.hierarchy.parent;
-				activationDirty_[nodeIndex] = parentChanged || input.activeSelf.value != oldInput.activeSelf.value;
+				activationDirty_[nodeIndex] = false;
+				transformDirty_[nodeIndex] = false;
+
+				// 通知済み入力は世代一致で値比較を省く。公開した可変参照は毎回照合する。
+				if (input.changes.activationBorrowed || oldInput.changes.activationBorrowed ||
+					input.changes.versions.activation != oldInput.changes.versions.activation)
+				{
+					++statistics_.activationCompared;
+					activationDirty_[nodeIndex] = input.hierarchy.parent != oldInput.hierarchy.parent ||
+						input.activeSelf.value != oldInput.activeSelf.value;
+				}
 
 				// floatの各値を照合し、負の0も検出する。structのpaddingは比較しない。
 				const auto sameFloat = [](float first, float second)
 				{
 					return std::bit_cast<std::uint32_t>(first) == std::bit_cast<std::uint32_t>(second);
 				};
-				const auto& local = input.local;
-				const auto& oldLocal = oldInput.local;
-				transformDirty_[nodeIndex] = parentChanged ||
-					!sameFloat(local.position.x, oldLocal.position.x) || !sameFloat(local.position.y, oldLocal.position.y) ||
-					!sameFloat(local.position.z, oldLocal.position.z) || !sameFloat(local.rotation.x, oldLocal.rotation.x) ||
-					!sameFloat(local.rotation.y, oldLocal.rotation.y) || !sameFloat(local.rotation.z, oldLocal.rotation.z) ||
-					!sameFloat(local.rotation.w, oldLocal.rotation.w) || !sameFloat(local.scale.x, oldLocal.scale.x) ||
-					!sameFloat(local.scale.y, oldLocal.scale.y) || !sameFloat(local.scale.z, oldLocal.scale.z);
+				if (input.changes.transformBorrowed || oldInput.changes.transformBorrowed ||
+					input.changes.versions.transform != oldInput.changes.versions.transform)
+				{
+					++statistics_.transformCompared;
+					const auto& local = input.local;
+					const auto& oldLocal = oldInput.local;
+					transformDirty_[nodeIndex] = input.hierarchy.parent != oldInput.hierarchy.parent ||
+						!sameFloat(local.position.x, oldLocal.position.x) || !sameFloat(local.position.y, oldLocal.position.y) ||
+						!sameFloat(local.position.z, oldLocal.position.z) || !sameFloat(local.rotation.x, oldLocal.rotation.x) ||
+						!sameFloat(local.rotation.y, oldLocal.rotation.y) || !sameFloat(local.rotation.z, oldLocal.rotation.z) ||
+						!sameFloat(local.rotation.w, oldLocal.rotation.w) || !sameFloat(local.scale.x, oldLocal.scale.x) ||
+						!sameFloat(local.scale.y, oldLocal.scale.y) || !sameFloat(local.scale.z, oldLocal.scale.z);
+				}
 
 				active_[nodeIndex] = previous->active_[previousIndex];
 				frame_.entities[nodeIndex] = previous->frame_.entities[previousIndex];

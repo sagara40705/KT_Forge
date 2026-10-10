@@ -68,15 +68,19 @@ namespace KT::World
 			}
 
 			// 編集callback中の更新・破棄を防ぎ、例外時も編集中の数を戻す。
+			const bool previousCpuEditing = world_.cpuValueEditing_;
 			++valueEdits_;
 			try
 			{
 				world_.BackupComponent<T>(entity);
-				std::invoke(std::forward<Fn>(edit), world_.GetComponent<T>(entity));
+				world_.cpuValueEditing_ = true;
+				std::invoke(std::forward<Fn>(edit), world_.GetEditableComponent<T>(entity));
+				world_.cpuValueEditing_ = previousCpuEditing;
 				--valueEdits_;
 			}
 			catch (...)
 			{
+				world_.cpuValueEditing_ = previousCpuEditing;
 				--valueEdits_;
 				throw;
 			}
@@ -99,7 +103,19 @@ namespace KT::World
 				{
 					// callbackへ可変参照を渡す前に、対象の既存値を全て捕捉する。
 					(BackupEditable<Ts>(entity.entity), ...);
-					std::invoke(update, entity.entity, world_.GetComponent<Ts>(entity.entity)...);
+					// 入れ子や例外でも、途中捕捉を世代だけで再利用しない印を戻す。
+					const bool previousCpuEditing = world_.cpuValueEditing_;
+					world_.cpuValueEditing_ = true;
+					try
+					{
+						std::invoke(update, entity.entity, world_.GetEditableComponent<Ts>(entity.entity)...);
+						world_.cpuValueEditing_ = previousCpuEditing;
+					}
+					catch (...)
+					{
+						world_.cpuValueEditing_ = previousCpuEditing;
+						throw;
+					}
 				}
 			}
 		}

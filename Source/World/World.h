@@ -27,10 +27,27 @@ namespace KT::World
 {
 	struct Hierarchy;
 	struct HierarchySnapshot;
+	struct ActiveSelf;
+	struct LocalTransform;
 	class ScriptComponent;
 	class ScriptBehaviour;
 	class WorldCommandBuffer;
 	class Scene;
+
+	// EntityのCPU入力の変更世代。保存形式には含めず、World内で発行する。
+	struct CpuChangeVersions
+	{
+		std::uint64_t activation = 0;
+		std::uint64_t transform = 0;
+	};
+
+	// 可変借用または編集中に捕捉した入力は、世代一致時も値を照合する。
+	struct CpuChangeState
+	{
+		CpuChangeVersions versions;
+		bool activationBorrowed = false;
+		bool transformBorrowed = false;
+	};
 
 	// 親変更で維持する変換を指定する。KeepWorldは反映時点の行列をTRSで保持する。
 	enum class ParentChangeMode
@@ -70,6 +87,8 @@ namespace KT::World
 			std::uint64_t createdTransaction = 0;
 			// 最初の値捕捉が成功したtransaction番号。実体を除去しても保持する。
 			std::uint64_t capturedTransaction = 0;
+			// 公開APIから可変参照を返した事実。参照が失効する実体削除まで保持する。
+			bool mutableBorrowed = false;
 			virtual ~ComponentBase() = default;
 		};
 
@@ -89,6 +108,9 @@ namespace KT::World
 		struct EntityData
 		{
 			std::map<std::type_index, std::unique_ptr<ComponentBase>> components;
+			CpuChangeVersions cpuVersions;
+			// 世代の復元値を捕捉済みのtransaction。番号はrollback後も再利用しない。
+			std::uint64_t capturedCpuTransaction = 0;
 		};
 
 		// Entityの世代と生存データを保持し、破棄後は再利用できる。
@@ -118,21 +140,24 @@ namespace KT::World
 		// 構造変更の逆操作と、削除した実体・map nodeを成功確定まで所有する。
 		struct UndoAction
 		{
-			// 記録順の構造変更に対応する逆操作。
+			// 記録順の状態変更に対応する逆操作。
 			enum class Kind
 			{
 				Create,
 				Destroy,
 				Add,
-				Remove
+				Remove,
+				CpuChanges
 			};
 			Kind kind;
 			// Create/Destroyで変更したslot。
 			std::uint32_t index = 0;
 			// 削除したEntityを同じ世代で復元するための値。
 			std::uint64_t generation = 0;
-			// Add/Removeの対象。Entityが削除されてもjournal内で実体を保持する。
+			// Add/Remove/CpuChangesの対象。削除されてもjournal内で実体を保持する。
 			EntityData* data = nullptr;
+			// CpuChangesで戻す世代。借用済み印はComponent実体に保持して戻さない。
+			CpuChangeVersions previousCpuVersions;
 			// 追加したcomponentを逆操作で取り除く型。
 			std::type_index type{typeid(void)};
 			// 破棄を仮反映したEntityの、元の所有実体。
@@ -219,6 +244,8 @@ namespace KT::World
 		// 親子索引と階層順序を遅延構築する。構造が同じ間は同じconst値を共有する。
 		// 戻り値はWorldの変更・破棄後も捕捉時の階層を保持し、Worldを借用しない。
 		[[nodiscard]] std::shared_ptr<const HierarchySnapshot> GetHierarchy() const;
+		// 値入力と同時に捕捉する変更世代と、通知なし編集を許す借用状態。
+		[[nodiscard]] CpuChangeState GetCpuChangeState(Entity entity) const;
 		// 生存Entityをスロット順にコピーする。component参照は保持しない。
 		[[nodiscard]] std::vector<Entity> Entities() const;
 		// 保存窓口が未対応の型を検出できるよう、型だけをコピーする。
@@ -238,34 +265,19 @@ namespace KT::World
 		// コピー・ムーブできない型も、引数から直接構築する。
 		template <ComponentType T, class... Args> T& AddComponent(Entity entity, Args&&... args)
 		{
-			static_assert(!ReservedComponent<T>, "HierarchyとPersistentIdの追加・削除には専用APIを使用してください。");
-
-			// 構造変更を開始し、対象Entityの生存を確認する。
-			MutationGuard guard(*this);
-			RequireAlive(entity);
-
-			auto& components = slots_[entity.index].data->components;
-			const std::type_index type(typeid(T));
-			if (components.contains(type))
-			{
-				throw std::logic_error("同じ型のcomponentが既に存在します。");
-			}
-
-			// 構築に成功したcomponentだけを登録する。
-			auto componentBox = std::make_unique<ComponentBox<T>>(std::forward<Args>(args)...);
-			auto* value = std::addressof(componentBox->value);
-			ReserveUndo(1);
-			components.emplace(type, std::move(componentBox));
-			RecordAdded(*slots_[entity.index].data, type);
-
-			return *value;
+			return AddComponentInternal<T>(entity, true, std::forward<Args>(args)...);
 		}
 
 		// componentを借用する。無効・失効・別World・型なしはnullptr。
 		template <ComponentType T> [[nodiscard]] BorrowedComponent<T>* FindComponent(Entity entity)
 		{
 			RequireReadable();
-			return IsAliveUnchecked(entity) ? FindIn<T>(*slots_[entity.index].data) : nullptr;
+			auto* value = IsAliveUnchecked(entity) ? FindIn<T>(*slots_[entity.index].data) : nullptr;
+			if (value)
+			{
+				MarkMutableBorrow<T>(*slots_[entity.index].data);
+			}
+			return value;
 		}
 
 		template <ComponentType T> [[nodiscard]] const T* FindComponent(Entity entity) const
@@ -291,6 +303,7 @@ namespace KT::World
 				throw std::out_of_range("要求したcomponentがありません。");
 			}
 
+			MarkMutableBorrow<T>(*slots_[entity.index].data);
 			return *value;
 		}
 
@@ -322,6 +335,7 @@ namespace KT::World
 				throw std::out_of_range("要求したcomponentがありません。");
 			}
 
+			NotifyCpuComponent<T>(*slots_[entity.index].data);
 			if (transaction_)
 			{
 				ReserveUndo(1);
@@ -355,6 +369,7 @@ namespace KT::World
 				auto& data = *slots_[index].data;
 				if ((FindIn<Ts>(data) && ...))
 				{
+					(MarkMutableBorrow<Ts>(data), ...);
 					std::invoke(callback, At(index), static_cast<BorrowedComponent<Ts>&>(*FindIn<Ts>(data))...);
 				}
 			}
@@ -385,6 +400,65 @@ namespace KT::World
 	private:
 		friend class WorldCommandBuffer;
 		friend class Scene;
+		// Scene callbackと予約反映は可変参照を外へ持ち出さず、変更を通知する。
+		template <ComponentType T, class... Args>
+		T& AddComponentInternal(Entity entity, bool mutableBorrow, Args&&... args)
+		{
+			static_assert(!ReservedComponent<T>, "HierarchyとPersistentIdの追加・削除には専用APIを使用してください。");
+			MutationGuard guard(*this);
+			RequireAlive(entity);
+			auto& data = *slots_[entity.index].data;
+			const std::type_index type(typeid(T));
+			if (data.components.contains(type))
+			{
+				throw std::logic_error("同じ型のcomponentが既に存在します。");
+			}
+
+			// 構築と記録領域の確保後に登録し、CPU入力の変更世代も通知する。
+			auto componentBox = std::make_unique<ComponentBox<T>>(std::forward<Args>(args)...);
+			auto* value = std::addressof(componentBox->value);
+			NotifyCpuComponent<T>(data);
+			ReserveUndo(1);
+			data.components.emplace(type, std::move(componentBox));
+			RecordAdded(data, type);
+			if (mutableBorrow)
+			{
+				MarkMutableBorrow<T>(data);
+			}
+			return *value;
+		}
+
+		template <ComponentType T> BorrowedComponent<T>& GetEditableComponent(Entity entity)
+		{
+			RequireReadable();
+			RequireAlive(entity);
+			auto& data = *slots_[entity.index].data;
+			auto* value = FindIn<T>(data);
+			if (!value)
+			{
+				throw std::out_of_range("編集するcomponentがありません。");
+			}
+			NotifyCpuComponent<T>(data);
+			return *value;
+		}
+
+		template <ComponentType T> static void MarkMutableBorrow(EntityData& data) noexcept
+		{
+			if constexpr (std::is_same_v<T, ActiveSelf> || std::is_same_v<T, LocalTransform>)
+			{
+				data.components.find(typeid(T))->second->mutableBorrowed = true;
+			}
+		}
+
+		template <ComponentType T> void NotifyCpuComponent(EntityData& data)
+		{
+			if constexpr (std::is_same_v<T, ActiveSelf> || std::is_same_v<T, LocalTransform>)
+			{
+				NotifyCpuChange(data, std::is_same_v<T, ActiveSelf>, std::is_same_v<T, LocalTransform>);
+			}
+		}
+		// 値編集より前に世代を発行し、元の世代はtransactionで一度だけ捕捉する。
+		void NotifyCpuChange(EntityData& data, bool activation, bool transform);
 		// 予約反映だけで作業索引を使う。失敗時も終了させてからSceneのrollbackへ戻る。
 		void BeginHierarchyBatch();
 		void EndHierarchyBatch() noexcept;
@@ -497,8 +571,12 @@ namespace KT::World
 		mutable std::size_t enumerations_ = 0;
 		// componentの構築・破棄を含む構造変更中は、読み取りも拒否する。
 		bool mutating_ = false;
+		// Sceneの値編集callback中。途中のCPU捕捉は世代一致だけで再利用しない。
+		bool cpuValueEditing_ = false;
 		// 捕捉に失敗した更新も消費する番号。rollback後も過去の印と一致させない。
 		std::uint64_t lastTransactionNumber_ = 0;
+		// 変更世代の発行元。rollbackでも消費し、失敗中のCPU入力と将来の値を混同しない。
+		std::uint64_t lastCpuChangeVersion_ = 0;
 		// Scene更新中だけ存在する。復元用領域は変更前に確保する。
 		std::unique_ptr<Transaction> transaction_;
 	};
