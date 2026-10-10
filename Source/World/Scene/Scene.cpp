@@ -193,16 +193,8 @@ namespace KT::World
 
 	std::optional<Entity> Scene::FindByUuid(ObjectUuid uuid) const
 	{
-		std::optional<Entity> result;
-		world_.ForEach<PersistentId>(
-			[&](Entity entity, const PersistentId& identity)
-			{
-				if (identity.value == uuid)
-				{
-					result = entity;
-				}
-			});
-		return result;
+		// 現在の仮反映も含むWorldの索引で検索し、更新境界前の結果を使い回さない。
+		return world_.FindByUuid(uuid);
 	}
 
 	void Scene::ResetAfterFailure()

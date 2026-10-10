@@ -247,22 +247,18 @@ namespace KT::World
 			throw std::logic_error("Worldの更新transactionが既に開始されています。");
 		}
 
-		// 空き順序と既存実体の識別だけを捕捉し、Worldの所有構造はコピーしない。
+		if (lastTransactionNumber_ == (std::numeric_limits<std::uint64_t>::max)())
+		{
+			throw std::overflow_error("Worldのtransaction番号が上限に達しました。");
+		}
+
+		// 番号は確保失敗時も消費する。既存Componentを全収集せず、空き順序だけを保存する。
+		const auto transactionNumber = ++lastTransactionNumber_;
 		auto transaction = std::make_unique<Transaction>();
+		transaction->number = transactionNumber;
 		transaction->initialSlotCount = slots_.size();
 		transaction->freeSlots = freeSlots_;
 		transaction->freeSlots.reserve(slots_.size());
-		for (const auto& slot : slots_)
-		{
-			if (slot.data)
-			{
-				for (const auto& [type, component] : slot.data->components)
-				{
-					(void)type;
-					transaction->originalComponents.push_back(component.get());
-				}
-			}
-		}
 		transaction_ = std::move(transaction);
 	}
 
@@ -284,26 +280,69 @@ namespace KT::World
 		}
 	}
 
+	void World::ReserveValues(std::size_t count)
+	{
+		auto& values = transaction_->values;
+		if (count > values.max_size() - values.size())
+		{
+			throw std::overflow_error("Worldの値復元記録が上限を超えます。");
+		}
+		if (values.capacity() < values.size() + count)
+		{
+			const auto increment = (std::min)(values.capacity() / 2 + 1, values.max_size() - values.capacity());
+			values.reserve((std::max)(values.size() + count, values.capacity() + increment));
+		}
+	}
+
+	void World::ReserveUuidIndex(std::size_t count)
+	{
+		if (count > uuidIndex_.max_size() - uuidIndex_.size())
+		{
+			throw std::overflow_error("WorldのUUID索引が上限を超えます。");
+		}
+		const auto required = uuidIndex_.size() + count;
+		if (uuidIndexCapacity_ < required)
+		{
+			const auto increment = (std::min)(uuidIndexCapacity_ / 2 + 1, uuidIndex_.max_size() - uuidIndexCapacity_);
+			const auto capacity = (std::max)(required, uuidIndexCapacity_ + increment);
+			uuidIndex_.reserve(capacity);
+			uuidIndexCapacity_ = capacity;
+		}
+	}
+
 	void World::RecordAdded(EntityData& data, std::type_index type) noexcept
 	{
 		if (transaction_)
 		{
+			// 登録済みの実体に印を付ける。同型を追加し直した場合も元の実体と区別する。
+			data.components.find(type)->second->createdTransaction = transaction_->number;
 			auto& action = transaction_->actions.emplace_back(UndoAction::Kind::Add);
 			action.data = &data;
 			action.type = type;
 		}
 	}
 
-	bool World::IsOriginalComponent(ComponentBase* component) const noexcept
+	std::size_t World::ObjectUuidHash::operator()(const ObjectUuid& uuid) const noexcept
 	{
-		return transaction_ && std::find(transaction_->originalComponents.begin(), transaction_->originalComponents.end(), component) !=
-			transaction_->originalComponents.end();
+		// 文字列化せず、16byte全体をFNV-1aで混ぜる。衝突時はUUID全体で比較する。
+		std::uint64_t hash = 14695981039346656037ull;
+		for (const auto byte : uuid.bytes)
+		{
+			hash ^= byte;
+			hash *= 1099511628211ull;
+		}
+		return static_cast<std::size_t>(hash);
+	}
+
+	bool World::ObjectUuidEqual::operator()(const ObjectUuid& first, const ObjectUuid& second) const noexcept
+	{
+		return first.bytes == second.bytes;
 	}
 
 	void World::BackupScript(ScriptBehaviour& script)
 	{
 		MutationGuard guard(*this);
-		transaction_->values.reserve(transaction_->values.size() + 1);
+		ReserveValues(1);
 		auto saved = script.CaptureRollback();
 		if (!saved)
 		{
@@ -321,6 +360,7 @@ namespace KT::World
 		{
 			action.destroyed.reset();
 			action.removed = {};
+			action.removedUuid = {};
 		}
 		transaction_.reset();
 		mutating_ = false;
@@ -346,6 +386,10 @@ namespace KT::World
 			switch (action.kind)
 			{
 			case UndoAction::Kind::Create:
+				if (const auto* identity = FindIn<PersistentId>(*slots_[action.index].data))
+				{
+					uuidIndex_.erase(identity->value);
+				}
 				slots_[action.index].data.reset();
 				slots_[action.index].generation = NextGeneration(slots_[action.index].lastIssuedGeneration);
 				--count_;
@@ -354,6 +398,16 @@ namespace KT::World
 				slots_[action.index].data = std::move(action.destroyed);
 				slots_[action.index].generation = action.generation;
 				++count_;
+				if (!action.removedUuid.empty())
+				{
+					// nodeと過去の最大生存数までのbucketを保持しているため、復元で確保しない。
+					const auto restored = uuidIndex_.insert(std::move(action.removedUuid));
+					// 逆順の復元では同じUUIDは残らない。重複は内部不変条件の破損として止める。
+					if (!restored.inserted)
+					{
+						std::terminate();
+					}
+				}
 				break;
 			case UndoAction::Kind::Add:
 				action.data->components.erase(action.type);
@@ -443,6 +497,17 @@ namespace KT::World
 		return IsAliveUnchecked(entity);
 	}
 
+	std::optional<Entity> World::FindByUuid(ObjectUuid uuid) const
+	{
+		RequireReadable();
+		const auto entry = uuidIndex_.find(uuid);
+		if (entry == uuidIndex_.end() || !IsAliveUnchecked(entry->second))
+		{
+			return std::nullopt;
+		}
+		return entry->second;
+	}
+
 	std::vector<Entity> World::Entities() const
 	{
 		RequireReadable();
@@ -515,23 +580,35 @@ namespace KT::World
 		}
 
 		// 同じWorld内で永続UUIDが重複しないことを、公開前に確認する。
-		for (const auto& slot : slots_)
+		if (uuidIndex_.contains(uuid))
 		{
-			if (slot.data)
-			{
-				const auto* identity = FindIn<PersistentId>(*slot.data);
-				if (identity && identity->value == uuid)
-				{
-					throw std::invalid_argument("生成するSceneオブジェクトのUUIDが同じWorld内で重複しています。");
-				}
-			}
+			throw std::invalid_argument("生成するSceneオブジェクトのUUIDが同じWorld内で重複しています。");
 		}
 
 		// 必須componentの構築と登録を済ませてから、Entityを公開する。
 		auto data = std::make_unique<EntityData>();
 		data->components.emplace(typeid(PersistentId), std::make_unique<ComponentBox<PersistentId>>(uuid));
 		data->components.emplace(typeid(Name), std::make_unique<ComponentBox<Name>>(std::move(name)));
-		return PublishEntity(std::move(data));
+
+		// Entityを公開する前に索引nodeとbucketを確保し、公開失敗なら仮nodeを除く。
+		ReserveUuidIndex(1);
+		const auto [entry, inserted] = uuidIndex_.emplace(uuid, Entity{});
+		if (!inserted)
+		{
+			throw std::logic_error("生成前に検査したUUIDを索引へ登録できませんでした。");
+		}
+
+		try
+		{
+			const auto entity = PublishEntity(std::move(data));
+			entry->second = entity;
+			return entity;
+		}
+		catch (...)
+		{
+			uuidIndex_.erase(entry);
+			throw;
+		}
 	}
 
 	Entity World::PublishEntity(std::unique_ptr<EntityData> data)
@@ -550,7 +627,13 @@ namespace KT::World
 			}
 			if (transaction_)
 			{
-				transaction_->freeSlots.reserve(required);
+				auto& restoredFreeSlots = transaction_->freeSlots;
+				if (restoredFreeSlots.capacity() < required)
+				{
+					const auto increment = (std::min)(
+						restoredFreeSlots.capacity() / 2 + 1, restoredFreeSlots.max_size() - restoredFreeSlots.capacity());
+					restoredFreeSlots.reserve((std::max)(required, restoredFreeSlots.capacity() + increment));
+				}
 			}
 			slots_.emplace_back();
 		}
@@ -561,6 +644,12 @@ namespace KT::World
 
 		if (transaction_)
 		{
+			// Entity生成でまとめて登録するComponentも、今回作った実体として扱う。
+			for (auto& [type, component] : data->components)
+			{
+				(void)type;
+				component->createdTransaction = transaction_->number;
+			}
 			auto& action = transaction_->actions.emplace_back(UndoAction::Kind::Create);
 			action.index = index;
 		}
@@ -735,15 +824,25 @@ namespace KT::World
 	{
 		// Entityを失効させる。更新中の実体解放は成功確定まで延期する。
 		auto& slot = slots_[entity.index];
+		const auto* identity = FindIn<PersistentId>(*slot.data);
 		if (transaction_)
 		{
 			auto& action = transaction_->actions.emplace_back(UndoAction::Kind::Destroy);
 			action.index = entity.index;
 			action.generation = slot.generation;
+			if (identity)
+			{
+				// 同じUUIDを後続予約で再生成できるよう、索引から外してnodeを保持する。
+				action.removedUuid = uuidIndex_.extract(identity->value);
+			}
 			action.destroyed = std::move(slot.data);
 		}
 		else
 		{
+			if (identity)
+			{
+				uuidIndex_.erase(identity->value);
+			}
 			slot.data.reset();
 		}
 
