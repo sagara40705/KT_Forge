@@ -34,6 +34,8 @@ namespace KT::Content
 		// 存在する参照を一度だけ読み込む。欠落IDは呼出側がFindで診断する。
 		// 読込失敗・索引からのID/種類変更は例外とし、部分的な結果を公開しない。
 		[[nodiscard]] std::vector<AssetDocument> Load(std::span<const AssetId> ids) const;
+		// ModelからMesh/Material/Textureを一度ずつ読み、全依存を検証して所有値を返す。
+		[[nodiscard]] std::vector<AssetDocument> LoadModel(ModelAssetId id) const;
 		// 相対配置を解決する。絶対パス、親への脱出、リンク経由のroot外参照を拒否する。
 		[[nodiscard]] std::filesystem::path Resolve(const std::filesystem::path& relativePath) const;
 

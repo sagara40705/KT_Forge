@@ -1,4 +1,5 @@
 #include <RuntimeIntegration/ModelImport.h>
+#include <RuntimeIntegration/ModelPlacement.h>
 #include <RuntimeIntegration/ProjectSceneLoader.h>
 #include <RuntimeIntegration/SceneUpdater.h>
 #include <Content/AssetJson.h>
@@ -197,6 +198,9 @@ namespace KT::RuntimeIntegration
 
 			// 画像展開・UUID参照・World生成を製品Loaderで検査してから、一括公開する。
 			const auto project = KT::Content::ProjectAssets::Scan(stagingPath);
+			const auto& modelDocument = model.ModelDocument();
+			// 保存したModel自体を読み直し、Sceneで未使用の初期割当も依存検査する。
+			(void)project.LoadModel(KT::Content::ModelAssetId(modelDocument.id));
 			KT::Content::AssetCatalog catalog;
 			const auto loaded = ProjectSceneLoader::Load(project, "scene.json", catalog);
 			if (!loaded.diagnostics.empty())
@@ -243,51 +247,15 @@ namespace KT::RuntimeIntegration
 			KT::World::SceneJson::Save(stagingPath / "preview.scene.json", *loaded.scene, components, scripts);
 			std::filesystem::rename(stagingPath, output);
 			staging.published = true;
-			return {output / "scene.json", model.assets.size(), model.nodes.size(), model.diagnostics};
+			return {output / "scene.json", model.assets.size(), model.nodes.size(), model.diagnostics,
+				output / (modelDocument.id.ToString() + ".asset.json"), KT::Content::ModelAssetId(modelDocument.id)};
 		}
 	}
 
 	KT::World::SceneAsset ModelImport::CreateScene(
 		const KT::Content::ImportedModel& model, const std::map<std::string, KT::World::ObjectUuid>& previousIds)
 	{
-		KT::World::SceneAsset scene;
-		scene.name = "ImportedModel";
-		for (std::size_t index = 0; index < model.nodes.size(); ++index)
-		{
-			const auto& node = model.nodes[index];
-			const auto previous = previousIds.find(node.key);
-			KT::World::SceneObjectDefinition object;
-			object.uuid = previous == previousIds.end() ? KT::World::ObjectUuid::Generate() : previous->second;
-			object.name = node.name;
-			if (node.parent)
-			{
-				if (*node.parent >= index)
-				{
-					throw std::invalid_argument("モデルノードの親は同じ配列の先行ノードが必要です。");
-				}
-				object.parent = scene.objects[*node.parent].uuid;
-			}
-			const auto vector = [](const KT::Core::Math::Vector3& value) -> KT::World::SceneValue
-			{ return KT::World::SceneValue::Array{double(value.x), double(value.y), double(value.z)}; };
-			object.components.push_back({"kt.LocalTransform", 1,
-				KT::World::SceneValue::Object{{"position", vector(node.position)}, {"scale", vector(node.scale)},
-					{"rotation",
-						KT::World::SceneValue::Array{
-							double(node.rotation.x), double(node.rotation.y), double(node.rotation.z), double(node.rotation.w)}}}});
-			if (node.mesh)
-			{
-				KT::World::SceneValue::Object materials;
-				for (const auto& [slot, id] : model.materials.at(*node.mesh))
-				{
-					materials.emplace(slot, id ? KT::World::SceneValue(id->ToString()) : KT::World::SceneValue{});
-				}
-				object.components.push_back({"kt.MeshRenderer", 3,
-					KT::World::SceneValue::Object{{"mesh", model.meshes.at(*node.mesh).ToString()}, {"material", KT::World::SceneValue{}},
-						{"visible", true}, {"materials", std::move(materials)}}});
-			}
-			scene.objects.push_back(std::move(object));
-		}
-		return scene;
+		return ModelPlacement::CreateScene(std::get<KT::Content::ModelAsset>(model.ModelDocument().data), previousIds);
 	}
 
 	ModelImportResult ModelImport::Import(

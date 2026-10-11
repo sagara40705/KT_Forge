@@ -11,6 +11,9 @@ namespace KT::RuntimeIntegration
 		std::size_t assetCount = 0;
 		std::size_t objectCount = 0;
 		std::vector<std::string> diagnostics;
+		// Sceneから独立して再利用できるModel原本の保存先と永続ID。
+		std::filesystem::path model;
+		std::optional<KT::Content::ModelAssetId> modelId;
 	};
 
 	// CPU取込結果をScene定義へ接続し、専用の保存先へ一括公開する。

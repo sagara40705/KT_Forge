@@ -233,6 +233,16 @@ namespace KT::Content
 		}
 	}
 
+	const AssetDocument& ImportedModel::ModelDocument() const
+	{
+		const auto found = std::find_if(assets.begin(), assets.end(), [](const auto& asset) { return asset.Kind() == AssetKind::Model; });
+		if (found == assets.end())
+		{
+			throw std::logic_error("取込結果にModel原本がありません。");
+		}
+		return *found;
+	}
+
 	ImportedModel ModelImporter::Load(
 		const std::filesystem::path& source, ModelImportOptions options, const std::map<std::string, AssetId>& previousIds)
 	{
@@ -663,6 +673,23 @@ namespace KT::Content
 		{
 			throw std::invalid_argument("分割Meshを含むモデルノード数が10万上限を超えています。");
 		}
+		// 階層と割当をMesh配列位置から永続参照へ確定し、一つのModel資源へ保存する。
+		std::vector<ModelNode> nodes;
+		nodes.reserve(result.nodes.size());
+		for (const auto& sourceNode : result.nodes)
+		{
+			ModelNode node{sourceNode.key, sourceNode.name, sourceNode.parent,
+				sourceNode.position, sourceNode.rotation, sourceNode.scale, {}, {}, {}};
+			if (sourceNode.mesh)
+			{
+				node.mesh = result.meshes.at(*sourceNode.mesh);
+				node.materials = result.materials.at(*sourceNode.mesh);
+			}
+			nodes.push_back(std::move(node));
+		}
+		const auto modelName = source.stem().u8string();
+		result.assets.push_back({idFor("model"), std::string(modelName.begin(), modelName.end()), ModelAsset(std::move(nodes))});
+		result.assetKeys.push_back("model");
 		return result;
 	}
 }

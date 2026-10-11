@@ -27,6 +27,10 @@ namespace KT::Content
 			texture->ValidateLoaded();
 		}
 		const auto id = document.id;
+		if (const auto* model = std::get_if<ModelAsset>(&document.data))
+		{
+			model->Validate();
+		}
 		assets_.emplace(id, std::move(document));
 	}
 
@@ -91,6 +95,15 @@ namespace KT::Content
 		}
 		const auto* asset = std::get_if<T>(&found->second.data);
 		return {asset ? AssetReferenceState::Ready : AssetReferenceState::TypeMismatch, asset};
+	}
+
+	AssetLookup<ModelAsset> AssetCatalog::Resolve(std::optional<ModelAssetId> id) const
+	{
+		if (!frozen_)
+		{
+			throw std::logic_error("素材参照の解決前にAssetCatalogをFreezeしてください。");
+		}
+		return ResolveAsset<ModelAsset>(assets_, id);
 	}
 
 	AssetLookup<MeshAsset> AssetCatalog::Resolve(std::optional<MeshAssetId> id) const

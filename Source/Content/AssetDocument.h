@@ -3,6 +3,7 @@
 #include <Content/MeshAsset.h>
 #include <Content/MaterialAsset.h>
 #include <Content/TextureAsset.h>
+#include <Content/ModelAsset.h>
 #include <variant>
 
 namespace KT::Content
@@ -12,7 +13,8 @@ namespace KT::Content
 	{
 		Mesh,
 		Material,
-		Texture
+		Texture,
+		Model
 	};
 
 	// 素材ファイルとCatalog登録で共有するCPU原本。パスは配置であり、このIDと独立する。
@@ -20,7 +22,7 @@ namespace KT::Content
 	{
 		AssetId id;
 		std::string name;
-		std::variant<MeshAsset, MaterialAsset, TextureAsset> data;
+		std::variant<MeshAsset, MaterialAsset, TextureAsset, ModelAsset> data;
 
 		// AssetKindとvariantの並びを一致させ、素材の種類を一か所で判定する。
 		[[nodiscard]] AssetKind Kind() const

@@ -121,6 +121,61 @@ namespace KT::Content
 			const auto name = root.at("name").get<std::string>();
 			const auto type = root.at("type").get<std::string>();
 			const auto& data = root.at("data");
+			if (type == "kt.Model" && !extended)
+			{
+				RequireFields(data, {"nodes"});
+				const auto& values = data.at("nodes");
+				if (!values.is_array() || values.empty() || values.size() > ModelAsset::MaxNodes)
+				{
+					throw std::invalid_argument("Model素材のnodesには1..10万要素の配列が必要です。");
+				}
+				std::vector<ModelNode> nodes;
+				nodes.reserve(values.size());
+				for (const auto& value : values)
+				{
+					RequireFields(value, {"key", "name", "parent", "position", "rotation", "scale", "mesh", "material", "materials"});
+					ModelNode node;
+					node.key = value.at("key").get<std::string>();
+					node.name = value.at("name").get<std::string>();
+					if (!value.at("parent").is_null())
+					{
+						node.parent = ReadUint(value.at("parent"));
+					}
+					for (const auto field : {"position", "rotation", "scale"})
+					{
+						const auto& array = value.at(field);
+						if (!array.is_array() || array.size() != (std::string_view(field) == "rotation" ? 4 : 3))
+						{
+							throw std::invalid_argument("ModelのLocal Transformの要素数が不正です。");
+						}
+					}
+					const auto& position = value.at("position");
+					const auto& rotation = value.at("rotation");
+					const auto& scale = value.at("scale");
+					node.position = {ReadFloat(position[0]), ReadFloat(position[1]), ReadFloat(position[2])};
+					node.rotation = {ReadFloat(rotation[0]), ReadFloat(rotation[1]), ReadFloat(rotation[2]), ReadFloat(rotation[3])};
+					node.scale = {ReadFloat(scale[0]), ReadFloat(scale[1]), ReadFloat(scale[2])};
+					if (!value.at("mesh").is_null())
+					{
+						node.mesh = MeshAssetId::Parse(value.at("mesh").get<std::string>());
+					}
+					if (!value.at("material").is_null())
+					{
+						node.material = MaterialAssetId::Parse(value.at("material").get<std::string>());
+					}
+					if (!value.at("materials").is_object())
+					{
+						throw std::invalid_argument("ModelのMaterial割当にはslot名を持つobjectが必要です。");
+					}
+					for (const auto& [slot, material] : value.at("materials").items())
+					{
+						node.materials.emplace(slot, material.is_null() ? std::nullopt :
+							std::optional(MaterialAssetId::Parse(material.get<std::string>())));
+					}
+					nodes.push_back(std::move(node));
+				}
+				return {id, name, ModelAsset(std::move(nodes))};
+			}
 			if (type == "kt.Mesh")
 			{
 				if (meshExtended)
@@ -386,6 +441,27 @@ namespace KT::Content
 						{"addressV", settings.addressV == TextureAddress::Wrap ? "Wrap" : "Clamp"}};
 					root["data"]["alphaMode"] = settings.alphaMode == AlphaMode::Mask ? "Mask" : "Opaque";
 					root["data"]["alphaCutoff"] = settings.alphaCutoff;
+				}
+			}
+			else if (const auto* model = std::get_if<ModelAsset>(&document.data))
+			{
+				model->Validate();
+				root["type"] = "kt.Model";
+				root["data"]["nodes"] = Json::array();
+				for (const auto& node : model->Nodes())
+				{
+					Json materials = Json::object();
+					for (const auto& [slot, material] : node.materials)
+					{
+						materials[slot] = material ? Json(material->ToString()) : Json(nullptr);
+					}
+					root["data"]["nodes"].push_back(Json{{"key", node.key}, {"name", node.name},
+						{"parent", node.parent ? Json(*node.parent) : Json(nullptr)},
+						{"position", {node.position.x, node.position.y, node.position.z}},
+						{"rotation", {node.rotation.x, node.rotation.y, node.rotation.z, node.rotation.w}},
+						{"scale", {node.scale.x, node.scale.y, node.scale.z}},
+						{"mesh", node.mesh ? Json(node.mesh->ToString()) : Json(nullptr)},
+						{"material", node.material ? Json(node.material->ToString()) : Json(nullptr)}, {"materials", std::move(materials)}});
 				}
 			}
 			else

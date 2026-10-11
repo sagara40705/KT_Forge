@@ -1,5 +1,6 @@
 #include <Content/ProjectAssets.h>
 #include <Content/AssetJson.h>
+#include <Content/AssetCatalog.h>
 #include <Content/TextureLoader.h>
 #include <algorithm>
 #include <set>
@@ -150,6 +151,62 @@ namespace KT::Content
 		const auto resolved = std::filesystem::canonical(root_ / relativePath);
 		(void)RelativeInside(root_, resolved);
 		return resolved;
+	}
+
+	std::vector<AssetDocument> ProjectAssets::LoadModel(ModelAssetId id) const
+	{
+		// 辺の種類を照合してから読む。共有参照はUUIDで一意化する。
+		std::vector<std::pair<AssetId, AssetKind>> required{{id.Value(), AssetKind::Model}};
+		std::set<AssetId> loaded;
+		std::vector<AssetDocument> documents;
+		for (std::size_t index = 0; index < required.size(); ++index)
+		{
+			const auto [assetId, expected] = required[index];
+			const auto* entry = Find(assetId);
+			if (!entry || entry->kind != expected)
+			{
+				throw std::invalid_argument("Modelの依存素材が欠落または種類違いです: " + assetId.ToString());
+			}
+			if (!loaded.insert(assetId).second)
+			{
+				continue;
+			}
+			const std::array ids{assetId};
+			auto values = Load(ids);
+			auto document = std::move(values.front());
+			if (const auto* model = std::get_if<ModelAsset>(&document.data))
+			{
+				for (const auto& node : model->Nodes())
+				{
+					if (node.mesh)
+					{
+						required.emplace_back(node.mesh->Value(), AssetKind::Mesh);
+					}
+					if (node.material)
+					{
+						required.emplace_back(node.material->Value(), AssetKind::Material);
+					}
+					for (const auto& [slot, material] : node.materials)
+					{
+						if (material)
+						{
+							required.emplace_back(material->Value(), AssetKind::Material);
+						}
+					}
+				}
+			}
+			if (const auto* material = std::get_if<MaterialAsset>(&document.data); material && material->Settings().baseColorTexture)
+			{
+				required.emplace_back(material->Settings().baseColorTexture->Value(), AssetKind::Texture);
+			}
+			documents.push_back(std::move(document));
+		}
+		// 閉じた依存集合を一時Catalogで検査し、成功するまで呼出側へ公開しない。
+		AssetCatalog catalog;
+		catalog.RegisterBatch(documents);
+		catalog.Freeze();
+		catalog.Resolve(std::optional(id)).asset->ValidateReferences(catalog);
+		return documents;
 	}
 
 	std::vector<AssetDocument> ProjectAssets::Load(std::span<const AssetId> ids) const

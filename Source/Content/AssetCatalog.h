@@ -40,6 +40,7 @@ namespace KT::Content
 		[[nodiscard]] bool IsFrozen() const noexcept;
 		[[nodiscard]] AssetLookup<MeshAsset> Resolve(std::optional<MeshAssetId> id) const;
 		[[nodiscard]] AssetLookup<MaterialAsset> Resolve(std::optional<MaterialAssetId> id) const;
+		[[nodiscard]] AssetLookup<ModelAsset> Resolve(std::optional<ModelAssetId> id) const;
 
 	private:
 		// 種類をまたいで同一UUIDの二重登録を拒否する。

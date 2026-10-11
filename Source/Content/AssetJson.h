@@ -4,7 +4,7 @@
 
 namespace KT::Content
 {
-	// 素材JSONの旧形式とUV/Texture対応形式をCPU原本へ変換する。JSON型をContentの公開契約へ出さない。
+	// Mesh/Material/Texture/Modelの保存定義をCPU原本へ変換する。JSON型を公開契約へ出さない。
 	class AssetJson
 	{
 	public:

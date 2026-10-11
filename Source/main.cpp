@@ -2,6 +2,8 @@
 #include <Application/Application.h>
 #include <Content/ObjMeshImporter.h>
 #include <RuntimeIntegration/ModelImport.h>
+#include <RuntimeIntegration/ModelPlacement.h>
+#include <Content/AssetJson.h>
 #include <BuiltinAssets/StaticMeshAssets.h>
 
 #include <stdexcept>
@@ -23,6 +25,32 @@ int wmain(int argc, wchar_t* argv[])
 	try
 	{
 		const std::wstring_view command = argc > 1 ? argv[1] : L"";
+		if (command == L"--place-model" && argc == 6)
+		{
+			// 保存したModelを読み、既存Sceneへ別個体を追加する。外部モデルは再取込しない。
+			const auto project = KT::Content::ProjectAssets::Scan(argv[2]);
+			const auto model = KT::Content::AssetJson::Read(project.Resolve(argv[3]));
+			if (model.Kind() != KT::Content::AssetKind::Model)
+			{
+				throw std::invalid_argument("--place-modelの素材ファイルにはkt.Modelが必要です。");
+			}
+			KT::Content::AssetCatalog catalog;
+			const KT::Content::ModelAssetId id(model.id);
+			catalog.RegisterBatch(project.LoadModel(id));
+			catalog.Freeze();
+			KT::World::ComponentRegistry components;
+			KT::World::RegisterEngineComponents(components);
+			components.Freeze();
+			KT::World::ScriptRegistry scripts;
+			scripts.Freeze();
+			auto definition = KT::World::SceneJson::Read(project.Resolve(argv[4]), components, scripts);
+			const auto placed = KT::RuntimeIntegration::ModelPlacement::Append(
+				definition, catalog, id, components, scripts, {model.name, {}, {}});
+			const auto scene = KT::World::SceneLoader::Load(definition, components, scripts);
+			KT::World::SceneJson::Save(argv[5], *scene, components, scripts);
+			KT_LOG_INFO("ModelをSceneへ配置しました: Model=" + id.ToString() + " / Root=" + placed.root.ToString());
+			return 0;
+		}
 		if ((command == L"--import-obj" || command == L"--import-model") && argc >= 4)
 		{
 			KT::Content::ObjMeshImportOptions options;
@@ -94,7 +122,7 @@ int wmain(int argc, wchar_t* argv[])
 				const auto result = KT::RuntimeIntegration::ModelImport::Import(
 					argv[2], argv[3], {options.scale, options.flipZ, options.flipV, options.normals, options.generateTangents});
 				KT_LOG_INFO("モデルSceneを保存しました: 素材=" + std::to_string(result.assetCount) +
-					" / Object=" + std::to_string(result.objectCount));
+					" / Object=" + std::to_string(result.objectCount) + " / Model=" + result.modelId->ToString());
 				for (const auto& diagnostic : result.diagnostics)
 				{
 					KT_LOG_WARNING(diagnostic);
@@ -113,7 +141,7 @@ int wmain(int argc, wchar_t* argv[])
 		{
 			const auto result = KT::RuntimeIntegration::ModelImport::Reimport(argv[2], argv[3]);
 			KT_LOG_INFO("モデルSceneを再取込しました: 素材=" + std::to_string(result.assetCount) +
-				" / Object=" + std::to_string(result.objectCount));
+				" / Object=" + std::to_string(result.objectCount) + " / Model=" + result.modelId->ToString());
 			for (const auto& diagnostic : result.diagnostics)
 			{
 				KT_LOG_WARNING(diagnostic);
@@ -186,7 +214,8 @@ int wmain(int argc, wchar_t* argv[])
 				"--import-obj input.obj output.asset.json [--flip-z] [--keep-v] [--scale 数値] "
 				"[--normals preserve/flat/smooth] [--no-tangents] / --reimport-mesh output.asset.json / "
 				"--import-model input output-directory [--keep-z] [--keep-v] [--scale 数値] "
-				"[--normals preserve/flat/smooth] [--no-tangents] / --reimport-model previous-directory new-directory");
+				"[--normals preserve/flat/smooth] [--no-tangents] / --reimport-model previous-directory new-directory / "
+				"--place-model root model.asset.json source.scene.json output.scene.json");
 		}
 		KT::Application::Application app(1280, 720, "KT_Forge", {}, std::move(project));
 		ReportAssetDiagnostics(app.GetAssetDiagnostics());

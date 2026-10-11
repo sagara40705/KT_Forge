@@ -35,6 +35,7 @@ namespace KT::Content
 		std::vector<AssetDocument> assets;
 		// assetsと同じ順の照合key。Meshはノード内の構成、Materialは名前で対応する。
 		std::vector<std::string> assetKeys;
+		// 取込の補助情報。保存・配置には確定したModelDocumentを使用する。
 		std::vector<ImportedModelNode> nodes;
 		// nodes.meshが参照するAsset UUIDと、名前付きMaterial割当。
 		std::vector<MeshAssetId> meshes;
@@ -42,6 +43,8 @@ namespace KT::Content
 		// 保存先相対配置と画像byte列。外部画像と埋込画像を同じ形で保持する。
 		std::map<std::string, std::vector<std::uint8_t>> images;
 		std::vector<std::string> diagnostics;
+		// 取込補助配列から確定した、assets内の唯一のModel原本を返す。
+		[[nodiscard]] const AssetDocument& ModelDocument() const;
 	};
 
 	// 外部モデルを静的Mesh・Unlit設定・階層へ変換する。World/GPUを生成しない。

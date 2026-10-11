@@ -1,4 +1,6 @@
 target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/ModelAsset.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ModelAsset.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/ModelImporter.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/ModelImporter.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/MeshGeometry.h"
