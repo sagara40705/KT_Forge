@@ -1,3 +1,5 @@
+#include <Graphics/Textures/SampledTexture.h>
+#include <Graphics/Descriptors/Sampler.h>
 #include "CommandContext.h"
 #include <Graphics/Pipeline/GraphicsPipelineState.h>
 #include <Graphics/Buffers/VertexBuffer.h>
@@ -172,80 +174,12 @@ namespace KT::Graphics
 	{
 		try
 		{
-			// 記録中のListを取得する
-			auto* commandList = GetRecordingList();
-
-			// このContextと同じFrameの定数か確認する
-			if (frameConstants_ != &constants)
-			{
-				throw std::invalid_argument("Draw constants must belong to this Context's FrameResources.");
-			}
-
-			// 頂点・index・描画先・定数の組合せを確認する
-			if (vertices.GetView().StrideInBytes != pipeline.GetVertexStride() || indices.GetMaximumIndex() >= vertices.GetCount() ||
-				indices.GetCount() % 3 != 0 || target.GetFormat() != pipeline.GetTargetFormat() ||
-				depth.GetTexture().GetFormat() != pipeline.GetDepthFormat() || target.GetWidth() != depth.GetTexture().GetWidth() ||
-				target.GetHeight() != depth.GetTexture().GetHeight() || bindings.size() != pipeline.GetRootParameterCount() ||
-				bindings.size() > 32)
-			{
-				throw std::invalid_argument("Indexed draw layout/index/target/constants mismatch.");
-			}
-
-			// 描画に使う部品が、記録先と同じDeviceに属するか確認する
-			ComPtr<ID3D12Device> device;
-			CheckGraphicsResult(commandList->GetDevice(IID_PPV_ARGS(device.GetAddressOf())), "Recording device query failed.");
-			for (auto* object : std::array<ID3D12DeviceChild*, 6>{pipeline.GetState(), vertices.GetResource(), indices.GetResource(),
-					 target.GetResource(), depth.GetTexture().GetResource(), constants.GetResource()})
-			{
-				RequireSameDevice(object, device.Get());
-			}
-
-			// root parameterの範囲・重複と定数sliceを確認する
-			std::array<D3D12_GPU_VIRTUAL_ADDRESS, 32> addresses{};
-			for (std::size_t bindingIndex = 0; bindingIndex < bindings.size(); ++bindingIndex)
-			{
-				if (bindings[bindingIndex].rootParameter >= pipeline.GetRootParameterCount())
-				{
-					throw std::invalid_argument("Root parameter is out of range.");
-				}
-				for (std::size_t previousBindingIndex = 0; previousBindingIndex < bindingIndex; ++previousBindingIndex)
-				{
-					if (bindings[previousBindingIndex].rootParameter == bindings[bindingIndex].rootParameter)
-					{
-						throw std::invalid_argument("Duplicate root parameter.");
-					}
-				}
-				addresses[bindingIndex] = constants.GetAddress(bindings[bindingIndex].slice);
-			}
-
-			// 全検査後に、描画範囲と描画先を設定する
-			const D3D12_VIEWPORT viewport{0, 0, static_cast<float>(target.GetWidth()), static_cast<float>(target.GetHeight()), 0, 1};
-			const D3D12_RECT scissor{0, 0, static_cast<LONG>(target.GetWidth()), static_cast<LONG>(target.GetHeight())};
-			const auto rtv = target.GetRtv();
-			const auto dsv = depth.GetDsv();
-			commandList->SetGraphicsRootSignature(pipeline.GetRootSignature());
-			commandList->SetPipelineState(pipeline.GetState());
-			commandList->RSSetViewports(1, &viewport);
-			commandList->RSSetScissorRects(1, &scissor);
-			commandList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-
-			// 頂点・index・定数を設定する
-			commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-			const auto& vertexView = vertices.GetView();
-			const auto& indexView = indices.GetView();
-			commandList->IASetVertexBuffers(0, 1, &vertexView);
-			commandList->IASetIndexBuffer(&indexView);
-			for (std::size_t bindingIndex = 0; bindingIndex < bindings.size(); ++bindingIndex)
-			{
-				commandList->SetGraphicsRootConstantBufferView(bindings[bindingIndex].rootParameter, addresses[bindingIndex]);
-			}
-
-			// 全indexの描画を記録する
-			commandList->DrawIndexedInstanced(indices.GetCount(), 1, 0, 0, 0);
+			// 旧形式も同じpacket検査へ集約する。view生成の失敗も記録失敗として保持する。
+			const IndexedDrawPacket packet{&pipeline, &vertices, &indices, bindings, target.GetWidth(), target.GetHeight()};
+			DrawIndexed(packet, target, DepthTargetView(depth), constants);
 		}
 		catch (...)
 		{
-			// 失敗したContextの記録・送信を禁止する
 			Invalidate();
 			throw;
 		}
@@ -322,8 +256,8 @@ namespace KT::Graphics
 			// 頂点・index・描画先・定数の組合せを確認する
 			if (vertices.GetView().StrideInBytes != pipeline.GetVertexStride() || indices.GetMaximumIndex() >= vertices.GetCount() ||
 				indices.GetCount() % 3 != 0 || color.GetFormat() != pipeline.GetTargetFormat() ||
-				depth.GetFormat() != pipeline.GetDepthFormat() || bindings.size() != pipeline.GetRootParameterCount() ||
-				bindings.size() > 32)
+				depth.GetFormat() != pipeline.GetDepthFormat() ||
+				(bindings.size() + (packet.texture ? 2 : 0)) != pipeline.GetRootParameterCount() || bindings.size() > 32)
 			{
 				throw std::invalid_argument("頂点・index・描画先・定数の組合せが一致しません");
 			}
@@ -341,7 +275,8 @@ namespace KT::Graphics
 			std::array<D3D12_GPU_VIRTUAL_ADDRESS, 32> addresses{};
 			for (std::size_t bindingIndex = 0; bindingIndex < bindings.size(); ++bindingIndex)
 			{
-				if (bindings[bindingIndex].rootParameter >= pipeline.GetRootParameterCount())
+				if (bindings[bindingIndex].rootParameter >= pipeline.GetRootParameterCount() ||
+					pipeline.GetRootBindingKind(bindings[bindingIndex].rootParameter) != RootBindingKind::Constant)
 				{
 					throw std::invalid_argument("root parameterが範囲外です");
 				}
@@ -353,6 +288,27 @@ namespace KT::Graphics
 					}
 				}
 				addresses[bindingIndex] = constants.GetAddress(bindings[bindingIndex].slice);
+			}
+
+			// 不変TextureとSamplerの所有・型・Deviceを命令追加前に確認する。
+			if ((packet.texture == nullptr) != (packet.sampler == nullptr))
+			{
+				throw std::invalid_argument("TextureとSamplerは同時に指定してください。");
+			}
+			D3D12_GPU_DESCRIPTOR_HANDLE textureHandle{}, samplerHandle{};
+			if (packet.texture)
+			{
+				if (packet.textureRoot >= pipeline.GetRootParameterCount() || packet.samplerRoot >= pipeline.GetRootParameterCount() ||
+					pipeline.GetRootBindingKind(packet.textureRoot) != RootBindingKind::Texture ||
+					pipeline.GetRootBindingKind(packet.samplerRoot) != RootBindingKind::Sampler)
+				{
+					throw std::invalid_argument("TextureまたはSamplerのroot parameterが種類・範囲と一致しません。");
+				}
+				RequireSameDevice(packet.texture->GetResource(), device.Get());
+				RequireSameDevice(packet.texture->GetHeap(), device.Get());
+				RequireSameDevice(packet.sampler->GetHeap(), device.Get());
+				textureHandle = packet.texture->GetSrv();
+				samplerHandle = packet.sampler->GetSampler();
 			}
 
 			// 全検査後に、描画範囲と描画先を設定する
@@ -375,6 +331,14 @@ namespace KT::Graphics
 			for (std::size_t bindingIndex = 0; bindingIndex < bindings.size(); ++bindingIndex)
 			{
 				commandList->SetGraphicsRootConstantBufferView(bindings[bindingIndex].rootParameter, addresses[bindingIndex]);
+			}
+
+			if (packet.texture)
+			{
+				ID3D12DescriptorHeap* heaps[]{packet.texture->GetHeap(), packet.sampler->GetHeap()};
+				commandList->SetDescriptorHeaps(2, heaps);
+				commandList->SetGraphicsRootDescriptorTable(packet.textureRoot, textureHandle);
+				commandList->SetGraphicsRootDescriptorTable(packet.samplerRoot, samplerHandle);
 			}
 
 			// 全indexの描画を記録する

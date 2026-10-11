@@ -49,3 +49,5 @@ target_sources(KT_Forge PRIVATE
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" TARGET_DIRECTORY KT_Forge PROPERTIES HEADER_FILE_ONLY TRUE)
 kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unlit3DVS vs_6_0 VSMain)
 kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unlit3DPS ps_6_0 PSMain)
+
+kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unlit3DTexturedPS ps_6_0 TexturedPSMain)

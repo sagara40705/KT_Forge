@@ -78,7 +78,9 @@ namespace KT::Renderer
 			{
 				throw std::invalid_argument("Color Viewの画像が親import画像と一致しません");
 			}
-			if (color->GetWidth() != image.Width || color->GetHeight() != image.Height || color->GetFormat() != image.Format)
+			if (color->GetWidth() != image.Width || color->GetHeight() != image.Height ||
+				(color->GetFormat() != image.Format &&
+					!(image.Format == DXGI_FORMAT_R8G8B8A8_UNORM && color->GetFormat() == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)))
 			{
 				throw std::invalid_argument("Color Viewの幅・高さ・formatが親画像と一致しません");
 			}

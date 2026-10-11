@@ -1,5 +1,6 @@
 #include <Content/ProjectAssets.h>
 #include <Content/AssetJson.h>
+#include <Content/TextureLoader.h>
 #include <algorithm>
 #include <set>
 #include <stdexcept>
@@ -105,7 +106,7 @@ namespace KT::Content
 		for (const auto& relative : files)
 		{
 			const auto document = ReadAsset(result.Resolve(relative));
-			const auto kind = std::holds_alternative<MeshAsset>(document.data) ? AssetKind::Mesh : AssetKind::Material;
+			const auto kind = document.Kind();
 			const auto [found, inserted] = result.byId_.emplace(document.id, result.entries_.size());
 			if (!inserted)
 			{
@@ -169,10 +170,17 @@ namespace KT::Content
 		{
 			const auto& entry = entries_[index];
 			auto document = ReadAsset(Resolve(entry.relativePath));
-			const auto kind = std::holds_alternative<MeshAsset>(document.data) ? AssetKind::Mesh : AssetKind::Material;
+			const auto kind = document.Kind();
 			if (document.id != entry.id || kind != entry.kind)
 			{
 				throw std::invalid_argument("索引作成後に素材のUUIDまたは種類が変わりました: " + PathText(entry.relativePath));
+			}
+			// 画像の配置もroot境界で検査し、参照されたTextureだけを展開する。
+			if (auto* texture = std::get_if<TextureAsset>(&document.data))
+			{
+				const auto& source = texture->Source();
+				const std::u8string path(source.begin(), source.end());
+				*texture = TextureLoader::Load(*texture, Resolve(std::filesystem::path(path)));
 			}
 			documents.push_back(std::move(document));
 		}

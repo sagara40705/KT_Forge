@@ -46,6 +46,23 @@ FetchContent_Declare(nlohmann_json
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# Microsoft DirectXTex May 2026 / MIT。画像処理だけを組み込み、付属toolとDX11/12 helperは使用しない。
+function(kt_forge_directxtex)
+    set(BUILD_SHARED_LIBS OFF)
+    set(BUILD_TOOLS OFF)
+    set(BUILD_SAMPLE OFF)
+    set(BUILD_DX11 OFF)
+    set(BUILD_DX12 OFF)
+    set(BC_USE_OPENMP OFF)
+    FetchContent_Declare(directxtex
+        GIT_REPOSITORY https://github.com/microsoft/DirectXTex.git
+        GIT_TAG 4feb3e11a020f35b796fc769a74216a555d4f5ef
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(directxtex)
+endfunction()
+kt_forge_directxtex()
+
 # 製品ターゲットは1つとし、各モジュールのディレクトリではソースを明示的に登録する。
 add_executable(KT_Forge)
 include(cmake/ShaderBuild.cmake)
@@ -58,6 +75,7 @@ target_compile_options(KT_Forge PRIVATE /W4 /utf-8)
 target_compile_definitions(KT_Forge PRIVATE GLFW_INCLUDE_NONE)
 target_link_libraries(KT_Forge PRIVATE glfw Microsoft::DirectX-Headers d3d12 dxgi)
 target_link_libraries(KT_Forge PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(KT_Forge PRIVATE DirectXTex windowscodecs ole32)
 
 set_target_properties(KT_Forge PROPERTIES
     CXX_EXTENSIONS OFF

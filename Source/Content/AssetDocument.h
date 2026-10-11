@@ -2,6 +2,7 @@
 #include <Content/AssetId.h>
 #include <Content/MeshAsset.h>
 #include <Content/MaterialAsset.h>
+#include <Content/TextureAsset.h>
 #include <variant>
 
 namespace KT::Content
@@ -10,7 +11,8 @@ namespace KT::Content
 	enum class AssetKind
 	{
 		Mesh,
-		Material
+		Material,
+		Texture
 	};
 
 	// 素材ファイルとCatalog登録で共有するCPU原本。パスは配置であり、このIDと独立する。
@@ -18,6 +20,12 @@ namespace KT::Content
 	{
 		AssetId id;
 		std::string name;
-		std::variant<MeshAsset, MaterialAsset> data;
+		std::variant<MeshAsset, MaterialAsset, TextureAsset> data;
+
+		// AssetKindとvariantの並びを一致させ、素材の種類を一か所で判定する。
+		[[nodiscard]] AssetKind Kind() const
+		{
+			return static_cast<AssetKind>(data.index());
+		}
 	};
 }

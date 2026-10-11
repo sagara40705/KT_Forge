@@ -4,6 +4,8 @@
 #include <cmath>
 #include <fstream>
 #include <limits>
+#include <map>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 
@@ -71,7 +73,11 @@ namespace KT::Content
 		}
 		std::vector<KT::Core::Math::Vector3> positions;
 		std::vector<std::uint32_t> indices;
-		std::size_t texcoords = 0;
+		std::vector<KT::Core::Math::Vector2> sourceTexcoords;
+		std::vector<KT::Core::Math::Vector3> splitPositions;
+		std::vector<KT::Core::Math::Vector2> splitTexcoords;
+		std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> corners;
+		std::optional<bool> hasTexcoords;
 		std::size_t normals = 0;
 		bool materials = false;
 		bool groups = false;
@@ -134,7 +140,12 @@ namespace KT::Content
 					}
 					if (command == "vt")
 					{
-						++texcoords;
+						if (values.size() == 3 && ReadNumber(values[2]) != 0)
+						{
+							throw std::invalid_argument("OBJの3次元UVは未対応です。vtの第3成分は0が必要です。");
+						}
+						const auto v = values.size() >= 2 ? ReadNumber(values[1]) : 0;
+						sourceTexcoords.push_back({NarrowPosition(ReadNumber(values[0])), NarrowPosition(options.flipV ? 1 - v : v)});
 					}
 					else
 					{
@@ -152,23 +163,42 @@ namespace KT::Content
 					{
 						const std::string_view token = values[corner];
 						const auto slash = token.find('/');
-						face[corner] = ReadIndex(token.substr(0, slash), positions.size());
+						const auto position = ReadIndex(token.substr(0, slash), positions.size());
+						std::optional<std::uint32_t> texcoord;
+						face[corner] = position;
 						if (slash != std::string_view::npos)
 						{
 							const auto tail = token.substr(slash + 1);
 							const auto secondSlash = tail.find('/');
 							if (secondSlash == std::string_view::npos)
 							{
-								(void)ReadIndex(tail, texcoords);
+								texcoord = ReadIndex(tail, sourceTexcoords.size());
 							}
 							else
 							{
 								if (secondSlash != 0)
 								{
-									(void)ReadIndex(tail.substr(0, secondSlash), texcoords);
+									texcoord = ReadIndex(tail.substr(0, secondSlash), sourceTexcoords.size());
 								}
 								(void)ReadIndex(tail.substr(secondSlash + 1), normals);
 							}
+						}
+						if (hasTexcoords && *hasTexcoords != texcoord.has_value())
+						{
+							throw std::invalid_argument("OBJのUV付き頂点とUVなし頂点は同じMesh内で混在できません。");
+						}
+						hasTexcoords = texcoord.has_value();
+						if (texcoord)
+						{
+							// 位置が同じでもUVが異なる継ぎ目は別頂点として保存する。
+							const auto [found, inserted] =
+								corners.emplace(std::pair{position, *texcoord}, static_cast<std::uint32_t>(splitPositions.size()));
+							if (inserted)
+							{
+								splitPositions.push_back(positions[position]);
+								splitTexcoords.push_back(sourceTexcoords[*texcoord]);
+							}
+							face[corner] = found->second;
 						}
 					}
 					if (options.flipZ)
@@ -187,7 +217,11 @@ namespace KT::Content
 				throw std::invalid_argument("OBJ " + std::to_string(lineNumber) + "行: " + error.what());
 			}
 		}
-		return {MeshAsset(std::move(positions), std::move(indices)), texcoords != 0, normals != 0, materials, groups};
+		if (hasTexcoords.value_or(false))
+		{
+			positions = std::move(splitPositions);
+		}
+		return {MeshAsset(std::move(positions), std::move(indices), std::move(splitTexcoords)), false, normals != 0, materials, groups};
 	}
 
 	ObjMeshSaveResult ObjMeshImporter::Import(

@@ -11,7 +11,8 @@ namespace KT::RuntimeIntegration
 	{
 		MissingAsset,
 		AssetTypeMismatch,
-		InvalidWorldBounds
+		InvalidWorldBounds,
+		MissingTexcoords
 	};
 
 	// 問題のあるComponent入力または派生値を識別する。
@@ -19,7 +20,9 @@ namespace KT::RuntimeIntegration
 	{
 		Mesh,
 		Material,
-		WorldBounds
+		WorldBounds,
+		BaseColorTexture,
+		Texcoords
 	};
 
 	// ログ出力を伴わない診断値。元Entityは当該Snapshotの識別だけに使用する。

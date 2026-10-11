@@ -9,17 +9,43 @@ namespace KT::Graphics
 		// root parameterの数と参照先を確認する
 		if (parameters.empty() || parameters.size() > 32 || !parameters.data())
 		{
-			throw std::invalid_argument("Root parameter count is invalid.");
+			throw std::invalid_argument("Root parameterの数が1から32の範囲外です。");
 		}
-		// 初版はRootCBVだけ。table/range/samplerの借用寿命と別契約を混ぜない。
-		for (const auto& parameter : parameters)
+		// space0のCBVと、Pixel Shader用の単一SRV/Sampler tableに限定する。
+		for (std::size_t index = 0; index < parameters.size(); ++index)
 		{
-			if (parameter.ParameterType != D3D12_ROOT_PARAMETER_TYPE_CBV || parameter.Descriptor.RegisterSpace != 0 ||
-				(parameter.ShaderVisibility != D3D12_SHADER_VISIBILITY_ALL &&
-					parameter.ShaderVisibility != D3D12_SHADER_VISIBILITY_VERTEX &&
-					parameter.ShaderVisibility != D3D12_SHADER_VISIBILITY_PIXEL))
+			const auto& parameter = parameters[index];
+			if (parameter.ParameterType == D3D12_ROOT_PARAMETER_TYPE_CBV)
 			{
-				throw std::invalid_argument("Initial root signature supports root CBV in space0 only.");
+				if (parameter.Descriptor.RegisterSpace != 0 ||
+					(parameter.ShaderVisibility != D3D12_SHADER_VISIBILITY_ALL &&
+						parameter.ShaderVisibility != D3D12_SHADER_VISIBILITY_VERTEX &&
+						parameter.ShaderVisibility != D3D12_SHADER_VISIBILITY_PIXEL))
+				{
+					throw std::invalid_argument("Root CBVのspaceまたは可視stageが未対応です。");
+				}
+				kinds_[index] = RootBindingKind::Constant;
+			}
+			else if (parameter.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE)
+			{
+				if (parameter.ShaderVisibility != D3D12_SHADER_VISIBILITY_PIXEL || parameter.DescriptorTable.NumDescriptorRanges != 1 ||
+					!parameter.DescriptorTable.pDescriptorRanges)
+				{
+					throw std::invalid_argument("Root tableはPixel Shaderの単一rangeだけに対応しています。");
+				}
+				const auto& range = parameter.DescriptorTable.pDescriptorRanges[0];
+				if ((range.RangeType != D3D12_DESCRIPTOR_RANGE_TYPE_SRV && range.RangeType != D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER) ||
+					range.NumDescriptors != 1 || range.RegisterSpace != 0 ||
+					(range.OffsetInDescriptorsFromTableStart != 0 &&
+						range.OffsetInDescriptorsFromTableStart != D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND))
+				{
+					throw std::invalid_argument("Root tableはspace0・先頭の単一SRVまたはSamplerが必要です。");
+				}
+				kinds_[index] = range.RangeType == D3D12_DESCRIPTOR_RANGE_TYPE_SRV ? RootBindingKind::Texture : RootBindingKind::Sampler;
+			}
+			else
+			{
+				throw std::invalid_argument("Root parameterの種類が未対応です。");
 			}
 		}
 
@@ -33,10 +59,10 @@ namespace KT::Graphics
 		ComPtr<ID3DBlob> serializedSignature, serializationErrors;
 		CheckGraphicsResult(D3D12SerializeRootSignature(&signatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, serializedSignature.GetAddressOf(),
 								serializationErrors.GetAddressOf()),
-			"Root signature serialization failed.");
+			"Root Signatureのシリアライズに失敗しました。");
 		CheckGraphicsResult(device.GetDevice()->CreateRootSignature(0, serializedSignature->GetBufferPointer(),
 								serializedSignature->GetBufferSize(), IID_PPV_ARGS(signature_.GetAddressOf())),
-			"Root signature creation failed.");
+			"Root Signatureの生成に失敗しました。");
 		count_ = static_cast<UINT>(parameters.size());
 	}
 }

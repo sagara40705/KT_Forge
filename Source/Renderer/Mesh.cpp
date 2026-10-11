@@ -11,19 +11,26 @@ namespace KT::Renderer
 		{
 			if (vertices.empty() || !vertices.data())
 			{
-				throw std::invalid_argument("Mesh vertices are empty.");
+				throw std::invalid_argument("Meshの頂点が空です。");
 			}
 			if (vertices.size() > (std::numeric_limits<UINT>::max)() / sizeof(MeshVertex))
 			{
-				throw std::overflow_error("Mesh vertices overflow.");
+				throw std::overflow_error("Meshの頂点byte数がUINT範囲を超えています。");
 			}
-			for (const auto& v : vertices)
+			for (const auto& vertex : vertices)
 			{
-				for (float component : v.position)
+				for (float component : vertex.position)
 				{
 					if (!std::isfinite(component))
 					{
-						throw std::invalid_argument("Mesh position is nonfinite.");
+						throw std::invalid_argument("Meshの頂点座標には有限値が必要です。");
+					}
+				}
+				for (float component : vertex.texcoord)
+				{
+					if (!std::isfinite(component))
+					{
+						throw std::invalid_argument("MeshのUVには有限値が必要です。");
 					}
 				}
 			}
@@ -38,7 +45,7 @@ namespace KT::Renderer
 	{
 		if (indices_.GetMaximumIndex() >= vertices_.GetCount() || indices_.GetCount() % 3 != 0)
 		{
-			throw std::invalid_argument("Mesh index range/topology is invalid.");
+			throw std::invalid_argument("MeshのIndex範囲または三角形のIndex数が不正です。");
 		}
 	}
 }

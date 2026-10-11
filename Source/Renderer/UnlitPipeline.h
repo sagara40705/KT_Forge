@@ -3,12 +3,12 @@
 
 namespace KT::Renderer
 {
-	// unlit 3D用RootCBV b0=View,b1=Object,b2=Material。store内の全materialで1個のPSOを共有。
+	// unlit 3D用RootCBV b0=View,b1=Object,b2=Material。Texture版はt0/s0のtableを追加し、種類ごとにPSOを共有。
 	class UnlitPipeline : private KT::Core::NonCopyable
 	{
 	public:
 		UnlitPipeline(KT::Graphics::GraphicsDevice& device, DXGI_FORMAT target = DXGI_FORMAT_R8G8B8A8_UNORM,
-			DXGI_FORMAT depth = DXGI_FORMAT_D32_FLOAT);
+			DXGI_FORMAT depth = DXGI_FORMAT_D32_FLOAT, bool textured = false);
 
 		const KT::Graphics::GraphicsPipelineState& GetPipeline() const noexcept
 		{

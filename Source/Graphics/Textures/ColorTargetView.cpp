@@ -16,6 +16,7 @@ namespace KT::Graphics
 		  rtv_(swapchain.GetRtv(index))
 	{
 		Inspect();
+		format_ = swapchain.GetRtvFormat();
 	}
 
 	void ColorTargetView::Inspect()

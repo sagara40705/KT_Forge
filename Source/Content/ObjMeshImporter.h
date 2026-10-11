@@ -9,12 +9,15 @@ namespace KT::Content
 		float scale = 1;
 		// Z反転と三角形の面順反転を組み合わせ、座標系を変換する。
 		bool flipZ = false;
+		// OBJの下原点UVを画像の左上原点へ変換する。
+		bool flipV = true;
 	};
 
-	// 位置以外を初版Meshに保存しないことを呼出側へ通知する。
+	// 法線・MTLなどをUnlit Meshに保存しないことを呼出側へ通知する。
 	struct ObjMeshImportResult
 	{
 		MeshAsset mesh;
+		// 旧呼出側との互換用。現在はUVを保存するためfalse。
 		bool omittedTexcoords = false;
 		bool omittedNormals = false;
 		bool omittedMaterials = false;
@@ -25,6 +28,7 @@ namespace KT::Content
 	{
 		MeshAssetId id;
 		bool replaced = false;
+		// 旧呼出側との互換用。現在はUVを保存するためfalse。
 		bool omittedTexcoords = false;
 		bool omittedNormals = false;
 		bool omittedMaterials = false;

@@ -1,4 +1,8 @@
 target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Textures/SampledTexture.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Textures/SampledTexture.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Descriptors/Sampler.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Descriptors/Sampler.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Buffers/ConstantBufferArena.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Buffers/ConstantBufferArena.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Buffers/GpuBuffer.cpp"

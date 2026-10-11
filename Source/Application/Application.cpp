@@ -217,12 +217,13 @@ namespace KT::Application
 		if (!swapchain_)
 		{
 			swapchain_ =
-				std::make_unique<KT::Graphics::Swapchain>(graphicsDevice_, commandQueue_, window_.GetNativeHandle(), width, height);
+				std::make_unique<KT::Graphics::Swapchain>(graphicsDevice_, commandQueue_, window_.GetNativeHandle(), width, height, true);
 			resized = true;
 		}
 		if (!renderer_)
 		{
-			renderer_ = std::make_unique<KT::Renderer::StaticSceneRenderer>(graphicsDevice_, commandQueue_, assets_);
+			renderer_ =
+				std::make_unique<KT::Renderer::StaticSceneRenderer>(graphicsDevice_, commandQueue_, assets_, swapchain_->GetRtvFormat());
 		}
 		if (swapchain_->GetWidth() != width || swapchain_->GetHeight() != height)
 		{

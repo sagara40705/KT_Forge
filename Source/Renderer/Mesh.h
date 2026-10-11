@@ -9,11 +9,12 @@ namespace KT::Renderer
 	struct MeshVertex
 	{
 		std::array<float, 3> position{};
+		std::array<float, 2> texcoord{};
 	};
 
-	static_assert(sizeof(MeshVertex) == 12 && std::is_standard_layout_v<MeshVertex> && std::is_trivially_copyable_v<MeshVertex>);
+	static_assert(sizeof(MeshVertex) == 20 && std::is_standard_layout_v<MeshVertex> && std::is_trivially_copyable_v<MeshVertex>);
 
-	// CPU入力を検証後に不変VB/IBとして所有。UV/normal/texture/asset loaderは今回の範囲外。
+	// CPU入力を検証後に不変VB/IBとして所有。位置とUVを保持し、法線は扱わない。
 	class Mesh : private KT::Core::NonCopyable
 	{
 	public:

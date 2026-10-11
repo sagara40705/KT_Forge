@@ -1,13 +1,16 @@
 #include <Content/MeshAsset.h>
 #include <limits>
+#include <cmath>
 #include <stdexcept>
 #include <utility>
 
 namespace KT::Content
 {
-	MeshAsset::MeshAsset(std::vector<KT::Core::Math::Vector3> positions, std::vector<std::uint32_t> indices)
+	MeshAsset::MeshAsset(
+		std::vector<KT::Core::Math::Vector3> positions, std::vector<std::uint32_t> indices, std::vector<KT::Core::Math::Vector2> texcoords)
 		: positions_(std::move(positions)),
-		  indices_(std::move(indices))
+		  indices_(std::move(indices)),
+		  texcoords_(std::move(texcoords))
 	{
 		Validate();
 		for (const auto index : indices_)
@@ -20,6 +23,7 @@ namespace KT::Content
 	{
 		positions_.swap(other.positions_);
 		indices_.swap(other.indices_);
+		texcoords_.swap(other.texcoords_);
 		std::swap(localBounds_, other.localBounds_);
 		return *this;
 	}
@@ -32,7 +36,8 @@ namespace KT::Content
 		}
 		// CPUの要素数とbyte数を、初版の32bit範囲で表現できることを確認する。
 		constexpr auto limit = (std::numeric_limits<std::uint32_t>::max)();
-		if (positions_.size() > limit / sizeof(KT::Core::Math::Vector3) || indices_.size() > limit / sizeof(std::uint32_t))
+		if (positions_.size() > limit / (sizeof(KT::Core::Math::Vector3) + sizeof(KT::Core::Math::Vector2)) ||
+			indices_.size() > limit / sizeof(std::uint32_t))
 		{
 			throw std::invalid_argument("MeshAssetの頂点またはIndexのbyte数がuint32範囲を超えています。");
 		}
@@ -45,6 +50,17 @@ namespace KT::Content
 			if (!KT::Core::Math::IsFinite(position))
 			{
 				throw std::invalid_argument("MeshAssetの頂点座標に非有限値があります。");
+			}
+		}
+		if (!texcoords_.empty() && texcoords_.size() != positions_.size())
+		{
+			throw std::invalid_argument("MeshAssetのUV数は頂点数との一致が必要です。");
+		}
+		for (const auto uv : texcoords_)
+		{
+			if (!std::isfinite(uv.x) || !std::isfinite(uv.y))
+			{
+				throw std::invalid_argument("MeshAssetのUVには有限値が必要です。");
 			}
 		}
 		for (const auto index : indices_)

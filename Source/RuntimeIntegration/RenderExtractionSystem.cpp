@@ -99,6 +99,21 @@ namespace KT::RuntimeIntegration
 			{
 				continue;
 			}
+			if (const auto textureId = material.asset->Settings().baseColorTexture)
+			{
+				const auto texture = assets.Resolve(textureId);
+				ReportReference(result, entity.entity, RenderDiagnosticField::BaseColorTexture, texture.state, textureId->Value());
+				if (!texture.asset)
+				{
+					continue;
+				}
+				if (mesh.asset->Texcoords().empty())
+				{
+					result.diagnostics.push_back(
+						{entity.entity, RenderDiagnosticField::Texcoords, RenderDiagnosticCode::MissingTexcoords, renderer->mesh->Value()});
+					continue;
+				}
+			}
 			const auto bounds = TransformBounds(mesh.asset->LocalBounds(), entity.transform.matrix);
 			if (!bounds)
 			{

@@ -32,6 +32,10 @@ int wmain(int argc, wchar_t* argv[])
 				{
 					options.flipZ = true;
 				}
+				else if (option == L"--keep-v")
+				{
+					options.flipV = false;
+				}
 				else if (option == L"--scale" && index + 1 < argc)
 				{
 					const std::wstring value = argv[++index];
@@ -51,14 +55,14 @@ int wmain(int argc, wchar_t* argv[])
 				}
 				else
 				{
-					throw std::invalid_argument("OBJ取り込みの引数は--flip-zと--scale 数値だけに対応しています。");
+					throw std::invalid_argument("OBJ取り込みの引数は--flip-z、--keep-v、--scale 数値だけに対応しています。");
 				}
 			}
 			const auto result = KT::Content::ObjMeshImporter::Import(argv[2], argv[3], options);
 			KT_LOG_INFO("Mesh素材を保存しました: " + result.id.ToString());
 			if (result.omittedTexcoords || result.omittedNormals || result.omittedMaterials || result.mergedGroups)
 			{
-				KT_LOG_WARNING("初版Meshは位置と三角形だけを保存します。UV・法線・素材設定は保存せず、groupは一つにまとめます。");
+				KT_LOG_WARNING("Meshは位置・UV・三角形を保存します。法線・MTLは保存せず、groupは一つにまとめます。");
 			}
 			return 0;
 		}
@@ -78,6 +82,11 @@ int wmain(int argc, wchar_t* argv[])
 				{
 					const auto& id = loaded.scene->GetWorld().GetComponent<KT::World::PersistentId>(diagnostic.source);
 					KT_LOG_WARNING("World AABBを有限範囲で計算できません: Object=" + id.value.ToString());
+				}
+				else if (diagnostic.code == KT::RuntimeIntegration::RenderDiagnosticCode::MissingTexcoords)
+				{
+					const auto& id = loaded.scene->GetWorld().GetComponent<KT::World::PersistentId>(diagnostic.source);
+					KT_LOG_WARNING("Texture付きMaterialのMeshにUVがありません: Object=" + id.value.ToString());
 				}
 			}
 			KT_LOG_INFO("CPUプロジェクト読込完了: 索引=" + std::to_string(project.Entries().size()) + " / 読込素材=" +
@@ -107,7 +116,7 @@ int wmain(int argc, wchar_t* argv[])
 		else if (argc != 1)
 		{
 			throw std::invalid_argument("起動引数: --project root scene [--camera UUID] / --validate-project root scene / "
-										"--import-obj input.obj output.asset.json [--flip-z] [--scale 数値]");
+										"--import-obj input.obj output.asset.json [--flip-z] [--keep-v] [--scale 数値]");
 		}
 		KT::Application::Application app(1280, 720, "KT_Forge", {}, std::move(project));
 		ReportAssetDiagnostics(app.GetAssetDiagnostics());

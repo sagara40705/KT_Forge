@@ -5,9 +5,10 @@
 
 namespace KT::Graphics
 {
-	Swapchain::Swapchain(GraphicsDevice& device, CommandQueue& queue, HWND window, std::uint32_t width, std::uint32_t height)
+	Swapchain::Swapchain(GraphicsDevice& device, CommandQueue& queue, HWND window, std::uint32_t width, std::uint32_t height, bool srgb)
 		: device_(device),
-		  queue_(queue)
+		  queue_(queue),
+		  rtvFormat_(srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM)
 	{
 		if (!window)
 		{
@@ -81,7 +82,10 @@ namespace KT::Graphics
 		auto rtvHandle = rtvHeap_->GetCPUDescriptorHandleForHeapStart();
 		for (std::uint32_t index = 0; index < BufferCount; ++index)
 		{
-			device_.GetDevice()->CreateRenderTargetView(buffers[index].Get(), nullptr, rtvHandle);
+			D3D12_RENDER_TARGET_VIEW_DESC view{};
+			view.Format = rtvFormat_;
+			view.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+			device_.GetDevice()->CreateRenderTargetView(buffers[index].Get(), &view, rtvHandle);
 			rtvHandle.ptr += rtvDescriptorSize_;
 		}
 		const auto desc = buffers.front()->GetDesc();

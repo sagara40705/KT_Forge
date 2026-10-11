@@ -8,6 +8,8 @@
 #include <Graphics/Commands/CommandContext.h>
 #include <Graphics/Textures/ColorTargetView.h>
 #include <Graphics/Textures/DepthBuffer.h>
+#include <Graphics/Textures/DepthTargetView.h>
+#include <Graphics/Commands/IndexedDrawPacket.h>
 #include <Core/Math/Matrix4.h>
 #include <array>
 #include <cstddef>
@@ -42,7 +44,7 @@ namespace KT::Renderer
 		for (std::size_t i = 0; i < result.draws_.size(); ++i)
 		{
 			const ObjectConstants oc{world.objects[i].world};
-			const MaterialConstants mc{result.draws_[i].material->GetColor()};
+			const auto& mc = result.draws_[i].material->GetConstants();
 			result.draws_[i].objectConstants = constants.Write(std::as_bytes(std::span{&oc, 1}));
 			result.draws_[i].materialConstants = constants.Write(std::as_bytes(std::span{&mc, 1}));
 		}
@@ -62,8 +64,9 @@ namespace KT::Renderer
 			}
 			const std::array<KT::Graphics::RootConstantBinding, 3> bindings{
 				{{0, viewConstants_}, {1, draw.objectConstants}, {2, draw.materialConstants}}};
-			context.DrawIndexed(draw.material->GetPipeline().GetPipeline(), draw.mesh->GetVertices(), draw.mesh->GetIndices(), target,
-				depth, constants, bindings);
+			const KT::Graphics::IndexedDrawPacket packet{&draw.material->GetPipeline().GetPipeline(), &draw.mesh->GetVertices(),
+				&draw.mesh->GetIndices(), bindings, width_, height_, draw.material->GetTexture(), draw.material->GetSampler(), 3, 4};
+			context.DrawIndexed(packet, target, KT::Graphics::DepthTargetView(depth), constants);
 		}
 		catch (...)
 		{

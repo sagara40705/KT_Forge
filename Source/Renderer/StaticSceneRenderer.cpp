@@ -12,13 +12,14 @@
 
 namespace KT::Renderer
 {
-	StaticSceneRenderer::StaticSceneRenderer(
-		KT::Graphics::GraphicsDevice& device, KT::Graphics::CommandQueue& queue, const KT::Content::AssetCatalog& assets)
+	StaticSceneRenderer::StaticSceneRenderer(KT::Graphics::GraphicsDevice& device, KT::Graphics::CommandQueue& queue,
+		const KT::Content::AssetCatalog& assets, DXGI_FORMAT targetFormat)
 		: device_(device),
 		  queue_(queue),
 		  assets_(assets),
+		  targetFormat_(targetFormat),
 		  meshes_(device),
-		  materials_(device)
+		  materials_(device, targetFormat)
 	{
 		if (!assets.IsFrozen())
 		{
@@ -50,9 +51,11 @@ namespace KT::Renderer
 		{
 			std::vector<MeshVertex> vertices;
 			vertices.reserve(source.asset->Positions().size());
-			for (const auto position : source.asset->Positions())
+			for (std::size_t index = 0; index < source.asset->Positions().size(); ++index)
 			{
-				vertices.push_back({{position.x, position.y, position.z}});
+				const auto position = source.asset->Positions()[index];
+				const auto uv = source.asset->Texcoords().empty() ? KT::Core::Math::Vector2{} : source.asset->Texcoords()[index];
+				vertices.push_back({{position.x, position.y, position.z}, {uv.x, uv.y}});
 			}
 			auto mesh = std::make_unique<Mesh>(device_, vertices, std::as_bytes(source.asset->Indices()), DXGI_FORMAT_R32_UINT);
 			meshes_.Add(handle, std::move(mesh));
@@ -86,7 +89,8 @@ namespace KT::Renderer
 		(void)inserted;
 		try
 		{
-			materials_.AddUnlit(handle, source.asset->BaseColor());
+			const auto texture = source.asset->Settings().baseColorTexture;
+			materials_.AddUnlit(handle, *source.asset, texture ? &ResolveTexture(*texture) : nullptr);
 			entry->second = handle;
 		}
 		catch (...)
@@ -97,14 +101,40 @@ namespace KT::Renderer
 		return handle;
 	}
 
+	const KT::Graphics::SampledTexture& StaticSceneRenderer::ResolveTexture(KT::Content::TextureAssetId id)
+	{
+		if (const auto found = textures_.find(id.Value()); found != textures_.end())
+		{
+			return *found->second;
+		}
+		const auto source = assets_.Resolve(id);
+		if (!source.asset)
+		{
+			throw std::invalid_argument("GPU化するTexture素材が欠落または種類違いです: " + id.ToString());
+		}
+		source.asset->ValidateLoaded();
+		std::vector<KT::Graphics::TextureMipData> mips;
+		for (const auto& mip : source.asset->Mips())
+		{
+			mips.push_back({mip.width, mip.height, mip.pixels});
+		}
+		const auto format = source.asset->ColorSpace() == KT::Content::TextureColorSpace::Srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB :
+																								 DXGI_FORMAT_R8G8B8A8_UNORM;
+		auto texture = std::make_unique<KT::Graphics::SampledTexture>(device_, mips, format);
+		texture->Upload(queue_);
+		const auto [found, inserted] = textures_.emplace(id.Value(), std::move(texture));
+		(void)inserted;
+		return *found->second;
+	}
+
 	void StaticSceneRenderer::Submit(const RenderCandidates& candidates, const std::optional<RenderView>& view,
 		const KT::Graphics::ColorTargetView& color, D3D12_RESOURCE_STATES colorState)
 	{
 		Wait();
 		lastDrawCount_ = 0;
-		if (color.GetFormat() != DXGI_FORMAT_R8G8B8A8_UNORM)
+		if (color.GetFormat() != targetFormat_)
 		{
-			throw std::invalid_argument("静的Sceneの描画先はRGBA8_UNORMが必要です。");
+			throw std::invalid_argument("静的Sceneの描画先formatがRenderer生成時の指定と一致しません。");
 		}
 		KT::Graphics::RequireSameDevice(color.GetResource(), device_.GetDevice());
 		if (view && (view->width != color.GetWidth() || view->height != color.GetHeight()))

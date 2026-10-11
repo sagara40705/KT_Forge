@@ -14,13 +14,20 @@ namespace KT::Graphics
 	{
 	public:
 		// コンストラクタ(GraphicsDevice, CommandQueue, HWND, 幅, 高さ)
-		Swapchain(GraphicsDevice& device, CommandQueue& queue, HWND window, std::uint32_t width, std::uint32_t height);
+		Swapchain(GraphicsDevice& device, CommandQueue& queue, HWND window, std::uint32_t width, std::uint32_t height, bool srgb = false);
 
 		// デストラクタ
 		~Swapchain() = default;
 		// 同一Queueの完了後にBackBufferとRTVを再取得する。外部の旧view/listは先に破棄する。
 		// 失敗後は描画・Presentを禁止し、Resizeの再試行で復旧する。
 		void Resize(std::uint32_t width, std::uint32_t height);
+
+		// resourceはUNORM、sRGB出力時だけRTVがsRGB変換を担当する。
+		[[nodiscard]] DXGI_FORMAT GetRtvFormat() const noexcept
+		{
+			return rtvFormat_;
+		}
+
 		[[nodiscard]] UINT GetWidth() const noexcept;
 		[[nodiscard]] UINT GetHeight() const noexcept;
 
@@ -32,6 +39,7 @@ namespace KT::Graphics
 		// BackBufferを全件取得できたときだけ非0になる。
 		UINT width_ = 0, height_ = 0;
 		ComPtr<IDXGISwapChain3> swapchain_;
+		DXGI_FORMAT rtvFormat_;
 
 	public:
 		// バックバッファの数

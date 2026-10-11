@@ -1,4 +1,8 @@
 target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/TextureAsset.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/TextureAsset.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/TextureLoader.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/TextureLoader.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/ObjMeshImporter.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/ObjMeshImporter.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/ProjectAssets.h"

@@ -57,6 +57,10 @@ namespace KT::Renderer
 					packet.vertices = &draw.mesh->GetVertices();
 					packet.indices = &draw.mesh->GetIndices();
 					packet.bindings = bindings;
+					packet.texture = draw.material->GetTexture();
+					packet.sampler = draw.material->GetSampler();
+					packet.textureRoot = 3;
+					packet.samplerRoot = 4;
 					packet.expectedWidth = snapshot.GetWidth();
 					packet.expectedHeight = snapshot.GetHeight();
 

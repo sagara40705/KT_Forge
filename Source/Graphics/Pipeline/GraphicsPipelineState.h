@@ -42,11 +42,17 @@ namespace KT::Graphics
 			return rootCount_;
 		}
 
+		[[nodiscard]] RootBindingKind GetRootBindingKind(UINT index) const
+		{
+			return kinds_.at(index);
+		}
+
 	private:
 		ComPtr<ID3D12PipelineState> state_;
 		ComPtr<ID3D12RootSignature> root_; // PSOから借用するRootSignatureの寿命も明示所有で保証。
 		UINT stride_;
 		UINT rootCount_ = 0;
+		std::array<RootBindingKind, 32> kinds_{};
 		DXGI_FORMAT targetFormat_, depthFormat_;
 	};
 }

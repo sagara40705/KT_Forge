@@ -44,6 +44,29 @@ namespace KT::Content
 		return result;
 	}
 
+	// 二択の文字列を厳密に読み、未知値を既定値へ落とさない。
+	static bool ReadChoice(const Json& value, const char* first, const char* second)
+	{
+		if (value == first)
+		{
+			return false;
+		}
+		if (value == second)
+		{
+			return true;
+		}
+		throw std::invalid_argument("素材JSONの設定値が未対応です: " + value.dump());
+	}
+
+	static std::array<float, 2> ReadFloat2(const Json& value)
+	{
+		if (!value.is_array() || value.size() != 2)
+		{
+			throw std::invalid_argument("素材JSONのUVには2要素が必要です。");
+		}
+		return {ReadFloat(value[0]), ReadFloat(value[1])};
+	}
+
 	AssetDocument AssetJson::Parse(std::string_view text)
 	{
 		if (text.size() > MaxBytes)
@@ -79,17 +102,25 @@ namespace KT::Content
 					return true;
 				});
 			RequireFields(root, {"version", "assetId", "name", "type", "data"});
-			if (!root.at("version").is_number_integer() || root.at("version") != 1)
+			if (!root.at("version").is_number_integer() || (root.at("version") != 1 && root.at("version") != 2))
 			{
-				throw std::invalid_argument("素材JSONのversionは1だけに対応しています。");
+				throw std::invalid_argument("素材JSONのversionは1と2に対応しています。");
 			}
+			const bool extended = root.at("version") == 2;
 			const auto id = AssetId::Parse(root.at("assetId").get<std::string>());
 			const auto name = root.at("name").get<std::string>();
 			const auto type = root.at("type").get<std::string>();
 			const auto& data = root.at("data");
 			if (type == "kt.Mesh")
 			{
-				RequireFields(data, {"positions", "indices"});
+				if (extended)
+				{
+					RequireFields(data, {"positions", "indices", "texcoords"});
+				}
+				else
+				{
+					RequireFields(data, {"positions", "indices"});
+				}
 				const auto& sourcePositions = data.at("positions");
 				const auto& sourceIndices = data.at("indices");
 				if (!sourcePositions.is_array() || !sourceIndices.is_array())
@@ -122,12 +153,49 @@ namespace KT::Content
 					}
 					indices.push_back(index.get<std::uint32_t>());
 				}
-				return {id, name, MeshAsset(std::move(positions), std::move(indices))};
+				std::vector<KT::Core::Math::Vector2> texcoords;
+				if (extended)
+				{
+					const auto& values = data.at("texcoords");
+					if (!values.is_array())
+					{
+						throw std::invalid_argument("Mesh素材のtexcoordsは配列が必要です。");
+					}
+					texcoords.reserve(values.size());
+					for (const auto& value : values)
+					{
+						const auto uv = ReadFloat2(value);
+						texcoords.push_back({uv[0], uv[1]});
+					}
+				}
+				return {id, name, MeshAsset(std::move(positions), std::move(indices), std::move(texcoords))};
 			}
 			if (type == "kt.Material")
 			{
-				RequireFields(data, {"model", "baseColor"});
-				if (data.at("model") != "UnlitOpaque")
+				UnlitSettings settings;
+				if (extended)
+				{
+					RequireFields(
+						data, {"model", "baseColor", "baseColorTexture", "uvScale", "uvOffset", "sampler", "alphaMode", "alphaCutoff"});
+					if (!data.at("baseColorTexture").is_null())
+					{
+						settings.baseColorTexture = TextureAssetId::Parse(data.at("baseColorTexture").get<std::string>());
+					}
+					settings.uvScale = ReadFloat2(data.at("uvScale"));
+					settings.uvOffset = ReadFloat2(data.at("uvOffset"));
+					const auto& sampler = data.at("sampler");
+					RequireFields(sampler, {"filter", "addressU", "addressV"});
+					settings.filter = ReadChoice(sampler.at("filter"), "Point", "Linear") ? TextureFilter::Linear : TextureFilter::Point;
+					settings.addressU = ReadChoice(sampler.at("addressU"), "Wrap", "Clamp") ? TextureAddress::Clamp : TextureAddress::Wrap;
+					settings.addressV = ReadChoice(sampler.at("addressV"), "Wrap", "Clamp") ? TextureAddress::Clamp : TextureAddress::Wrap;
+					settings.alphaMode = ReadChoice(data.at("alphaMode"), "Opaque", "Mask") ? AlphaMode::Mask : AlphaMode::Opaque;
+					settings.alphaCutoff = ReadFloat(data.at("alphaCutoff"));
+				}
+				else
+				{
+					RequireFields(data, {"model", "baseColor"});
+				}
+				if (data.at("model") != (extended ? "Unlit" : "UnlitOpaque"))
 				{
 					throw std::invalid_argument("Material素材のmodelが未対応です。");
 				}
@@ -136,7 +204,17 @@ namespace KT::Content
 				{
 					throw std::invalid_argument("Material素材のbaseColorにはRGBAの4要素が必要です。");
 				}
-				return {id, name, MaterialAsset({ReadFloat(color[0]), ReadFloat(color[1]), ReadFloat(color[2]), ReadFloat(color[3])})};
+				return {id, name,
+					MaterialAsset({ReadFloat(color[0]), ReadFloat(color[1]), ReadFloat(color[2]), ReadFloat(color[3])},
+						MaterialModel::Unlit, settings)};
+			}
+			if (type == "kt.Texture" && !extended)
+			{
+				RequireFields(data, {"source", "colorSpace", "mips"});
+				const auto colorSpace =
+					ReadChoice(data.at("colorSpace"), "Linear", "Srgb") ? TextureColorSpace::Srgb : TextureColorSpace::Linear;
+				const auto mips = ReadChoice(data.at("mips"), "Preserve", "Generate") ? TextureMipMode::Generate : TextureMipMode::Preserve;
+				return {id, name, TextureAsset(data.at("source").get<std::string>(), colorSpace, mips)};
 			}
 			throw std::invalid_argument("素材JSONのtypeが未対応です: " + type);
 		}
@@ -169,12 +247,44 @@ namespace KT::Content
 				{
 					root["data"]["indices"].push_back(index);
 				}
+				if (!mesh->Texcoords().empty())
+				{
+					root["version"] = 2;
+					root["data"]["texcoords"] = Json::array();
+					for (const auto uv : mesh->Texcoords())
+					{
+						root["data"]["texcoords"].push_back({uv.x, uv.y});
+					}
+				}
+			}
+			else if (const auto* value = std::get_if<MaterialAsset>(&document.data))
+			{
+				const auto& material = *value;
+				root["type"] = "kt.Material";
+				root["data"] = Json{{"model", "UnlitOpaque"}, {"baseColor", material.BaseColor()}};
+				const auto& settings = material.Settings();
+				if (settings != UnlitSettings{})
+				{
+					root["version"] = 2;
+					root["data"]["model"] = "Unlit";
+					root["data"]["baseColorTexture"] =
+						settings.baseColorTexture ? Json(settings.baseColorTexture->ToString()) : Json(nullptr);
+					root["data"]["uvScale"] = settings.uvScale;
+					root["data"]["uvOffset"] = settings.uvOffset;
+					root["data"]["sampler"] = Json{{"filter", settings.filter == TextureFilter::Point ? "Point" : "Linear"},
+						{"addressU", settings.addressU == TextureAddress::Wrap ? "Wrap" : "Clamp"},
+						{"addressV", settings.addressV == TextureAddress::Wrap ? "Wrap" : "Clamp"}};
+					root["data"]["alphaMode"] = settings.alphaMode == AlphaMode::Mask ? "Mask" : "Opaque";
+					root["data"]["alphaCutoff"] = settings.alphaCutoff;
+				}
 			}
 			else
 			{
-				const auto& material = std::get<MaterialAsset>(document.data);
-				root["type"] = "kt.Material";
-				root["data"] = Json{{"model", "UnlitOpaque"}, {"baseColor", material.BaseColor()}};
+				const auto& texture = std::get<TextureAsset>(document.data);
+				root["type"] = "kt.Texture";
+				root["data"] =
+					Json{{"source", texture.Source()}, {"colorSpace", texture.ColorSpace() == TextureColorSpace::Srgb ? "Srgb" : "Linear"},
+						{"mips", texture.MipMode() == TextureMipMode::Generate ? "Generate" : "Preserve"}};
 			}
 			auto text = root.dump(2) + "\n";
 			if (text.size() > MaxBytes)

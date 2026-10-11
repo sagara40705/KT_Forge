@@ -46,6 +46,7 @@ namespace KT::Graphics
 		// Root Signatureの所属Deviceを確認する
 		RequireSameDevice(root_.Get(), device.GetDevice());
 		rootCount_ = rootSignature.GetParameterCount();
+		kinds_ = rootSignature.GetKinds();
 
 		// Shader Model 6.0への対応を確認する
 		D3D12_FEATURE_DATA_SHADER_MODEL shaderModel{D3D_SHADER_MODEL_6_0};

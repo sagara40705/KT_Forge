@@ -26,7 +26,7 @@ namespace KT::Content
 		std::size_t operator()(const AssetId& id) const noexcept;
 	};
 
-	// MeshとMaterialの参照を型で分ける。未割当はoptionalで表し、無効IDを保持しない。
+	// Mesh・Material・Textureの参照を型で分ける。未割当はoptionalで表し、無効IDを保持しない。
 	template <class Tag> class TypedAssetId
 	{
 	public:
@@ -62,6 +62,8 @@ namespace KT::Content
 
 	struct MeshAssetTag;
 	struct MaterialAssetTag;
+	struct TextureAssetTag;
 	using MeshAssetId = TypedAssetId<MeshAssetTag>;
 	using MaterialAssetId = TypedAssetId<MaterialAssetTag>;
+	using TextureAssetId = TypedAssetId<TextureAssetTag>;
 }

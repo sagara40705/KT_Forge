@@ -19,9 +19,14 @@ namespace KT::Renderer
 	struct MaterialConstants
 	{
 		std::array<float, 4> color;
+		std::array<float, 2> uvScale{1, 1};
+		std::array<float, 2> uvOffset{0, 0};
+		// 負値はOpaque、0以上はMaskの閾値。
+		float alphaCutoff = -1;
+		std::array<float, 3> padding{};
 	};
 
-	static_assert(sizeof(ViewConstants) == 64 && sizeof(ObjectConstants) == 64 && sizeof(MaterialConstants) == 16);
+	static_assert(sizeof(ViewConstants) == 64 && sizeof(ObjectConstants) == 64 && sizeof(MaterialConstants) == 48);
 	static_assert(std::is_trivially_copyable_v<ViewConstants> && std::is_trivially_copyable_v<ObjectConstants> &&
 		std::is_trivially_copyable_v<MaterialConstants>);
 }

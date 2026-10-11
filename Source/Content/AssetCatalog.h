@@ -32,6 +32,9 @@ namespace KT::Content
 		void RegisterBatch(std::vector<AssetDocument> documents);
 		// 素材実体を借用せず、Freeze前にも登録衝突と種類を照合する。
 		[[nodiscard]] std::optional<AssetKind> FindKind(AssetId id) const;
+		// 起動中の依存収集用に値だけを返す。素材実体の借用はFreeze後に限る。
+		[[nodiscard]] std::optional<TextureAssetId> MaterialTexture(MaterialAssetId id) const;
+		[[nodiscard]] AssetLookup<TextureAsset> Resolve(std::optional<TextureAssetId> id) const;
 		[[nodiscard]] std::size_t Size() const noexcept;
 		void Freeze() noexcept;
 		[[nodiscard]] bool IsFrozen() const noexcept;

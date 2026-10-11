@@ -16,8 +16,8 @@ namespace KT::Renderer
 	class StaticSceneRenderer : private KT::Core::NonCopyable
 	{
 	public:
-		StaticSceneRenderer(
-			KT::Graphics::GraphicsDevice& device, KT::Graphics::CommandQueue& queue, const KT::Content::AssetCatalog& assets);
+		StaticSceneRenderer(KT::Graphics::GraphicsDevice& device, KT::Graphics::CommandQueue& queue,
+			const KT::Content::AssetCatalog& assets, DXGI_FORMAT targetFormat = DXGI_FORMAT_R8G8B8A8_UNORM);
 		// 完成したCPU値からClear/DepthClear/Opaqueを送信する。CameraなしならClearだけ。
 		// colorは同一DeviceのRGBA8、colorStateは描画前後で同じ既知stateとする。
 		// targetの所有者はWaitまで保持する。Presentは呼出側がSubmit後に一度だけ行う。
@@ -27,16 +27,26 @@ namespace KT::Renderer
 		// Resizeや外部画像破棄の前に呼び、Fence完了後に旧CommandListの参照も破棄する。
 		void ReleaseFrame();
 		[[nodiscard]] std::size_t MeshCount() const noexcept;
+
+		[[nodiscard]] std::size_t TextureCount() const noexcept
+		{
+			return textures_.size();
+		}
+
 		[[nodiscard]] std::size_t MaterialCount() const noexcept;
 		[[nodiscard]] std::size_t LastDrawCount() const noexcept;
 		[[nodiscard]] std::uint64_t SubmittedFrames() const noexcept;
 
 	private:
+		const KT::Graphics::SampledTexture& ResolveTexture(KT::Content::TextureAssetId id);
 		std::uint64_t ResolveMesh(KT::Content::MeshAssetId id);
 		std::uint64_t ResolveMaterial(KT::Content::MaterialAssetId id);
 		KT::Graphics::GraphicsDevice& device_;
 		KT::Graphics::CommandQueue& queue_;
 		const KT::Content::AssetCatalog& assets_;
+		DXGI_FORMAT targetFormat_;
+		// Materialより長く保持する不変Texture。UUIDごとに転送は一度だけ行う。
+		std::unordered_map<KT::Content::AssetId, std::unique_ptr<KT::Graphics::SampledTexture>, KT::Content::AssetIdHash> textures_;
 		MeshStore meshes_;
 		MaterialStore materials_;
 		// UUIDとStore内handleを分離する。成功した実体だけを対応付け、削除・reloadは行わない。

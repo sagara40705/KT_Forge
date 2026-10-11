@@ -22,6 +22,10 @@ namespace KT::Content
 		{
 			mesh->Validate();
 		}
+		if (const auto* texture = std::get_if<TextureAsset>(&document.data))
+		{
+			texture->ValidateLoaded();
+		}
 		const auto id = document.id;
 		assets_.emplace(id, std::move(document));
 	}
@@ -59,7 +63,7 @@ namespace KT::Content
 		{
 			return std::nullopt;
 		}
-		return std::holds_alternative<MeshAsset>(found->second.data) ? AssetKind::Mesh : AssetKind::Material;
+		return found->second.Kind();
 	}
 
 	std::size_t AssetCatalog::Size() const noexcept
@@ -106,4 +110,25 @@ namespace KT::Content
 		}
 		return ResolveAsset<MaterialAsset>(assets_, id);
 	}
+
+	std::optional<TextureAssetId> AssetCatalog::MaterialTexture(MaterialAssetId id) const
+	{
+		const auto found = assets_.find(id.Value());
+		if (found == assets_.end())
+		{
+			return std::nullopt;
+		}
+		const auto* material = std::get_if<MaterialAsset>(&found->second.data);
+		return material ? material->Settings().baseColorTexture : std::nullopt;
+	}
+
+	AssetLookup<TextureAsset> AssetCatalog::Resolve(std::optional<TextureAssetId> id) const
+	{
+		if (!frozen_)
+		{
+			throw std::logic_error("素材参照の解決前にAssetCatalogをFreezeしてください。");
+		}
+		return ResolveAsset<TextureAsset>(assets_, id);
+	}
+
 }
