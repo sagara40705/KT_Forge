@@ -2,6 +2,7 @@
 #include <Graphics/Buffers/ConstantBufferArena.h>
 #include <d3d12.h>
 #include <span>
+#include <optional>
 
 namespace KT::Graphics
 {
@@ -10,6 +11,13 @@ namespace KT::Graphics
 	class IndexBuffer;
 	class SampledTexture;
 	class Sampler;
+
+	// IndexはVB全体への絶対参照。BaseVertexは0固定で、加算による範囲の曖昧さを持たせない。
+	struct IndexedDrawRange
+	{
+		UINT firstIndex = 0;
+		UINT indexCount = 0;
+	};
 
 	// 即時記録の引数だけ。pipeline/buffer/binding配列を所有しない。
 	// spanの参照先は記録呼出が戻るまで保持。GPU実体/定数arenaはFence完了まで保持。
@@ -29,5 +37,7 @@ namespace KT::Graphics
 		const Sampler* sampler = nullptr;
 		UINT textureRoot = 0;
 		UINT samplerRoot = 0;
+		// 空は旧APIのIB全体描画。指定時は空でない三角形範囲だけを許す。
+		std::optional<IndexedDrawRange> range;
 	};
 }

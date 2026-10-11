@@ -3,6 +3,7 @@
 #include <d3d12.h>
 #include <cstddef>
 #include <vector>
+#include <Graphics/Commands/IndexedDrawPacket.h>
 
 namespace KT::Graphics
 {
@@ -25,6 +26,7 @@ namespace KT::Renderer
 		const Mesh* mesh = nullptr;
 		const UnlitMaterial* material = nullptr;
 		KT::Graphics::ConstantSlice objectConstants, materialConstants;
+		KT::Graphics::IndexedDrawRange range;
 	};
 
 	// CPU RenderWorld/Viewの値snapshotをID解決し、現在frameのGPU定数を用意する。

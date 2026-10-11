@@ -24,7 +24,7 @@ namespace KT::Renderer
 		if (view.width == 0 || view.height == 0 || view.width > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
 			view.height > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION || !KT::Core::Math::IsFinite(view.viewProjection))
 		{
-			throw std::invalid_argument("Prepared view is invalid.");
+			throw std::invalid_argument("描画Cameraの寸法またはViewProjection行列が不正です。");
 		}
 		PreparedRenderFrame result;
 		result.width_ = view.width;
@@ -35,9 +35,16 @@ namespace KT::Renderer
 		{
 			if (!KT::Core::Math::IsAffine(object.world))
 			{
-				throw std::invalid_argument("Object world matrix must be finite affine.");
+				throw std::invalid_argument("描画ObjectのWorld行列には有限のAffine行列が必要です。");
 			}
 			result.draws_.push_back({&meshes.Get(object.meshId), &materials.Get(object.materialId), {}, {}});
+			auto& draw = result.draws_.back();
+			if (!draw.mesh->IsReady())
+			{
+				throw std::logic_error("PreparedRenderFrameのMesh転送が完了していません。");
+			}
+			const auto& submesh = draw.mesh->Submesh(object.submesh);
+			draw.range = {submesh.firstIndex, submesh.indexCount};
 		}
 		const ViewConstants vc{view.viewProjection};
 		result.viewConstants_ = constants.Write(std::as_bytes(std::span{&vc, 1}));
@@ -60,12 +67,13 @@ namespace KT::Renderer
 			const auto& draw = draws_.at(index);
 			if (target.GetWidth() != width_ || target.GetHeight() != height_)
 			{
-				throw std::invalid_argument("Prepared viewport/target mismatch.");
+				throw std::invalid_argument("準備済み描画の寸法が描画先と一致しません。");
 			}
 			const std::array<KT::Graphics::RootConstantBinding, 3> bindings{
 				{{0, viewConstants_}, {1, draw.objectConstants}, {2, draw.materialConstants}}};
 			const KT::Graphics::IndexedDrawPacket packet{&draw.material->GetPipeline().GetPipeline(), &draw.mesh->GetVertices(),
-				&draw.mesh->GetIndices(), bindings, width_, height_, draw.material->GetTexture(), draw.material->GetSampler(), 3, 4};
+				&draw.mesh->GetIndices(), bindings, width_, height_, draw.material->GetTexture(), draw.material->GetSampler(), 3, 4,
+				draw.range};
 			context.DrawIndexed(packet, target, KT::Graphics::DepthTargetView(depth), constants);
 		}
 		catch (...)

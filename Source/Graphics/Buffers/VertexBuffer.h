@@ -7,7 +7,17 @@ namespace KT::Graphics
 	class VertexBuffer : private KT::Core::NonCopyable
 	{
 	public:
-		VertexBuffer(GraphicsDevice& device, std::span<const std::byte> bytes, UINT stride);
+		VertexBuffer(GraphicsDevice& device, std::span<const std::byte> bytes, UINT stride, BufferStorage storage = BufferStorage::Upload);
+
+		void Upload(CommandQueue& queue)
+		{
+			buffer_.Upload(queue);
+		}
+
+		[[nodiscard]] bool IsReady() const noexcept
+		{
+			return buffer_.IsReady();
+		}
 
 		const D3D12_VERTEX_BUFFER_VIEW& GetView() const noexcept
 		{

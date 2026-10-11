@@ -231,6 +231,16 @@ namespace KT::Graphics
 			const auto& vertices = *packet.vertices;
 			const auto& indices = *packet.indices;
 			const auto bindings = packet.bindings;
+			const auto range = packet.range.value_or(IndexedDrawRange{0, indices.GetCount()});
+			if (!vertices.IsReady() || !indices.IsReady())
+			{
+				throw std::logic_error("DEFAULT MeshのBuffer転送が完了していません。");
+			}
+			if (range.indexCount == 0 || range.firstIndex % 3 != 0 || range.indexCount % 3 != 0 || range.firstIndex > indices.GetCount() ||
+				range.indexCount > indices.GetCount() - range.firstIndex)
+			{
+				throw std::invalid_argument("Submeshの描画Index範囲が空、三角形境界でない、またはIBの範囲外です。");
+			}
 
 			// このContextと同じFrameの定数か確認する
 			if (frameConstants_ != &constants)
@@ -341,8 +351,8 @@ namespace KT::Graphics
 				commandList->SetGraphicsRootDescriptorTable(packet.samplerRoot, samplerHandle);
 			}
 
-			// 全indexの描画を記録する
-			commandList->DrawIndexedInstanced(indices.GetCount(), 1, 0, 0, 0);
+			// 指定したSubmesh範囲、または互換APIの全Indexを描画する。
+			commandList->DrawIndexedInstanced(range.indexCount, 1, range.firstIndex, 0, 0);
 		}
 		catch (...)
 		{

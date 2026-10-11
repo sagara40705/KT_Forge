@@ -12,7 +12,8 @@ namespace KT::RuntimeIntegration
 		MissingAsset,
 		AssetTypeMismatch,
 		InvalidWorldBounds,
-		MissingTexcoords
+		MissingTexcoords,
+		UnknownMaterialSlot
 	};
 
 	// 問題のあるComponent入力または派生値を識別する。
@@ -22,7 +23,8 @@ namespace KT::RuntimeIntegration
 		Material,
 		WorldBounds,
 		BaseColorTexture,
-		Texcoords
+		Texcoords,
+		MaterialSlot
 	};
 
 	// ログ出力を伴わない診断値。元Entityは当該Snapshotの識別だけに使用する。
@@ -32,6 +34,9 @@ namespace KT::RuntimeIntegration
 		RenderDiagnosticField field;
 		RenderDiagnosticCode code;
 		std::optional<KT::Content::AssetId> asset;
+		// Mesh自体の診断は空。Submesh診断では範囲番号とslot名を保持する。
+		std::optional<std::uint32_t> submesh;
+		std::string materialSlot;
 	};
 
 	// 同じ完成CPU入力に属する候補と診断。素材Catalogは利用完了まで外部所有者が保持する。

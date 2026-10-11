@@ -63,6 +63,24 @@ function(kt_forge_directxtex)
 endfunction()
 kt_forge_directxtex()
 
+# Assimp 6.0.5 / BSD-3-Clause。取込だけを静的リンクし、viewer・exporter・testは組み込まない。
+function(kt_forge_assimp)
+    set(BUILD_SHARED_LIBS OFF)
+    set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "Assimp tests" FORCE)
+    set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "Assimp tools" FORCE)
+    set(ASSIMP_INSTALL OFF CACHE BOOL "Assimp install" FORCE)
+    set(ASSIMP_NO_EXPORT ON CACHE BOOL "Assimp import only" FORCE)
+    set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "Assimp upstream warnings" FORCE)
+    set(ASSIMP_BUILD_ZLIB ON CACHE BOOL "Assimp bundled zlib" FORCE)
+    FetchContent_Declare(assimp
+        GIT_REPOSITORY https://github.com/assimp/assimp.git
+        GIT_TAG 392a658f9c271be965271f45e7521a1b80ea4392
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(assimp)
+endfunction()
+kt_forge_assimp()
+
 # 製品ターゲットは1つとし、各モジュールのディレクトリではソースを明示的に登録する。
 add_executable(KT_Forge)
 include(cmake/ShaderBuild.cmake)
@@ -76,6 +94,7 @@ target_compile_definitions(KT_Forge PRIVATE GLFW_INCLUDE_NONE)
 target_link_libraries(KT_Forge PRIVATE glfw Microsoft::DirectX-Headers d3d12 dxgi)
 target_link_libraries(KT_Forge PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(KT_Forge PRIVATE DirectXTex windowscodecs ole32)
+target_link_libraries(KT_Forge PRIVATE assimp::assimp)
 
 set_target_properties(KT_Forge PROPERTIES
     CXX_EXTENSIONS OFF

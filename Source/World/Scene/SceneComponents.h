@@ -5,6 +5,8 @@
 #include <Content/AssetId.h>
 #include <optional>
 #include <cstdint>
+#include <map>
+#include <string>
 
 namespace KT::World
 {
@@ -44,5 +46,16 @@ namespace KT::World
 		std::optional<KT::Content::MeshAssetId> mesh;
 		std::optional<KT::Content::MaterialAssetId> material;
 		bool visible = true;
+		// 名前付きslotの上書き。未登録slotはmaterialを使い、明示nullは当該slotを描画しない。
+		std::map<std::string, std::optional<KT::Content::MaterialAssetId>> materials;
+
+		// MSVCのmap移動生成は確保を伴うため、rollbackは各所有値を直接交換する。
+		friend void swap(MeshRenderer& left, MeshRenderer& right) noexcept
+		{
+			left.mesh.swap(right.mesh);
+			left.material.swap(right.material);
+			std::swap(left.visible, right.visible);
+			left.materials.swap(right.materials);
+		}
 	};
 }

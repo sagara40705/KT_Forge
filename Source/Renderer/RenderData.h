@@ -10,6 +10,7 @@ namespace KT::Renderer
 		// GPU Store内の実行時ID。永続AssetIdを直接代入しない。
 		std::uint64_t meshId = 0, materialId = 0;
 		KT::Core::Math::Matrix4 world{};
+		std::uint32_t submesh = 0;
 	};
 
 	struct RenderWorld

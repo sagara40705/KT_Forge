@@ -3,23 +3,55 @@
 #include <Graphics/Buffers/IndexBuffer.h>
 #include <array>
 #include <type_traits>
+#include <Content/MeshAsset.h>
 
 namespace KT::Renderer
 {
+	// 不変VBの48byte配置。Unlitは位置とUV0を読み、法線・接線は将来の照明入力に保持する。
 	struct MeshVertex
 	{
 		std::array<float, 3> position{};
 		std::array<float, 2> texcoord{};
+		std::array<float, 3> normal{};
+		std::array<float, 4> tangent{};
 	};
 
-	static_assert(sizeof(MeshVertex) == 20 && std::is_standard_layout_v<MeshVertex> && std::is_trivially_copyable_v<MeshVertex>);
+	static_assert(sizeof(MeshVertex) == 48 && std::is_standard_layout_v<MeshVertex> && std::is_trivially_copyable_v<MeshVertex>);
 
-	// CPU入力を検証後に不変VB/IBとして所有。位置とUVを保持し、法線は扱わない。
+	// CPU属性をGPU頂点へ変換する。素材経路はDEFAULTで、Upload成功後だけ描画できる。
 	class Mesh : private KT::Core::NonCopyable
 	{
 	public:
 		Mesh(KT::Graphics::GraphicsDevice& device, std::span<const MeshVertex> vertices, std::span<const std::byte> indexBytes,
-			DXGI_FORMAT indexFormat);
+			DXGI_FORMAT indexFormat, KT::Graphics::BufferStorage storage = KT::Graphics::BufferStorage::Upload);
+		// 生byteのUPLOAD constructorは独立consumer互換用。製品素材はこのconstructorを使う。
+		Mesh(KT::Graphics::GraphicsDevice& device, const KT::Content::MeshAsset& source);
+		void Upload(KT::Graphics::CommandQueue& queue);
+
+		[[nodiscard]] bool IsReady() const noexcept
+		{
+			return vertices_.IsReady() && indices_.IsReady();
+		}
+
+		[[nodiscard]] const KT::Content::MeshSubmesh& Submesh(std::size_t index) const
+		{
+			return submeshes_.at(index);
+		}
+
+		[[nodiscard]] bool HasNormals() const noexcept
+		{
+			return hasNormals_;
+		}
+
+		[[nodiscard]] bool HasTangents() const noexcept
+		{
+			return hasTangents_;
+		}
+
+		[[nodiscard]] bool HasTexcoords() const noexcept
+		{
+			return hasTexcoords_;
+		}
 
 		const KT::Graphics::VertexBuffer& GetVertices() const noexcept
 		{
@@ -34,5 +66,8 @@ namespace KT::Renderer
 	private:
 		KT::Graphics::VertexBuffer vertices_;
 		KT::Graphics::IndexBuffer indices_;
+		std::vector<KT::Content::MeshSubmesh> submeshes_;
+		// 素材constructorで読み取った実属性の有無。互換raw入力には属性契約を推測しない。
+		bool hasNormals_ = false, hasTangents_ = false, hasTexcoords_ = false;
 	};
 }

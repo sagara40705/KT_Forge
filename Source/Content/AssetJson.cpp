@@ -67,6 +67,15 @@ namespace KT::Content
 		return {ReadFloat(value[0]), ReadFloat(value[1])};
 	}
 
+	static std::uint32_t ReadUint(const Json& value)
+	{
+		if (!value.is_number_integer() || value < 0 || value > (std::numeric_limits<std::uint32_t>::max)())
+		{
+			throw std::invalid_argument("Mesh素材のIndex範囲にはuint32の整数が必要です。");
+		}
+		return value.get<std::uint32_t>();
+	}
+
 	AssetDocument AssetJson::Parse(std::string_view text)
 	{
 		if (text.size() > MaxBytes)
@@ -102,18 +111,23 @@ namespace KT::Content
 					return true;
 				});
 			RequireFields(root, {"version", "assetId", "name", "type", "data"});
-			if (!root.at("version").is_number_integer() || (root.at("version") != 1 && root.at("version") != 2))
+			if (!root.at("version").is_number_integer() || (root.at("version") != 1 && root.at("version") != 2 && root.at("version") != 3))
 			{
-				throw std::invalid_argument("素材JSONのversionは1と2に対応しています。");
+				throw std::invalid_argument("素材JSONのversionは1..3に対応しています。");
 			}
-			const bool extended = root.at("version") == 2;
+			const bool meshExtended = root.at("version") == 3;
+			const bool extended = root.at("version") != 1;
 			const auto id = AssetId::Parse(root.at("assetId").get<std::string>());
 			const auto name = root.at("name").get<std::string>();
 			const auto type = root.at("type").get<std::string>();
 			const auto& data = root.at("data");
 			if (type == "kt.Mesh")
 			{
-				if (extended)
+				if (meshExtended)
+				{
+					RequireFields(data, {"positions", "indices", "texcoords", "normals", "tangents", "submeshes", "import"});
+				}
+				else if (extended)
 				{
 					RequireFields(data, {"positions", "indices", "texcoords"});
 				}
@@ -168,7 +182,64 @@ namespace KT::Content
 						texcoords.push_back({uv[0], uv[1]});
 					}
 				}
-				return {id, name, MeshAsset(std::move(positions), std::move(indices), std::move(texcoords))};
+				std::vector<KT::Core::Math::Vector3> normals;
+				std::vector<std::array<float, 4>> tangents;
+				std::vector<MeshSubmesh> submeshes;
+				std::optional<MeshImportRecipe> recipe;
+				if (meshExtended)
+				{
+					if (!data.at("normals").is_array() || !data.at("tangents").is_array() || !data.at("submeshes").is_array() ||
+						data.at("submeshes").empty())
+					{
+						throw std::invalid_argument("Meshの法線・接線には配列、Submeshには空でない配列が必要です。");
+					}
+					for (const auto& normal : data.at("normals"))
+					{
+						if (!normal.is_array() || normal.size() != 3)
+						{
+							throw std::invalid_argument("Meshの法線にはxyzの3要素が必要です。");
+						}
+						normals.push_back({ReadFloat(normal[0]), ReadFloat(normal[1]), ReadFloat(normal[2])});
+					}
+					for (const auto& tangent : data.at("tangents"))
+					{
+						if (!tangent.is_array() || tangent.size() != 4)
+						{
+							throw std::invalid_argument("Meshの接線にはxyzwの4要素が必要です。");
+						}
+						tangents.push_back({ReadFloat(tangent[0]), ReadFloat(tangent[1]), ReadFloat(tangent[2]), ReadFloat(tangent[3])});
+					}
+					for (const auto& submesh : data.at("submeshes"))
+					{
+						RequireFields(submesh, {"firstIndex", "indexCount", "materialSlot"});
+						submeshes.push_back({ReadUint(submesh.at("firstIndex")), ReadUint(submesh.at("indexCount")),
+							submesh.at("materialSlot").get<std::string>()});
+					}
+					if (!data.at("import").is_null())
+					{
+						const auto& value = data.at("import");
+						RequireFields(value, {"source", "importerVersion", "scale", "flipZ", "flipV", "normals", "generateTangents"});
+						MeshNormalMode mode;
+						if (value.at("normals") == "Preserve")
+						{
+							mode = MeshNormalMode::Preserve;
+						}
+						else
+						{
+							mode = ReadChoice(value.at("normals"), "Flat", "Smooth") ? MeshNormalMode::Smooth : MeshNormalMode::Flat;
+						}
+						recipe = MeshImportRecipe{value.at("source").get<std::string>(), ReadUint(value.at("importerVersion")),
+							ReadFloat(value.at("scale")), value.at("flipZ").get<bool>(), value.at("flipV").get<bool>(), mode,
+							value.at("generateTangents").get<bool>()};
+					}
+				}
+				return {id, name,
+					MeshAsset(std::move(positions), std::move(indices), std::move(texcoords), std::move(normals), std::move(tangents),
+						std::move(submeshes), std::move(recipe))};
+			}
+			if (meshExtended)
+			{
+				throw std::invalid_argument("素材JSONのversion 3はMeshだけに対応しています。");
 			}
 			if (type == "kt.Material")
 			{
@@ -254,6 +325,45 @@ namespace KT::Content
 					for (const auto uv : mesh->Texcoords())
 					{
 						root["data"]["texcoords"].push_back({uv.x, uv.y});
+					}
+				}
+				const auto ranges = mesh->Submeshes();
+				if (!mesh->Normals().empty() || !mesh->Tangents().empty() || mesh->ImportRecipe() || ranges.size() != 1 ||
+					ranges[0].materialSlot != "default")
+				{
+					root["version"] = 3;
+					root["data"]["texcoords"] = Json::array();
+					for (const auto uv : mesh->Texcoords())
+					{
+						root["data"]["texcoords"].push_back({uv.x, uv.y});
+					}
+					root["data"]["normals"] = Json::array();
+					for (const auto normal : mesh->Normals())
+					{
+						root["data"]["normals"].push_back({normal.x, normal.y, normal.z});
+					}
+					root["data"]["tangents"] = Json::array();
+					for (const auto& tangent : mesh->Tangents())
+					{
+						root["data"]["tangents"].push_back(tangent);
+					}
+					root["data"]["submeshes"] = Json::array();
+					for (const auto& submesh : ranges)
+					{
+						root["data"]["submeshes"].push_back(Json{{"firstIndex", submesh.firstIndex}, {"indexCount", submesh.indexCount},
+							{"materialSlot", submesh.materialSlot}});
+					}
+					root["data"]["import"] = nullptr;
+					if (mesh->ImportRecipe())
+					{
+						const auto& recipe = *mesh->ImportRecipe();
+						root["data"]["import"] = Json{{"source", recipe.source}, {"importerVersion", recipe.importerVersion},
+							{"scale", recipe.scale}, {"flipZ", recipe.flipZ}, {"flipV", recipe.flipV},
+							{"normals",
+								recipe.normals == MeshNormalMode::Preserve ? "Preserve" :
+									recipe.normals == MeshNormalMode::Flat ? "Flat" :
+																			 "Smooth"},
+							{"generateTangents", recipe.generateTangents}};
 					}
 				}
 			}

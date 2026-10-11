@@ -81,19 +81,30 @@ namespace KT::World
 	void ComponentRegistry::Validate(const SceneComponentDefinition& definition, const SceneReadContext& context) const
 	{
 		const auto& entry = Find(definition.type);
-		if (entry.version != definition.version)
-		{
-			throw std::invalid_argument("Component設定versionが未対応です: " + definition.type);
-		}
+		const auto data = ReadLegacyData(definition);
 		(void)definition.data.AsObject();
 		definition.data.Validate();
 		try
 		{
-			entry.validate(definition.data, context);
+			entry.validate(data ? *data : definition.data, context);
 		}
 		catch (const std::invalid_argument& error)
 		{
 			throw std::invalid_argument("Component設定の検査に失敗しました: " + definition.type + " / " + error.what());
 		}
+	}
+
+	std::optional<SceneValue> ComponentRegistry::ReadLegacyData(const SceneComponentDefinition& definition) const
+	{
+		const auto& entry = Find(definition.type);
+		if (entry.version == definition.version)
+		{
+			return std::nullopt;
+		}
+		if (entry.migrate)
+		{
+			return entry.migrate(definition.version, definition.data);
+		}
+		throw std::invalid_argument("Component設定versionが未対応です: " + definition.type);
 	}
 }

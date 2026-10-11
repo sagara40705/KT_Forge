@@ -63,6 +63,7 @@ namespace KT::Renderer
 					packet.samplerRoot = 4;
 					packet.expectedWidth = snapshot.GetWidth();
 					packet.expectedHeight = snapshot.GetHeight();
+					packet.range = draw.range;
 
 					// 描画を記録する
 					context.DrawIndexed(color, depth, packet);

@@ -17,8 +17,8 @@ namespace KT::Graphics
 		}
 	}
 
-	IndexBuffer::IndexBuffer(GraphicsDevice& device, std::span<const std::byte> bytes, DXGI_FORMAT format)
-		: buffer_(device, Validated(bytes, format))
+	IndexBuffer::IndexBuffer(GraphicsDevice& device, std::span<const std::byte> bytes, DXGI_FORMAT format, BufferStorage storage)
+		: buffer_(device, Validated(bytes, format), storage, D3D12_RESOURCE_STATE_INDEX_BUFFER)
 	{
 		// index形式から要素数を求める
 		const UINT indexStride = format == DXGI_FORMAT_R16_UINT ? 2u : 4u;

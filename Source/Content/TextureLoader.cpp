@@ -4,6 +4,9 @@
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
+#include <mutex>
+#include <wincodec.h>
+#include <wrl/client.h>
 
 namespace KT::Content
 {
@@ -37,9 +40,33 @@ namespace KT::Content
 		}
 	};
 
+	// 読込中だけDirectXTexのglobal cacheにも参照を保持させ、COMを閉じる前に解放する。
+	// Engine内のWIC利用はTextureLoaderだけに限定し、Load全体を直列化する。
+	struct ImageFactoryScope
+	{
+		Microsoft::WRL::ComPtr<IWICImagingFactory2> factory;
+
+		ImageFactoryScope()
+		{
+			CheckImageResult(
+				CoCreateInstance(CLSID_WICImagingFactory2, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(factory.GetAddressOf())),
+				"WIC Factory生成");
+			DirectX::SetWICFactory(factory.Get());
+		}
+
+		~ImageFactoryScope()
+		{
+			DirectX::SetWICFactory(nullptr);
+		}
+	};
+
 	TextureAsset TextureLoader::Load(const TextureAsset& definition, const std::filesystem::path& path)
 	{
+		// Factoryの設定と解放が、別の画像読込へ割り込まないようにする。
+		static std::mutex imageMutex;
+		const std::lock_guard lock(imageMutex);
 		ImageComScope com;
+		ImageFactoryScope factory;
 		std::ifstream stream(path, std::ios::binary | std::ios::ate);
 		const auto length = stream.tellg();
 		if (!stream || length <= 0 || length > 64 * 1024 * 1024)

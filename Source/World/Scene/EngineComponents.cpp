@@ -77,30 +77,66 @@ namespace KT::World
 				return result;
 			});
 
-		registry.Register<MeshRenderer>(
-			"kt.MeshRenderer", 2,
-			[](const MeshRenderer& input) -> SceneValue
+		// 保存はversion 3。旧version 2は単一Materialをfallbackとして明示変換する。
+		ComponentDescriptor mesh;
+		mesh.type = "kt.MeshRenderer";
+		mesh.cppType = typeid(MeshRenderer);
+		mesh.version = 3;
+		mesh.capture = [](const World& world, Entity entity) -> SceneValue
+		{
+			const auto& input = world.GetComponent<MeshRenderer>(entity);
+			SceneValue::Object materials;
+			for (const auto& [slot, material] : input.materials)
 			{
-				return SceneValue::Object{{"mesh", input.mesh ? SceneValue(input.mesh->ToString()) : SceneValue{}},
-					{"material", input.material ? SceneValue(input.material->ToString()) : SceneValue{}}, {"visible", input.visible}};
-			},
-			[](const SceneValue& data, const SceneReadContext&) -> MeshRenderer
+				materials.emplace(slot, material ? SceneValue(material->ToString()) : SceneValue{});
+			}
+			return SceneValue::Object{{"mesh", input.mesh ? SceneValue(input.mesh->ToString()) : SceneValue{}},
+				{"material", input.material ? SceneValue(input.material->ToString()) : SceneValue{}}, {"visible", input.visible},
+				{"materials", std::move(materials)}};
+		};
+		const auto decodeMesh = [](const SceneValue& data) -> MeshRenderer
+		{
+			data.RequireFields({"mesh", "material", "visible", "materials"});
+			MeshRenderer result;
+			if (!std::holds_alternative<std::nullptr_t>(data.At("mesh").value))
 			{
-				// 保存参照の形式だけを検査する。素材の存在はScene読込の成立条件にしない。
-				data.RequireFields({"mesh", "material", "visible"});
-				MeshRenderer result;
-				if (!std::holds_alternative<std::nullptr_t>(data.At("mesh").value))
+				result.mesh = KT::Content::MeshAssetId::Parse(data.At("mesh").AsString());
+			}
+			if (!std::holds_alternative<std::nullptr_t>(data.At("material").value))
+			{
+				result.material = KT::Content::MaterialAssetId::Parse(data.At("material").AsString());
+			}
+			result.visible = data.At("visible").AsBool();
+			for (const auto& [slot, material] : data.At("materials").AsObject())
+			{
+				if (slot.empty() || slot.size() > 256)
 				{
-					result.mesh = KT::Content::MeshAssetId::Parse(data.At("mesh").AsString());
+					throw std::invalid_argument("MeshRendererのMaterial slot名は1..256byteが必要です。");
 				}
-				if (!std::holds_alternative<std::nullptr_t>(data.At("material").value))
+				std::optional<KT::Content::MaterialAssetId> id;
+				if (!std::holds_alternative<std::nullptr_t>(material.value))
 				{
-					result.material = KT::Content::MaterialAssetId::Parse(data.At("material").AsString());
+					id = KT::Content::MaterialAssetId::Parse(material.AsString());
 				}
-				result.visible = data.At("visible").AsBool();
-				return result;
-			});
-
+				result.materials.emplace(slot, id);
+			}
+			return result;
+		};
+		mesh.validate = [decodeMesh](const SceneValue& data, const SceneReadContext&) { (void)decodeMesh(data); };
+		mesh.restore = [decodeMesh](Scene& scene, EntityTarget entity, const SceneValue& data, const SceneReadContext&)
+		{ scene.Commands().AddComponent<MeshRenderer>(entity, decodeMesh(data)); };
+		mesh.migrate = [](std::uint32_t version, const SceneValue& data) -> SceneValue
+		{
+			if (version != 2)
+			{
+				throw std::invalid_argument("MeshRendererの自動互換読込はversion 2だけに対応しています。");
+			}
+			data.RequireFields({"mesh", "material", "visible"});
+			auto result = data.AsObject();
+			result.emplace("materials", SceneValue::Object{});
+			return result;
+		};
+		registry.Register(std::move(mesh));
 		// Scriptは検査と生成を分離し、全定義の検査成功までfactoryを呼ばない。
 		ComponentDescriptor script;
 		script.type = "kt.ScriptComponent";

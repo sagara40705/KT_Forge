@@ -1,5 +1,5 @@
 #include <RuntimeIntegration/ProjectSceneLoader.h>
-#include <array>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <stdexcept>
@@ -25,7 +25,7 @@ namespace KT::RuntimeIntegration
 		const auto asset = KT::World::SceneJson::Read(project.Resolve(scenePath), components, scripts);
 		ProjectSceneLoadResult result;
 		std::vector<KT::Content::AssetId> required;
-		std::vector<std::pair<KT::World::ObjectUuid, KT::Content::MaterialAssetId>> materials;
+		std::vector<std::tuple<KT::World::ObjectUuid, KT::Content::MaterialAssetId, std::string>> materials;
 		for (const auto& object : asset.objects)
 		{
 			for (const auto& component : object.components)
@@ -34,20 +34,26 @@ namespace KT::RuntimeIntegration
 				{
 					continue;
 				}
-				// 非Activeも含め、Sceneが保持する永続参照から必要素材を収集する。
-				const std::array fields{
-					std::pair{"mesh", KT::Content::AssetKind::Mesh}, std::pair{"material", KT::Content::AssetKind::Material}};
-				for (const auto& [field, expected] : fields)
+				// 旧単一参照と全slotの参照を収集し、非Activeの設定も準備する。
+				const auto upgraded = components.ReadLegacyData(component);
+				const auto& data = upgraded ? *upgraded : component.data;
+				std::vector<std::tuple<std::string, KT::Content::AssetKind, const KT::World::SceneValue*>> references{
+					{"mesh", KT::Content::AssetKind::Mesh, &data.At("mesh")},
+					{"material", KT::Content::AssetKind::Material, &data.At("material")}};
+				for (const auto& [slot, material] : data.At("materials").AsObject())
 				{
-					const auto& value = component.data.At(field);
-					if (std::holds_alternative<std::nullptr_t>(value.value))
+					references.emplace_back("materials." + slot, KT::Content::AssetKind::Material, &material);
+				}
+				for (const auto& [field, expected, value] : references)
+				{
+					if (std::holds_alternative<std::nullptr_t>(value->value))
 					{
 						continue;
 					}
-					const auto id = KT::Content::AssetId::Parse(value.AsString());
+					const auto id = KT::Content::AssetId::Parse(value->AsString());
 					if (expected == KT::Content::AssetKind::Material)
 					{
-						materials.emplace_back(object.uuid, KT::Content::MaterialAssetId(id));
+						materials.emplace_back(object.uuid, KT::Content::MaterialAssetId(id), field);
 					}
 					auto actual = catalog.FindKind(id);
 					if (const auto* entry = project.Find(id))
@@ -72,7 +78,7 @@ namespace KT::RuntimeIntegration
 			pending.emplace(documents[index].id, index);
 		}
 		std::vector<KT::Content::AssetId> textures;
-		for (const auto& [object, materialId] : materials)
+		for (const auto& [object, materialId, field] : materials)
 		{
 			auto textureId = catalog.MaterialTexture(materialId);
 			if (const auto found = pending.find(materialId.Value()); found != pending.end())
@@ -99,7 +105,7 @@ namespace KT::RuntimeIntegration
 			if (!actual || *actual != KT::Content::AssetKind::Texture)
 			{
 				result.diagnostics.push_back(
-					{object, "kt.MeshRenderer", "material.baseColorTexture", id, KT::Content::AssetKind::Texture, actual});
+					{object, "kt.MeshRenderer", field + ".baseColorTexture", id, KT::Content::AssetKind::Texture, actual});
 			}
 		}
 		for (auto& texture : project.Load(textures))

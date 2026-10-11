@@ -57,14 +57,15 @@ namespace KT::RuntimeIntegration
 
 	// 種類別の解決結果を、入力を書き換えずに診断配列へ記録する。
 	static void ReportReference(RenderFrame& result, KT::World::Entity entity, RenderDiagnosticField field,
-		KT::Content::AssetReferenceState state, std::optional<KT::Content::AssetId> id)
+		KT::Content::AssetReferenceState state, std::optional<KT::Content::AssetId> id, std::optional<std::uint32_t> submesh = {},
+		std::string_view materialSlot = {})
 	{
 		if (state == KT::Content::AssetReferenceState::Missing || state == KT::Content::AssetReferenceState::TypeMismatch)
 		{
 			result.diagnostics.push_back({entity, field,
 				state == KT::Content::AssetReferenceState::Missing ? RenderDiagnosticCode::MissingAsset :
 																	 RenderDiagnosticCode::AssetTypeMismatch,
-				id});
+				id, submesh, std::string(materialSlot)});
 		}
 	}
 
@@ -90,39 +91,64 @@ namespace KT::RuntimeIntegration
 				continue;
 			}
 			const auto mesh = assets.Resolve(renderer->mesh);
-			const auto material = assets.Resolve(renderer->material);
 			ReportReference(result, entity.entity, RenderDiagnosticField::Mesh, mesh.state,
 				renderer->mesh ? std::optional(renderer->mesh->Value()) : std::nullopt);
-			ReportReference(result, entity.entity, RenderDiagnosticField::Material, material.state,
-				renderer->material ? std::optional(renderer->material->Value()) : std::nullopt);
-			if (!mesh.asset || !material.asset)
+			if (!mesh.asset)
 			{
 				continue;
 			}
-			if (const auto textureId = material.asset->Settings().baseColorTexture)
+			// 再取込で消えたslotの割当を保持し、誤った別Materialへの付け替えを避ける。
+			for (const auto& [slot, reference] : renderer->materials)
 			{
-				const auto texture = assets.Resolve(textureId);
-				ReportReference(result, entity.entity, RenderDiagnosticField::BaseColorTexture, texture.state, textureId->Value());
-				if (!texture.asset)
+				const auto ranges = mesh.asset->Submeshes();
+				if (std::none_of(ranges.begin(), ranges.end(), [&](const auto& submesh) { return submesh.materialSlot == slot; }))
 				{
-					continue;
-				}
-				if (mesh.asset->Texcoords().empty())
-				{
-					result.diagnostics.push_back(
-						{entity.entity, RenderDiagnosticField::Texcoords, RenderDiagnosticCode::MissingTexcoords, renderer->mesh->Value()});
-					continue;
+					result.diagnostics.push_back({entity.entity, RenderDiagnosticField::MaterialSlot,
+						RenderDiagnosticCode::UnknownMaterialSlot, reference ? std::optional(reference->Value()) : std::nullopt, {}, slot});
 				}
 			}
-			const auto bounds = TransformBounds(mesh.asset->LocalBounds(), entity.transform.matrix);
-			if (!bounds)
+
+			// Material欠落は当該Submeshだけを除外し、他のslotを描画候補として残す。
+			for (std::size_t submeshIndex = 0; submeshIndex < mesh.asset->Submeshes().size(); ++submeshIndex)
 			{
-				result.diagnostics.push_back(
-					{entity.entity, RenderDiagnosticField::WorldBounds, RenderDiagnosticCode::InvalidWorldBounds, {}});
-				continue;
+				const auto& submesh = mesh.asset->Submeshes()[submeshIndex];
+				const auto overrideMaterial = renderer->materials.find(submesh.materialSlot);
+				const auto materialId = overrideMaterial == renderer->materials.end() ? renderer->material : overrideMaterial->second;
+				const auto material = assets.Resolve(materialId);
+				ReportReference(result, entity.entity, RenderDiagnosticField::Material, material.state,
+					materialId ? std::optional(materialId->Value()) : std::nullopt, static_cast<std::uint32_t>(submeshIndex),
+					submesh.materialSlot);
+				if (material.asset)
+				{
+					if (const auto textureId = material.asset->Settings().baseColorTexture)
+					{
+						const auto texture = assets.Resolve(textureId);
+						ReportReference(result, entity.entity, RenderDiagnosticField::BaseColorTexture, texture.state, textureId->Value(),
+							static_cast<std::uint32_t>(submeshIndex), submesh.materialSlot);
+						if (!texture.asset)
+						{
+							continue;
+						}
+						if (mesh.asset->Texcoords().empty())
+						{
+							result.diagnostics.push_back(
+								{entity.entity, RenderDiagnosticField::Texcoords, RenderDiagnosticCode::MissingTexcoords,
+									renderer->mesh->Value(), static_cast<std::uint32_t>(submeshIndex), submesh.materialSlot});
+							continue;
+						}
+					}
+					const auto bounds = TransformBounds(mesh.asset->SubmeshBounds()[submeshIndex], entity.transform.matrix);
+					if (!bounds)
+					{
+						result.diagnostics.push_back({entity.entity, RenderDiagnosticField::WorldBounds,
+							RenderDiagnosticCode::InvalidWorldBounds, {}, static_cast<std::uint32_t>(submeshIndex), submesh.materialSlot});
+						continue;
+					}
+					result.candidates.objects.push_back(
+						{*renderer->mesh, *materialId, entity.transform.matrix, *bounds, static_cast<std::uint32_t>(submeshIndex)});
+					result.sources.push_back(entity.entity);
+				}
 			}
-			result.candidates.objects.push_back({*renderer->mesh, *renderer->material, entity.transform.matrix, *bounds});
-			result.sources.push_back(entity.entity);
 		}
 		return result;
 	}

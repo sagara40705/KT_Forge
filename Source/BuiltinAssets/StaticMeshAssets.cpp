@@ -1,4 +1,5 @@
 #include <BuiltinAssets/StaticMeshAssets.h>
+#include <Content/MeshGeometry.h>
 
 namespace KT::BuiltinAssets
 {
@@ -34,7 +35,8 @@ namespace KT::BuiltinAssets
 			texcoords.insert(texcoords.end(), {{0, 1}, {0, 0}, {1, 0}, {1, 1}});
 			indices.insert(indices.end(), {first, first + 1, first + 2, first, first + 2, first + 3});
 		}
-		return {CubeAssetId().Value(), "Cube", KT::Content::MeshAsset(std::move(positions), std::move(indices), std::move(texcoords))};
+		return {CubeAssetId().Value(), "Cube",
+			KT::Content::MeshGeometry::Generate(KT::Content::MeshAsset(std::move(positions), std::move(indices), std::move(texcoords)))};
 	}
 
 	KT::Content::AssetDocument CreateWhiteMaterialAsset()

@@ -49,15 +49,8 @@ namespace KT::Renderer
 		(void)inserted;
 		try
 		{
-			std::vector<MeshVertex> vertices;
-			vertices.reserve(source.asset->Positions().size());
-			for (std::size_t index = 0; index < source.asset->Positions().size(); ++index)
-			{
-				const auto position = source.asset->Positions()[index];
-				const auto uv = source.asset->Texcoords().empty() ? KT::Core::Math::Vector2{} : source.asset->Texcoords()[index];
-				vertices.push_back({{position.x, position.y, position.z}, {uv.x, uv.y}});
-			}
-			auto mesh = std::make_unique<Mesh>(device_, vertices, std::as_bytes(source.asset->Indices()), DXGI_FORMAT_R32_UINT);
+			auto mesh = std::make_unique<Mesh>(device_, *source.asset);
+			mesh->Upload(queue_);
 			meshes_.Add(handle, std::move(mesh));
 			entry->second = handle;
 		}
@@ -152,7 +145,7 @@ namespace KT::Renderer
 			world.objects.reserve(candidates.objects.size());
 			for (const auto& object : candidates.objects)
 			{
-				world.objects.push_back({ResolveMesh(object.mesh), ResolveMaterial(object.material), object.world});
+				world.objects.push_back({ResolveMesh(object.mesh), ResolveMaterial(object.material), object.world, object.submesh});
 			}
 		}
 		// 一回の定数はView一個と各Draw二個。加算・乗算前にUINT容量の上限を確認する。

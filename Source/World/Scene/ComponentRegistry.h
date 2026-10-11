@@ -32,6 +32,8 @@ namespace KT::World
 		std::function<void(const SceneValue&, const SceneReadContext&)> validate;
 		// 設定を復元し、候補SceneへのComponent追加を予約する。
 		std::function<void(Scene&, EntityTarget, const SceneValue&, const SceneReadContext&)> restore;
+		// 明示的に許可した旧versionだけを現行設定へ変換する。未設定なら旧versionを拒否する。
+		std::function<SceneValue(std::uint32_t, const SceneValue&)> migrate;
 	};
 
 	// Component型と永続IDを対応づける。単一threadで所有者が登録し、読込前にFreezeする。
@@ -63,6 +65,8 @@ namespace KT::World
 		[[nodiscard]] const ComponentDescriptor& Find(const std::string& type) const;
 		[[nodiscard]] const ComponentDescriptor& Find(std::type_index cppType) const;
 		void Validate(const SceneComponentDefinition& definition, const SceneReadContext& context) const;
+		// 現行versionはnulloptで原本を使用し、旧versionだけ登録済み変換の所有値を返す。
+		[[nodiscard]] std::optional<SceneValue> ReadLegacyData(const SceneComponentDefinition& definition) const;
 
 	private:
 		// 永続型ID順に登録情報を保持し、C++型の重複も登録時に検査する。

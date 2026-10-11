@@ -136,7 +136,8 @@ namespace KT::World
 		{
 			for (const auto& component : asset.objects[index].components)
 			{
-				components.Find(component.type).restore(*scene, reservations[index], component.data, context);
+				const auto upgraded = components.ReadLegacyData(component);
+				components.Find(component.type).restore(*scene, reservations[index], upgraded ? *upgraded : component.data, context);
 			}
 		}
 		for (std::size_t index = 0; index < asset.objects.size(); ++index)

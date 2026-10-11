@@ -1,0 +1,10 @@
+Assimp 6.0.5, commit 392a658f9c271be965271f45e7521a1b80ea4392
+Upstream: https://github.com/assimp/assimp/tree/392a658f9c271be965271f45e7521a1b80ea4392
+BSD-3-Clause, copyright Assimp team 2006-2026. See LICENSE.txt (full upstream text).
+KT_Forge links importers and bundled zlib statically. Assimp tools, tests and exporters are disabled.
+Upstream sources and their notices are retained in build/_deps/assimp-src.
+Contrib notices used by default importer build are retained under contrib-notices.
+AI authored the KT_Forge adapter; Assimp and bundled third-party sources are not KT_Forge original work.
+USD, VRML, M3D and Draco follow upstream defaults (disabled in this fixed configuration).
+Models in upstream test/models-nonbsd are not used or redistributed by KT_Forge.
+Binary distributions must include the corresponding notices and full license text.

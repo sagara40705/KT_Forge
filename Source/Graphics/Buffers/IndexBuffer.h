@@ -7,7 +7,18 @@ namespace KT::Graphics
 	class IndexBuffer : private KT::Core::NonCopyable
 	{
 	public:
-		IndexBuffer(GraphicsDevice& device, std::span<const std::byte> bytes, DXGI_FORMAT format);
+		IndexBuffer(
+			GraphicsDevice& device, std::span<const std::byte> bytes, DXGI_FORMAT format, BufferStorage storage = BufferStorage::Upload);
+
+		void Upload(CommandQueue& queue)
+		{
+			buffer_.Upload(queue);
+		}
+
+		[[nodiscard]] bool IsReady() const noexcept
+		{
+			return buffer_.IsReady();
+		}
 
 		IndexBuffer(GraphicsDevice& device, std::span<const std::uint16_t> values)
 			: IndexBuffer(device, std::as_bytes(values), DXGI_FORMAT_R16_UINT)

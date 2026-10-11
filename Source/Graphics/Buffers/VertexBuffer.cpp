@@ -15,8 +15,8 @@ namespace KT::Graphics
 		}
 	}
 
-	VertexBuffer::VertexBuffer(GraphicsDevice& device, std::span<const std::byte> bytes, UINT stride)
-		: buffer_(device, Validated(bytes, stride))
+	VertexBuffer::VertexBuffer(GraphicsDevice& device, std::span<const std::byte> bytes, UINT stride, BufferStorage storage)
+		: buffer_(device, Validated(bytes, stride), storage, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER)
 	{
 		// 頂点ビューと頂点数を保持する
 		view_ = {buffer_.GetResource()->GetGPUVirtualAddress(), static_cast<UINT>(bytes.size()), stride};
