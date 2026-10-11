@@ -2,6 +2,7 @@
 #include <World/Scene/SceneUpdateContext.h>
 #include <World/Scene/WorldCommandBuffer.h>
 #include <World/Scene/ScriptComponent.h>
+#include <World/Physics/ScenePhysics.h>
 #include <array>
 
 namespace KT::World
@@ -23,7 +24,29 @@ namespace KT::World
 		}
 
 		WorldCommandBuffer& Commands();
-		// 開始反映→CPU入力確定→Script・ゲーム更新→終了反映→CPU結果公開の順で行う。
+		// 接続は完成Sceneの待機中に一度だけ行う。設定は接続前だけ変更できる。
+		void AttachPhysics(std::unique_ptr<ScenePhysics> physics);
+
+		[[nodiscard]] bool HasPhysics() const noexcept
+		{
+			return physics_ != nullptr;
+		}
+
+		[[nodiscard]] ScenePhysics& Physics();
+		[[nodiscard]] const ScenePhysics& Physics() const;
+		void SetPhysicsSettings(const KT::Physics::SceneSettings& settings);
+
+		[[nodiscard]] const KT::Physics::SceneSettings& GetPhysicsSettings() const noexcept
+		{
+			return physicsSettings_;
+		}
+
+		[[nodiscard]] bool HasPhysicsSettings() const noexcept
+		{
+			return explicitPhysicsSettings_;
+		}
+
+		// 開始反映→CPU/物理入力→Script・ゲーム→物理Step/書戻し→終了反映→成功結果公開。
 		// 例外時は一回の更新全体を復元する。予約・更新番号・発行済み世代は消費する。
 		// 返すcontextは次の成功更新・idle値編集・Scene破棄まで有効。ゲーム入力はcallback内だけ借用する。
 		const SceneUpdateContext& Update(double deltaSeconds, const GameUpdate& gameUpdate = {});
@@ -59,7 +82,7 @@ namespace KT::World
 
 		template <ComponentType T, class Fn> void EditComponent(Entity entity, Fn&& edit)
 		{
-			static_assert(!ReadOnlyComponent<T>, "Hierarchy・PersistentId・ScriptComponentの値編集には専用APIを使用してください。");
+			static_assert(!ReadOnlyComponent<T>, "読み取り専用componentには専用APIまたはcomponent置換を使用してください。");
 
 			// 編集可能な段階を確認し、待機中の完成結果を失効させる。
 			RequireValueEditing();
@@ -138,6 +161,8 @@ namespace KT::World
 			Failed
 		};
 		void RequireValueEditing() const;
+		// SceneHostも所有を交換する前に、更新開始の全条件を同じ規則で確認する。
+		void ValidateUpdateStart(double deltaSeconds) const;
 		template <ComponentType T> void BackupEditable(Entity entity)
 		{
 			if constexpr (!ReadOnlyComponent<T>)
@@ -148,12 +173,17 @@ namespace KT::World
 		std::unique_ptr<SceneUpdateContext> ComputeCpu(
 			std::uint64_t updateNumber, const SceneUpdateContext* previous = nullptr);
 		void RecycleCpu(std::unique_ptr<SceneUpdateContext> context) noexcept;
+		void WritePhysics(std::span<const PhysicsWriteback> values);
 
 		// Entity・component・Script実体の唯一の所有先。
 		World world_;
 		std::string name_;
 		// 構造変更を所有し、更新の開始・終了境界で順に反映する。
 		WorldCommandBuffer commands_;
+		// SceneのWorldより先に物理の対応表を破棄する。Jolt型は接続実装へ閉じ込める。
+		std::unique_ptr<ScenePhysics> physics_;
+		KT::Physics::SceneSettings physicsSettings_;
+		bool explicitPhysicsSettings_ = false;
 		// 成功したCPU結果。idle編集後も差分比較用に保持し、公開だけ失効させる。
 		std::unique_ptr<SceneUpdateContext> snapshot_;
 		// 完成結果とrollback比較元を除く二つの作業context。容量を高水位で保持する。

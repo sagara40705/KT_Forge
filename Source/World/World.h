@@ -37,6 +37,8 @@ namespace KT::World
 	class ScriptBehaviour;
 	class WorldCommandBuffer;
 	class Scene;
+	class RigidBody;
+	class Collider;
 
 	// EntityのCPU入力の変更世代。保存形式には含めず、World内で発行する。
 	struct CpuChangeVersions
@@ -61,10 +63,10 @@ namespace KT::World
 		KeepWorld
 	};
 
-	// 親・UUID・Script所有は、借用した値から書き換えない。
+	// 親・UUID・Script所有・物理設定と結果は、借用した値から書き換えない。
 	template <class T>
-	inline constexpr bool ReadOnlyComponent =
-		std::is_same_v<T, Hierarchy> || std::is_same_v<T, PersistentId> || std::is_same_v<T, ScriptComponent>;
+	inline constexpr bool ReadOnlyComponent = std::is_same_v<T, Hierarchy> || std::is_same_v<T, PersistentId> ||
+		std::is_same_v<T, ScriptComponent> || std::is_same_v<T, RigidBody> || std::is_same_v<T, Collider>;
 	// 保護されたcomponentは、非const Worldからも読み取り専用で借用する。
 	template <class T> using BorrowedComponent = std::conditional_t<ReadOnlyComponent<T>, const T, T>;
 	// 階層と永続IDの追加・削除は、専用の構造変更APIへ限定する。

@@ -3,6 +3,7 @@
 #include <Core/Log.h>
 #include <Graphics/Textures/ColorTargetView.h>
 #include <RuntimeIntegration/SceneCamera.h>
+#include <RuntimeIntegration/Physics/JoltScenePhysics.h>
 #include <BuiltinAssets/StaticMeshAssets.h>
 #include <chrono>
 #include <exception>
@@ -13,13 +14,18 @@
 
 namespace KT::Application
 {
-	Application::Application(int width, int height, const char* title, AssetSetup assetSetup, std::optional<ProjectStartup> project)
+	Application::Application(
+		int width, int height, const char* title, AssetSetup assetSetup, std::optional<ProjectStartup> project, SceneFactory sceneFactory)
 		: window_(width, height, title),
 		  input_(window_),
 		  graphicsDevice_(),
 		  commandQueue_(graphicsDevice_),
 		  sceneUpdater_(assets_)
 	{
+		if (project && sceneFactory)
+		{
+			throw std::invalid_argument("Applicationの起動SceneはprojectとSceneFactoryを同時に指定できません。");
+		}
 		// 素材の登録を起動時に完了し、Scene使用中の差替えや参照失効を防ぐ。
 		KT::BuiltinAssets::RegisterStaticMeshAssets(assets_);
 		if (assetSetup)
@@ -41,12 +47,12 @@ namespace KT::Application
 			const auto index = KT::Content::ProjectAssets::Scan(project->root);
 			auto loaded = KT::RuntimeIntegration::ProjectSceneLoader::Load(index, project->scene, assets_, components, scripts);
 			assetDiagnostics_ = std::move(loaded.diagnostics);
-			sceneHost_.QueueScene(std::move(loaded.scene));
+			QueueScene(std::move(loaded.scene));
 		}
 		else
 		{
 			// 起動例も同じLoaderと製品描画経路に通し、特別な描画コードを持たない。
-			sceneHost_.QueueScene(CreateStartupScene());
+			QueueScene(sceneFactory ? sceneFactory() : CreateStartupScene());
 		}
 		assets_.Freeze();
 	}
@@ -65,6 +71,12 @@ namespace KT::Application
 
 	void Application::QueueScene(std::unique_ptr<KT::World::Scene> scene)
 	{
+		if (!scene)
+		{
+			throw std::invalid_argument("Applicationへ空のSceneを予約できません。");
+		}
+		// 候補の物理準備まで完了してから予約する。失敗時は現在Sceneを保持する。
+		KT::RuntimeIntegration::PrepareScenePhysics(*scene, physicsRuntime_);
 		sceneHost_.QueueScene(std::move(scene));
 	}
 
@@ -141,6 +153,7 @@ namespace KT::Application
 		running_ = true;
 		stopRequested_ = false;
 		timer_.Reset();
+		fixedClock_.Reset();
 		try
 		{
 			while (!stopRequested_ && !window_.ShouldClose())
@@ -154,25 +167,37 @@ namespace KT::Application
 					break;
 				}
 
-				// 入力を一度確定し、Scene切替・予約反映・CPU更新を直接呼ぶ。
-				input_.Update();
-				const auto deltaSeconds = timer_.Tick();
-				sceneUpdater_.Reset();
+				// 0tickの回は入力edgeを保留し、追いつき中は最初のtickだけで消費する。
+				const auto ticks = fixedClock_.Advance(timer_.Tick());
 				int width = 0;
 				int height = 0;
 				bool drawable = false;
 				try
 				{
-					const auto& cpu = sceneHost_.Update(deltaSeconds, update);
+					for (unsigned tick = 0; tick < ticks && !stopRequested_; ++tick)
+					{
+						if (simulationTicks_ == (std::numeric_limits<std::uint64_t>::max)())
+						{
+							throw std::overflow_error("Applicationのsimulation tick数が上限に達しました。");
+						}
+						input_.Update();
+						sceneUpdater_.Reset();
+						(void)sceneHost_.Update(KT::Physics::FixedDeltaSeconds, update);
+						++simulationTicks_;
+					}
+					const auto* scene = sceneHost_.GetScene();
 					window_.GetFramebufferSize(width, height);
-					drawable = width > 0 && height > 0 && !window_.IsMinimized();
+					drawable = scene && width > 0 && height > 0 && !window_.IsMinimized();
 					// 最小化中もCPU候補を更新する。描画する回だけCameraとviewportを評価する。
 					const auto camera =
 						drawable ? KT::RuntimeIntegration::SelectSceneCamera(*sceneHost_.GetScene(), renderCamera_) : std::nullopt;
 					const KT::World::Viewport viewport = drawable ?
 						KT::World::Viewport{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)} :
 						KT::World::Viewport{};
-					(void)sceneUpdater_.Update(cpu, camera, viewport);
+					if (scene)
+					{
+						(void)sceneUpdater_.Update(scene->GetSnapshot(), camera, viewport);
+					}
 				}
 				catch (...)
 				{
@@ -190,7 +215,7 @@ namespace KT::Application
 					PresentScene(static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height));
 				}
 
-				// 可変deltaで実時間を渡し、描画がない間の空回りを約60Hzに抑える。
+				// 描画がない間もイベントpollの空回りを約60Hzに抑える。
 				std::this_thread::sleep_until(updateStarted + std::chrono::duration<double>(1.0 / 60.0));
 			}
 		}
@@ -243,6 +268,7 @@ namespace KT::Application
 		{
 			// 初回GPU生成やResizeの待ち時間を次のゲームdeltaへ持ち越さない。
 			timer_.Reset();
+			fixedClock_.Reset();
 		}
 	}
 }

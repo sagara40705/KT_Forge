@@ -1,4 +1,5 @@
 #include <World/Scene/SceneLoader.h>
+#include <World/Physics/PhysicsSerialization.h>
 #include <algorithm>
 #include <unordered_map>
 
@@ -33,9 +34,17 @@ namespace KT::World
 			{
 				throw std::logic_error("Scene読込・保存前に二つのRegistryをFreezeしてください。");
 			}
-			if (asset.version != 1)
+			if (asset.version != 1 && asset.version != 2)
 			{
 				throw std::invalid_argument("Sceneファイルのversionが未対応です。");
+			}
+			if ((asset.version == 2) != asset.physics.has_value())
+			{
+				throw std::invalid_argument("Scene version 2にはphysics設定が必要です。version 1には追加できません。");
+			}
+			if (asset.physics)
+			{
+				KT::Physics::Validate(*asset.physics);
 			}
 
 			// 全IDを先に検査し、保存順に依存せず参照先と階層を検査する。
@@ -110,6 +119,7 @@ namespace KT::World
 					}
 				}
 			}
+			ValidatePhysicsObjects(asset);
 			return resolved;
 		}
 	}
@@ -123,6 +133,10 @@ namespace KT::World
 	{
 		const auto resolved = ValidateAndResolve(asset, components, scripts);
 		auto scene = std::make_unique<Scene>(asset.name);
+		if (asset.physics)
+		{
+			scene->SetPhysicsSettings(*asset.physics);
+		}
 		std::vector<DeferredEntity> reservations;
 		reservations.reserve(asset.objects.size());
 		for (const auto& object : asset.objects)
@@ -168,6 +182,11 @@ namespace KT::World
 
 		SceneAsset asset;
 		asset.name = scene.GetName();
+		if (scene.HasPhysicsSettings())
+		{
+			asset.version = 2;
+			asset.physics = scene.GetPhysicsSettings();
+		}
 		const auto& world = scene.GetWorld();
 		for (const auto entity : world.Entities())
 		{

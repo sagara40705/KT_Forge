@@ -43,6 +43,8 @@ namespace KT::World
 			{
 				throw std::logic_error("切替候補のSceneが検証後に変更され、完成したCPU結果がないか未反映の予約コマンドがあります。");
 			}
+			// 固定delta等の拒否で旧Sceneと予約候補を失わないよう、交換前に確認する。
+			pending_->ValidateUpdateStart(deltaSeconds);
 			active_ = std::move(pending_);
 		}
 

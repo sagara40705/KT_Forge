@@ -2,6 +2,7 @@
 #include <World/Systems/HierarchySystem.h>
 #include <World/Systems/ActivationSystem.h>
 #include <World/Systems/TransformSystem.h>
+#include <World/Physics/PhysicsComponents.h>
 #include <cmath>
 #include <exception>
 
@@ -34,6 +35,55 @@ namespace KT::World
 	{
 		commands_.RequireAccepting();
 		return commands_;
+	}
+
+	void Scene::AttachPhysics(std::unique_ptr<ScenePhysics> physics)
+	{
+		if (!HasSnapshot() || IsUpdating() || valueEdits_ != 0 || commands_.PendingCount() != 0 || physics_ || !physics)
+		{
+			throw std::logic_error("物理接続には未接続で予約のない完成Sceneが必要です。");
+		}
+		physics_ = std::move(physics);
+	}
+
+	ScenePhysics& Scene::Physics()
+	{
+		return const_cast<ScenePhysics&>(std::as_const(*this).Physics());
+	}
+
+	const ScenePhysics& Scene::Physics() const
+	{
+		if (!physics_ || state_ == State::Failed || (IsUpdating() && !gamePhase_))
+		{
+			throw std::logic_error("Sceneの物理が未接続、失敗中、または参照できない更新段階です。");
+		}
+		return *physics_;
+	}
+
+	void Scene::SetPhysicsSettings(const KT::Physics::SceneSettings& settings)
+	{
+		if (state_ != State::Ready || physics_ || valueEdits_ != 0)
+		{
+			throw std::logic_error("Sceneの物理設定は物理接続前の待機中だけ変更できます。");
+		}
+		KT::Physics::Validate(settings);
+		physicsSettings_ = settings;
+		explicitPhysicsSettings_ = true;
+	}
+
+	void Scene::WritePhysics(std::span<const PhysicsWriteback> values)
+	{
+		// 専用段階だけでjournalを取って書き戻す。ゲーム用の編集許可は広げない。
+		for (const auto& value : values)
+		{
+			world_.BackupComponent<LocalTransform>(value.entity);
+			world_.BackupComponent<RigidBody>(value.entity);
+			auto& transform = world_.GetEditableComponent<LocalTransform>(value.entity);
+			transform.position = value.state.pose.position;
+			transform.rotation = value.state.pose.rotation;
+			auto* body = World::FindIn<RigidBody>(*world_.slots_[value.entity.index].data);
+			body->state_ = value.state;
+		}
 	}
 
 	void Scene::RequireValueEditing() const
@@ -91,7 +141,7 @@ namespace KT::World
 		}
 	}
 
-	const SceneUpdateContext& Scene::Update(double deltaSeconds, const GameUpdate& gameUpdate)
+	void Scene::ValidateUpdateStart(double deltaSeconds) const
 	{
 		// 更新開始条件と経過時間・番号を検査し、失敗時はWorldを変更しない。
 		if (state_ != State::Ready || valueEdits_ != 0)
@@ -103,22 +153,32 @@ namespace KT::World
 		{
 			throw std::invalid_argument("更新の経過時間は有限かつ0以上である必要があります。");
 		}
+		if (physics_ && std::abs(deltaSeconds - KT::Physics::FixedDeltaSeconds) > 1.0e-12)
+		{
+			throw std::invalid_argument("物理接続済みSceneは1/60秒の固定tickで更新してください。");
+		}
 
 		if (updateNumber_ == (std::numeric_limits<std::uint64_t>::max)())
 		{
 			throw std::overflow_error("Sceneの更新番号が上限に達しました。");
 		}
+	}
+
+	const SceneUpdateContext& Scene::Update(double deltaSeconds, const GameUpdate& gameUpdate)
+	{
+		ValidateUpdateStart(deltaSeconds);
 
 		// 更新中は旧結果を隠して保持し、今回の結果が完成するまで変更を仮反映する。
 		state_ = State::Updating;
 		auto previousSnapshot = std::move(snapshot_);
 		const bool previousSnapshotValid = snapshotValid_;
 		snapshotValid_ = false;
-		commandResults_ = {};
 		++updateNumber_;
 		std::unique_ptr<SceneUpdateContext> input;
 		try
 		{
+			// 境界診断の再初期化も、今回の更新を復元する区間へ含める。
+			commandResults_ = {};
 			world_.BeginTransaction();
 			// 開始境界の予約を反映し、今回のゲーム更新で使う固定CPU入力を作る。
 			commandResults_[0] = commands_.Flush();
@@ -128,6 +188,17 @@ namespace KT::World
 			}
 
 			input = ComputeCpu(updateNumber_, previousSnapshot.get());
+			if (physics_)
+			{
+				physics_->Begin(world_, *input);
+			}
+			else
+			{
+				world_.ForEachCandidate<RigidBody>(
+					[](Entity) { throw std::logic_error("RigidBodyを更新する前にSceneの物理接続を準備してください。"); });
+				world_.ForEachCandidate<Collider>(
+					[](Entity) { throw std::logic_error("Colliderを更新する前にSceneの物理接続を準備してください。"); });
+			}
 
 			// Scriptを持つEntityだけをslot順で収集し、更新前に全対象を確定する。
 			// 構造変更は後段のFlushまで反映せず、捕捉中はWorldへの再入を拒否する。
@@ -169,6 +240,10 @@ namespace KT::World
 			gamePhase_ = false;
 			gameInput_ = nullptr;
 			scriptScratch_.clear();
+			if (physics_)
+			{
+				WritePhysics(physics_->Simulate(world_));
+			}
 
 			// 終了境界の予約と値編集を反映し、再計算が成功した結果だけを公開する。
 			commandResults_[1] = commands_.Flush();
@@ -178,7 +253,15 @@ namespace KT::World
 			}
 
 			auto completedSnapshot = ComputeCpu(updateNumber_, input.get());
+			if (physics_)
+			{
+				physics_->Finish(world_, *completedSnapshot);
+			}
 			world_.CommitTransaction();
+			if (physics_)
+			{
+				physics_->Commit();
+			}
 			snapshot_ = std::move(completedSnapshot);
 			snapshotValid_ = true;
 			state_ = State::Ready;
@@ -196,6 +279,10 @@ namespace KT::World
 			scriptScratch_.clear();
 			state_ = State::Failed;
 			commands_.accepting_ = false;
+			if (physics_)
+			{
+				physics_->Rollback();
+			}
 			world_.RollbackTransaction();
 			RecycleCpu(std::move(input));
 			snapshot_ = std::move(previousSnapshot);

@@ -1,6 +1,7 @@
 #pragma once
 #include <World/Scene/ObjectIdentity.h>
 #include <World/Scene/SceneValue.h>
+#include <Physics/PhysicsTypes.h>
 #include <optional>
 
 namespace KT::World
@@ -40,6 +41,8 @@ namespace KT::World
 		std::string name;
 		// 保存順に依存せず、UUIDで親参照を解決するオブジェクト定義。
 		std::vector<SceneObjectDefinition> objects;
+		// version 2で保存するScene物理設定。version 1は未指定の既定値で読める。
+		std::optional<KT::Physics::SceneSettings> physics;
 		bool operator==(const SceneAsset&) const = default;
 	};
 }

@@ -1,4 +1,5 @@
 #include <World/Scene/SceneJson.h>
+#include <World/Physics/PhysicsSerialization.h>
 #include <nlohmann/json.hpp>
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -133,7 +134,14 @@ namespace KT::World
 				});
 			const auto root = FromJson(document);
 			root.Validate();
-			root.RequireFields({"format", "version", "name", "objects"});
+			if (root.At("version").AsVersion() == 2)
+			{
+				root.RequireFields({"format", "version", "name", "objects", "physics"});
+			}
+			else
+			{
+				root.RequireFields({"format", "version", "name", "objects"});
+			}
 			if (root.At("format").AsString() != "KT_Forge.Scene")
 			{
 				throw std::invalid_argument("JSONのformatがKT_Forge.Sceneではありません。");
@@ -142,6 +150,10 @@ namespace KT::World
 			SceneAsset asset;
 			asset.version = root.At("version").AsVersion();
 			asset.name = root.At("name").AsString();
+			if (asset.version == 2)
+			{
+				asset.physics = DecodePhysicsSettings(root.At("physics"));
+			}
 			for (const auto& input : root.At("objects").AsArray())
 			{
 				input.RequireFields({"uuid", "name", "parent", "components"});
@@ -190,6 +202,10 @@ namespace KT::World
 			}
 			std::sort(objects.begin(), objects.end(), [](const auto* first, const auto* second) { return first->uuid < second->uuid; });
 			Json document{{"format", "KT_Forge.Scene"}, {"version", asset.version}, {"name", asset.name}, {"objects", Json::array()}};
+			if (asset.physics)
+			{
+				document["physics"] = ToJson(EncodePhysics(*asset.physics), 1);
+			}
 			for (const auto* object : objects)
 			{
 				std::vector<const SceneComponentDefinition*> definitions;

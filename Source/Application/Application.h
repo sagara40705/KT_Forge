@@ -1,6 +1,8 @@
 #pragma once
 #include <Core/Utility/NonCopyable.h>
 #include <Core/Timer.h>
+#include <Application/FixedStepClock.h>
+#include <Physics/PhysicsRuntime.h>
 #include <Platform/GlfwContext.h>
 #include <Platform/Window.h>
 #include <Platform/Input/Input.h>
@@ -25,6 +27,8 @@ namespace KT::Application
 			std::function<void(KT::World::Scene&, const KT::World::SceneUpdateContext&, const KT::Platform::InputSnapshot&, double)>;
 		// 組込み素材登録後、初回Scene使用前に独自CPU素材を追加する起動処理。
 		using AssetSetup = std::function<void(KT::Content::AssetCatalog&)>;
+		// ファイル起動を使わない場合に、検証済みの起動Sceneを生成する。
+		using SceneFactory = std::function<std::unique_ptr<KT::World::Scene>()>;
 
 		// ファイル起動の設定。素材はroot内を探索し、Sceneにはrootからの相対パスを指定する。
 		struct ProjectStartup
@@ -49,11 +53,12 @@ namespace KT::Application
 		};
 
 		// コンストラクタ(幅・高さ・タイトル)
-		Application(int width, int height, const char* title, AssetSetup assetSetup = {}, std::optional<ProjectStartup> project = {});
+		Application(int width, int height, const char* title, AssetSetup assetSetup = {}, std::optional<ProjectStartup> project = {},
+			SceneFactory sceneFactory = {});
 		// Presentを含むQueueの完了後にGPU所有物を破棄する。完了待ちの失敗は継続不能とする。
 		~Application();
 
-		// 約60Hzの可変deltaでCPU更新する。最小化中も継続し、例外時はRunを終了して再送出する。
+		// Script・ゲーム・物理を1/60秒で更新する。1描画につき最大4tick、最小化中も継続する。
 		// Run終了後の完成CPU結果はGetScene()->GetSnapshot()で取得する。callbackとRunへ再入しない。
 		void Run(GameUpdate gameUpdate = {});
 
@@ -72,6 +77,16 @@ namespace KT::Application
 		// 次の描画から使うCameraの永続UUID。nulloptは自動選択。Scene切替後も指定を維持する。
 		void SetRenderCamera(std::optional<KT::World::ObjectUuid> camera);
 		[[nodiscard]] const PresentationStatistics& GetPresentationStatistics() const noexcept;
+
+		[[nodiscard]] std::uint64_t CompletedSimulationTicks() const noexcept
+		{
+			return simulationTicks_;
+		}
+
+		[[nodiscard]] double DroppedSimulationSeconds() const noexcept
+		{
+			return fixedClock_.DroppedSeconds();
+		}
 		// ゲーム処理から終了を予約する。次の更新を始めずにRunから戻る。
 		void RequestStop() noexcept;
 
@@ -99,12 +114,16 @@ namespace KT::Application
 		// CPU素材をSceneと候補より長く保持する。起動登録後は変更しない。
 		KT::Content::AssetCatalog assets_;
 		std::vector<KT::RuntimeIntegration::SceneAssetDiagnostic> assetDiagnostics_;
+		// Sceneの物理worldより長くJoltの登録・実行資源を保持する。
+		KT::Physics::PhysicsRuntime physicsRuntime_;
 		// Sceneを入力・Graphics基盤より先に破棄し、Script側の借用先を保持する。
 		KT::World::SceneHost sceneHost_;
 		// 完成SceneからCameraに依存しない静的Mesh候補を保持する。
 		KT::RuntimeIntegration::SceneUpdater sceneUpdater_;
 		std::optional<KT::World::ObjectUuid> renderCamera_;
 		PresentationStatistics presentation_;
+		FixedStepClock fixedClock_;
+		std::uint64_t simulationTicks_ = 0;
 		// 素材・Device・Queue・Swapchainより先に破棄し、GPUの借用先を保持する。
 		std::unique_ptr<KT::Renderer::StaticSceneRenderer> renderer_;
 		// Run開始時に計測を再設定し、起動・復旧待ちの時間をdeltaへ含めない。

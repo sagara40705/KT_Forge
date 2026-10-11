@@ -1,4 +1,8 @@
 target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Physics/PhysicsComponents.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Physics/PhysicsSerialization.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Physics/PhysicsSerialization.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Physics/ScenePhysics.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/TransformMath.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/TransformMath.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/ModelInstance.h"

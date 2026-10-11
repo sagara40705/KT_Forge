@@ -1,4 +1,6 @@
 target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Physics/JoltScenePhysics.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Physics/JoltScenePhysics.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/ModelWorkflowJson.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/ModelWorkflowJson.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/ModelReconcileJson.h"

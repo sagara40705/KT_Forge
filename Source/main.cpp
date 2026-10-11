@@ -1,5 +1,6 @@
 #include <Core/Log.h>
 #include <Application/Application.h>
+#include <Application/PhysicsDemo.h>
 #include <Content/ObjMeshImporter.h>
 #include <RuntimeIntegration/ModelImport.h>
 #include <RuntimeIntegration/ModelPlacement.h>
@@ -27,6 +28,46 @@ int wmain(int argc, wchar_t* argv[])
 	try
 	{
 		const std::wstring_view command = argc > 1 ? argv[1] : L"";
+		if (command == L"--physics-demo")
+		{
+			// 終了tickを指定すると、同じ製品の描画経路を有限回だけ実行できる。
+			unsigned tickLimit = 0;
+			if (argc != 2)
+			{
+				if (argc != 4 || std::wstring_view(argv[2]) != L"--ticks")
+				{
+					throw std::invalid_argument("物理例の使用法: --physics-demo [--ticks 1..6000]");
+				}
+				unsigned count = 0;
+				for (const auto character : std::wstring_view(argv[3]))
+				{
+					if (character < L'0' || character > L'9' || count > 600)
+					{
+						throw std::invalid_argument("物理例の終了tickは1..6000の整数で指定してください。");
+					}
+					count = count * 10 + static_cast<unsigned>(character - L'0');
+				}
+				if (count < 1 || count > 6000)
+				{
+					throw std::invalid_argument("物理例の終了tickは1..6000の整数で指定してください。");
+				}
+				tickLimit = count;
+			}
+			KT::Application::Application app(1280, 720, "KT_Forge - Jolt Physics", {}, {}, KT::Application::CreatePhysicsDemoScene);
+			unsigned ticks = 0;
+			app.Run(
+				[&](auto&, const auto&, const auto&, double)
+				{
+					++ticks;
+					if (tickLimit != 0 && ticks >= tickLimit)
+					{
+						app.RequestStop();
+					}
+				});
+			KT_LOG_INFO("物理例を終了しました。tick=" + std::to_string(app.CompletedSimulationTicks()) +
+				" / Present=" + std::to_string(app.GetPresentationStatistics().frames));
+			return 0;
+		}
 		if (const auto result = KT::Application::RunModelWorkflowCommand(argc, argv))
 		{
 			return *result;
