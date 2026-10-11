@@ -2,6 +2,8 @@
 #include <Core/Math/Vector3.h>
 #include <Core/Math/Quaternion.h>
 #include <World/Entity.h>
+#include <Content/AssetId.h>
+#include <optional>
 #include <cstdint>
 
 namespace KT::World
@@ -38,9 +40,9 @@ namespace KT::World
 	// 描画用のアセット参照と表示設定。描画用値へのコピーはRuntimeIntegrationが行う。
 	struct MeshRenderer
 	{
-		// 非0のアセットIDを保持する。アセットやGPU資源は所有しない。
-		std::uint64_t meshId = 0;
-		std::uint64_t materialId = 0;
+		// nulloptは未割当。欠落した参照も保持し、解決はRuntimeIntegrationへ任せる。
+		std::optional<KT::Content::MeshAssetId> mesh;
+		std::optional<KT::Content::MaterialAssetId> material;
 		bool visible = true;
 	};
 }

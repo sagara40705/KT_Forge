@@ -8,21 +8,50 @@
 #include <Graphics/Commands/CommandQueue.h>
 #include <Graphics/Presentation/Swapchain.h>
 #include <World/Scene/SceneHost.h>
+#include <RuntimeIntegration/SceneUpdater.h>
+#include <RuntimeIntegration/ProjectSceneLoader.h>
+#include <Renderer/StaticSceneRenderer.h>
 #include <functional>
 #include <memory>
 
 namespace KT::Application
 {
-	// Window・入力・SceneHostを所有し、メインスレッドでCPU更新を進める。
+	// Window・入力・SceneHost・Rendererを所有し、CPU更新後に同期1slotで描画する。
 	class Application : private KT::Core::NonCopyable
 	{
 	public:
 		// Scriptの後に呼ぶゲーム処理。同じ回の入力と固定CPU結果を呼出中だけ借用する。
-		using GameUpdate = std::function<void(KT::World::Scene&, const KT::World::SceneUpdateContext&,
-			const KT::Platform::InputSnapshot&, double)>;
+		using GameUpdate =
+			std::function<void(KT::World::Scene&, const KT::World::SceneUpdateContext&, const KT::Platform::InputSnapshot&, double)>;
+		// 組込み素材登録後、初回Scene使用前に独自CPU素材を追加する起動処理。
+		using AssetSetup = std::function<void(KT::Content::AssetCatalog&)>;
+
+		// ファイル起動の設定。素材はroot内を探索し、Sceneにはrootからの相対パスを指定する。
+		struct ProjectStartup
+		{
+			std::filesystem::path root;
+			std::filesystem::path scene;
+			// 組込み登録後に独自Component/Scriptを追加する。読込前にApplicationがFreezeする。
+			std::function<void(KT::World::ComponentRegistry&, KT::World::ScriptRegistry&)> registerTypes;
+			// 未指定なら有効なCameraを一台だけ自動選択する。
+			std::optional<KT::World::ObjectUuid> camera;
+		};
+
+		// 最後にPresentまで成功した描画の情報。最小化中・描画失敗時には更新しない。
+		struct PresentationStatistics
+		{
+			std::uint64_t frames = 0;
+			std::uint32_t width = 0;
+			std::uint32_t height = 0;
+			std::size_t draws = 0;
+			std::size_t meshes = 0;
+			std::size_t materials = 0;
+		};
 
 		// コンストラクタ(幅・高さ・タイトル)
-		Application(int width, int height, const char* title);
+		Application(int width, int height, const char* title, AssetSetup assetSetup = {}, std::optional<ProjectStartup> project = {});
+		// Presentを含むQueueの完了後にGPU所有物を破棄する。完了待ちの失敗は継続不能とする。
+		~Application();
 
 		// 約60Hzの可変deltaでCPU更新する。最小化中も継続し、例外時はRunを終了して再送出する。
 		// Run終了後の完成CPU結果はGetScene()->GetSnapshot()で取得する。callbackとRunへ再入しない。
@@ -34,12 +63,21 @@ namespace KT::Application
 		// SceneがFailedならResetAfterFailureと修復を明示するか、新しい候補を予約してRunを再開する。
 		[[nodiscard]] KT::World::Scene* GetScene() noexcept;
 		[[nodiscard]] const KT::World::Scene* GetScene() const noexcept;
+		[[nodiscard]] const KT::Content::AssetCatalog& GetAssets() const noexcept;
+		// 起動Sceneの欠落・種類違いを返す。非表示の参照も含む。
+		[[nodiscard]] std::span<const KT::RuntimeIntegration::SceneAssetDiagnostic> GetAssetDiagnostics() const noexcept;
+		// 現在の完成Sceneと一致する候補だけを返す。初回更新前・更新失敗・idle編集後はnullptr。
+		// 借用は次Updateまで。値コピーで保持する場合も、素材利用中はApplicationを保持する。
+		[[nodiscard]] const KT::RuntimeIntegration::RenderFrame* GetRenderFrame() const;
+		// 次の描画から使うCameraの永続UUID。nulloptは自動選択。Scene切替後も指定を維持する。
+		void SetRenderCamera(std::optional<KT::World::ObjectUuid> camera);
+		[[nodiscard]] const PresentationStatistics& GetPresentationStatistics() const noexcept;
 		// ゲーム処理から終了を予約する。次の更新を始めずにRunから戻る。
 		void RequestStop() noexcept;
 
 	private:
-		// 最初に有効な画面寸法が得られたとき、既存のClearを一度だけ表示する。
-		void PresentInitialClear(int width, int height);
+		// CPU結果を描画する。寸法変更時は旧CommandListを解放してからResizeする。
+		void PresentScene(std::uint32_t width, std::uint32_t height);
 
 		// GlfwContextの所有
 		KT::Platform::GlfwContext glfwContext_{};
@@ -57,11 +95,18 @@ namespace KT::Application
 
 		// Swapchain
 		std::unique_ptr<KT::Graphics::Swapchain> swapchain_{};
-		// GPU初期表示の完了を保持する。作成・記録失敗後は再開時に初期表示をやり直す。
-		bool initialClearPresented_ = false;
 
+		// CPU素材をSceneと候補より長く保持する。起動登録後は変更しない。
+		KT::Content::AssetCatalog assets_;
+		std::vector<KT::RuntimeIntegration::SceneAssetDiagnostic> assetDiagnostics_;
 		// Sceneを入力・Graphics基盤より先に破棄し、Script側の借用先を保持する。
 		KT::World::SceneHost sceneHost_;
+		// 完成SceneからCameraに依存しない静的Mesh候補を保持する。
+		KT::RuntimeIntegration::SceneUpdater sceneUpdater_;
+		std::optional<KT::World::ObjectUuid> renderCamera_;
+		PresentationStatistics presentation_;
+		// 素材・Device・Queue・Swapchainより先に破棄し、GPUの借用先を保持する。
+		std::unique_ptr<KT::Renderer::StaticSceneRenderer> renderer_;
 		// Run開始時に計測を再設定し、起動・復旧待ちの時間をdeltaへ含めない。
 		KT::Core::Timer timer_;
 		// 同じApplicationのRunへの再入を拒否する。

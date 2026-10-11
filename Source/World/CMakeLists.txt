@@ -1,4 +1,6 @@
 target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/MeshRendererMigration.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/MeshRendererMigration.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/RollbackState.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/SceneValue.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/SceneValue.cpp"

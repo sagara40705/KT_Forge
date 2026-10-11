@@ -96,7 +96,8 @@ namespace KT::World
 			input.value);
 	}
 
-	SceneAsset SceneJson::Parse(std::string_view text, const ComponentRegistry& components, const ScriptRegistry& scripts)
+	SceneAsset SceneJson::Parse(std::string_view text, const ComponentRegistry& components, const ScriptRegistry& scripts,
+		const LegacyMeshRendererAssets* legacyAssets)
 	{
 		if (text.size() > MaxBytes)
 		{
@@ -159,6 +160,10 @@ namespace KT::World
 				}
 				asset.objects.push_back(std::move(object));
 			}
+			if (legacyAssets)
+			{
+				asset = MigrateMeshRendererAssets(asset, *legacyAssets);
+			}
 			SceneLoader::Validate(asset, components, scripts);
 			return asset;
 		}
@@ -216,7 +221,8 @@ namespace KT::World
 		}
 	}
 
-	SceneAsset SceneJson::Read(const std::filesystem::path& path, const ComponentRegistry& components, const ScriptRegistry& scripts)
+	SceneAsset SceneJson::Read(const std::filesystem::path& path, const ComponentRegistry& components, const ScriptRegistry& scripts,
+		const LegacyMeshRendererAssets* legacyAssets)
 	{
 		std::ifstream file(path, std::ios::binary | std::ios::ate);
 		if (!file)
@@ -235,7 +241,7 @@ namespace KT::World
 		{
 			throw std::runtime_error("Scene JSONファイルの読込に失敗したか、読込中にサイズが変わりました。");
 		}
-		return Parse(text, components, scripts);
+		return Parse(text, components, scripts, legacyAssets);
 	}
 
 	// この保存で作成した一時ファイルだけを、失敗時に閉じて除去する。

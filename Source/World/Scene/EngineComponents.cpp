@@ -78,16 +78,27 @@ namespace KT::World
 			});
 
 		registry.Register<MeshRenderer>(
-			"kt.MeshRenderer", 1,
+			"kt.MeshRenderer", 2,
 			[](const MeshRenderer& input) -> SceneValue
 			{
-				return SceneValue::Object{
-					{"meshId", std::to_string(input.meshId)}, {"materialId", std::to_string(input.materialId)}, {"visible", input.visible}};
+				return SceneValue::Object{{"mesh", input.mesh ? SceneValue(input.mesh->ToString()) : SceneValue{}},
+					{"material", input.material ? SceneValue(input.material->ToString()) : SceneValue{}}, {"visible", input.visible}};
 			},
 			[](const SceneValue& data, const SceneReadContext&) -> MeshRenderer
 			{
-				data.RequireFields({"meshId", "materialId", "visible"});
-				return {data.At("meshId").AsUint64(), data.At("materialId").AsUint64(), data.At("visible").AsBool()};
+				// 保存参照の形式だけを検査する。素材の存在はScene読込の成立条件にしない。
+				data.RequireFields({"mesh", "material", "visible"});
+				MeshRenderer result;
+				if (!std::holds_alternative<std::nullptr_t>(data.At("mesh").value))
+				{
+					result.mesh = KT::Content::MeshAssetId::Parse(data.At("mesh").AsString());
+				}
+				if (!std::holds_alternative<std::nullptr_t>(data.At("material").value))
+				{
+					result.material = KT::Content::MaterialAssetId::Parse(data.At("material").AsString());
+				}
+				result.visible = data.At("visible").AsBool();
+				return result;
 			});
 
 		// Scriptは検査と生成を分離し、全定義の検査成功までfactoryを呼ばない。

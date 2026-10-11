@@ -6,20 +6,35 @@
 
 namespace KT::RuntimeIntegration
 {
+	SceneUpdater::SceneUpdater(const KT::Content::AssetCatalog& assets)
+		: assets_(assets)
+	{
+	}
+
 	const RenderFrame& SceneUpdater::Update(
 		const KT::World::SceneUpdateContext& cpu, std::optional<KT::World::Entity> camera, KT::World::Viewport viewport)
 	{
 		// 前回の公開結果を失効させ、失敗時に古いFrameを返さない。
 		frame_.reset();
 
-		// Sceneが公開した同じCPU結果を利用し、Worldを再読取しない。
-		const auto view = KT::World::CameraSystem{}.Calculate(cpu, camera, viewport);
-		auto pending = RenderExtractionSystem{}.Extract(cpu, view);
+		// Cameraなしでも候補を完成させる。以後のCamera失敗はこのCPU結果を失効させない。
+		auto pending = RenderExtractionSystem{}.Extract(cpu, assets_);
 
-		// 全計算が成功したFrameだけを公開する。
+		// 完成した候補だけを公開し、任意のCamera結果を同じ入力から追加する。
 		static_assert(std::is_nothrow_move_constructible_v<RenderFrame>);
 		frame_.emplace(std::move(pending));
+		const auto view = KT::World::CameraSystem{}.Calculate(cpu, camera, viewport);
+		if (view)
+		{
+			frame_->view = KT::Renderer::RenderView{
+				view->view, view->projection, view->viewProjection, view->position, view->viewport.width, view->viewport.height};
+		}
 		return *frame_;
+	}
+
+	void SceneUpdater::Reset() noexcept
+	{
+		frame_.reset();
 	}
 
 	const RenderFrame& SceneUpdater::Get() const

@@ -1,5 +1,6 @@
 target_sources(KT_Forge PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp")
 add_subdirectory(Core)
+add_subdirectory(Content)
 add_subdirectory(Platform)
 add_subdirectory(Application)
 add_subdirectory(Graphics)

@@ -1,19 +1,23 @@
 #include <Graphics/Presentation/Swapchain.h>
 #include <Graphics/Commands/CommandQueue.h>
+#include <Graphics/GraphicsValidation.h>
 #include <stdexcept>
 
 namespace KT::Graphics
 {
 	Swapchain::Swapchain(GraphicsDevice& device, CommandQueue& queue, HWND window, std::uint32_t width, std::uint32_t height)
+		: device_(device),
+		  queue_(queue)
 	{
 		if (!window)
 		{
 			throw std::invalid_argument("無効なウィンドウハンドルです。");
 		}
-		if (width == 0 || height == 0)
+		if (width == 0 || height == 0 || width > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION || height > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION)
 		{
-			throw std::invalid_argument("Swapchainの幅と高さは0以上である必要があります。");
+			throw std::invalid_argument("Swapchainの幅と高さは1からD3D12の画像上限までが必要です。");
 		}
+		RequireSameDevice(queue.GetCommandQueue(), device.GetDevice());
 
 		// Swapchainの作成
 		DXGI_SWAP_CHAIN_DESC1 swapchainDesc{};
@@ -49,15 +53,6 @@ namespace KT::Graphics
 			throw std::runtime_error("ウィンドウの関連付けに失敗しました。");
 		}
 
-		// バックバッファの取得
-		for (std::uint32_t index = 0; index < BufferCount; ++index)
-		{
-			if (FAILED(swapchain_->GetBuffer(index, IID_PPV_ARGS(&backBuffers_[index]))))
-			{
-				throw std::runtime_error("バックバッファの取得に失敗しました。");
-			}
-		}
-
 		// レンダーターゲットビューのヒープの作成
 		D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc{};
 		rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
@@ -72,22 +67,78 @@ namespace KT::Graphics
 		// RTVの間隔を取得
 		rtvDescriptorSize_ = device.GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
-		// バックバッファに対してレンダーターゲットビューを作成
+		AcquireBuffers();
+	}
+
+	void Swapchain::AcquireBuffers()
+	{
+		// 全画像を取得してから公開し、途中失敗で一部だけを使用可能にしない。
+		std::array<ComPtr<ID3D12Resource>, BufferCount> buffers;
+		for (std::uint32_t index = 0; index < BufferCount; ++index)
+		{
+			CheckGraphicsResult(swapchain_->GetBuffer(index, IID_PPV_ARGS(&buffers[index])), "BackBufferの取得に失敗しました。");
+		}
 		auto rtvHandle = rtvHeap_->GetCPUDescriptorHandleForHeapStart();
 		for (std::uint32_t index = 0; index < BufferCount; ++index)
 		{
-			device.GetDevice()->CreateRenderTargetView(backBuffers_[index].Get(), nullptr, rtvHandle);
+			device_.GetDevice()->CreateRenderTargetView(buffers[index].Get(), nullptr, rtvHandle);
 			rtvHandle.ptr += rtvDescriptorSize_;
 		}
+		const auto desc = buffers.front()->GetDesc();
+		backBuffers_.swap(buffers);
+		width_ = static_cast<UINT>(desc.Width);
+		height_ = desc.Height;
+	}
+
+	void Swapchain::Resize(std::uint32_t width, std::uint32_t height)
+	{
+		if (width == 0 || height == 0 || width > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION || height > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION)
+		{
+			throw std::invalid_argument("SwapchainのResize寸法がD3D12の画像範囲外です。");
+		}
+		if (width == width_ && height == height_)
+		{
+			return;
+		}
+		// Presentも含めてQueueの最後まで待ち、所有する全BackBuffer参照を解放する。
+		queue_.Wait(queue_.Signal());
+		width_ = height_ = 0;
+		for (auto& buffer : backBuffers_)
+		{
+			buffer.Reset();
+		}
+		CheckGraphicsResult(swapchain_->ResizeBuffers(BufferCount, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, 0),
+			"SwapchainのResizeBuffersに失敗しました。旧BackBufferの借用が残っていないか確認してください。");
+		AcquireBuffers();
+	}
+
+	void Swapchain::RequireBuffers() const
+	{
+		if (width_ == 0 || height_ == 0)
+		{
+			throw std::logic_error("SwapchainのBackBufferが利用できません。Resizeの成功が必要です。");
+		}
+	}
+
+	UINT Swapchain::GetWidth() const noexcept
+	{
+		return width_;
+	}
+
+	UINT Swapchain::GetHeight() const noexcept
+	{
+		return height_;
 	}
 
 	UINT Swapchain::GetCurrentBackBufferIndex() const
 	{
+		RequireBuffers();
 		return swapchain_->GetCurrentBackBufferIndex();
 	}
 
 	ID3D12Resource* Swapchain::GetBackBuffer(UINT index) const
 	{
+		RequireBuffers();
 		if (index >= BufferCount)
 		{
 			throw std::out_of_range("バックバッファのインデックスが範囲外です。");
@@ -97,6 +148,7 @@ namespace KT::Graphics
 
 	D3D12_CPU_DESCRIPTOR_HANDLE Swapchain::GetRtv(UINT index) const
 	{
+		RequireBuffers();
 		if (index >= BufferCount)
 		{
 			throw std::out_of_range("レンダーターゲットビューのインデックスが範囲外です。");
@@ -108,6 +160,7 @@ namespace KT::Graphics
 
 	void Swapchain::Present()
 	{
+		RequireBuffers();
 		if (FAILED(swapchain_->Present(1, 0)))
 		{
 			throw std::runtime_error("SwapchainのPresentに失敗しました。");

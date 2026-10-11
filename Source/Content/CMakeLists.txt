@@ -1,0 +1,18 @@
+target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/ObjMeshImporter.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ObjMeshImporter.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ProjectAssets.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ProjectAssets.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/AssetId.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/AssetId.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/MeshAsset.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/MeshAsset.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/MaterialAsset.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/MaterialAsset.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/AssetDocument.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/AssetCatalog.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/AssetCatalog.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/AssetJson.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/AssetJson.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/AssetJsonFile.cpp"
+)

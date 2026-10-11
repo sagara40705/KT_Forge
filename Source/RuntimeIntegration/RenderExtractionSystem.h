@@ -1,5 +1,6 @@
 #pragma once
 #include <RuntimeIntegration/RenderFrame.h>
+#include <Content/AssetCatalog.h>
 #include <World/Scene/SceneUpdateContext.h>
 
 namespace KT::RuntimeIntegration
@@ -8,11 +9,7 @@ namespace KT::RuntimeIntegration
 	class RenderExtractionSystem
 	{
 	public:
-		RenderFrame Extract(const KT::World::SceneUpdateContext& context) const;
-
-	private:
-		friend class SceneUpdater;
-		// SceneUpdaterが同じCPU入力から計算したCamera結果だけを受け取る。
-		RenderFrame Extract(const KT::World::SceneUpdateContext& context, const std::optional<KT::World::CameraViewData>& camera) const;
+		// 固定済みCatalogで解決し、欠落は診断として返す。Cameraは候補生成の条件にしない。
+		RenderFrame Extract(const KT::World::SceneUpdateContext& context, const KT::Content::AssetCatalog& assets) const;
 	};
 }

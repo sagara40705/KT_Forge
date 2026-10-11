@@ -37,7 +37,7 @@ namespace KT::Renderer
 			const MaterialStore& materials, KT::Graphics::ConstantBufferArena& constants);
 		void RecordDraw(KT::Graphics::CommandContext& context, std::size_t index, const KT::Graphics::ColorTargetView& target,
 			const KT::Graphics::DepthBuffer& depth, const KT::Graphics::ConstantBufferArena& constants) const;
-		// TODO: 3getterは未実装。Prepareで保持した定数sliceと描画寸法をOpaquePassへ渡す。
+		// Prepareで保持した定数sliceと描画寸法をOpaquePassへ渡す。
 		KT::Graphics::ConstantSlice GetViewConstants() const noexcept;
 		UINT GetWidth() const noexcept;
 		UINT GetHeight() const noexcept;

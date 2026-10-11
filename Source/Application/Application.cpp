@@ -1,30 +1,66 @@
 #include "Application.h"
+#include <Application/StartupScene.h>
 #include <Core/Log.h>
-#include <Graphics/Commands/FrameResources.h>
 #include <Graphics/Textures/ColorTargetView.h>
-#include <Renderer/Graph/RenderGraph.h>
-#include <Renderer/Graph/GraphImportedTexture.h>
-#include <Renderer/Passes/ClearPass.h>
-#include <Renderer/Graph/GraphView.h>
-#include <World/Scene/SceneLoader.h>
+#include <RuntimeIntegration/SceneCamera.h>
+#include <BuiltinAssets/StaticMeshAssets.h>
 #include <chrono>
 #include <exception>
+#include <limits>
 #include <stdexcept>
 #include <thread>
 #include <utility>
 
 namespace KT::Application
 {
-	Application::Application(int width, int height, const char* title)
+	Application::Application(int width, int height, const char* title, AssetSetup assetSetup, std::optional<ProjectStartup> project)
 		: window_(width, height, title),
 		  input_(window_),
 		  graphicsDevice_(),
-		  commandQueue_(graphicsDevice_)
+		  commandQueue_(graphicsDevice_),
+		  sceneUpdater_(assets_)
 	{
-		// 起動Sceneも定義から生成し、Script更新をせずCPU検証した候補を予約する。
-		KT::World::SceneAsset initialScene;
-		initialScene.name = "DefaultScene";
-		sceneHost_.QueueScene(KT::World::SceneLoader::Load(initialScene));
+		// 素材の登録を起動時に完了し、Scene使用中の差替えや参照失効を防ぐ。
+		KT::BuiltinAssets::RegisterStaticMeshAssets(assets_);
+		if (assetSetup)
+		{
+			assetSetup(assets_);
+		}
+		if (project)
+		{
+			SetRenderCamera(project->camera);
+			KT::World::ComponentRegistry components;
+			KT::World::RegisterEngineComponents(components);
+			KT::World::ScriptRegistry scripts;
+			if (project->registerTypes)
+			{
+				project->registerTypes(components, scripts);
+			}
+			components.Freeze();
+			scripts.Freeze();
+			const auto index = KT::Content::ProjectAssets::Scan(project->root);
+			auto loaded = KT::RuntimeIntegration::ProjectSceneLoader::Load(index, project->scene, assets_, components, scripts);
+			assetDiagnostics_ = std::move(loaded.diagnostics);
+			sceneHost_.QueueScene(std::move(loaded.scene));
+		}
+		else
+		{
+			// 起動例も同じLoaderと製品描画経路に通し、特別な描画コードを持たない。
+			sceneHost_.QueueScene(CreateStartupScene());
+		}
+		assets_.Freeze();
+	}
+
+	Application::~Application()
+	{
+		if (renderer_)
+		{
+			renderer_->ReleaseFrame();
+		}
+		if (swapchain_)
+		{
+			commandQueue_.Wait(commandQueue_.Signal());
+		}
 	}
 
 	void Application::QueueScene(std::unique_ptr<KT::World::Scene> scene)
@@ -42,9 +78,49 @@ namespace KT::Application
 		return sceneHost_.GetScene();
 	}
 
+	const KT::Content::AssetCatalog& Application::GetAssets() const noexcept
+	{
+		return assets_;
+	}
+
+	std::span<const KT::RuntimeIntegration::SceneAssetDiagnostic> Application::GetAssetDiagnostics() const noexcept
+	{
+		return assetDiagnostics_;
+	}
+
+	const KT::RuntimeIntegration::RenderFrame* Application::GetRenderFrame() const
+	{
+		const auto* scene = sceneHost_.GetScene();
+		if (!scene || !scene->HasSnapshot() || !sceneUpdater_.HasFrame())
+		{
+			return nullptr;
+		}
+		const auto& frame = sceneUpdater_.Get();
+		const auto& snapshot = scene->GetSnapshot();
+		if (frame.sourceWorldId != snapshot.SourceWorldId() || frame.updateNumber != snapshot.UpdateNumber())
+		{
+			return nullptr;
+		}
+		return &frame;
+	}
+
 	void Application::RequestStop() noexcept
 	{
 		stopRequested_ = true;
+	}
+
+	void Application::SetRenderCamera(std::optional<KT::World::ObjectUuid> camera)
+	{
+		if (camera && !camera->IsValid())
+		{
+			throw std::invalid_argument("描画Cameraには有効なUUIDを指定してください。");
+		}
+		renderCamera_ = camera;
+	}
+
+	const Application::PresentationStatistics& Application::GetPresentationStatistics() const noexcept
+	{
+		return presentation_;
 	}
 
 	void Application::Run(GameUpdate gameUpdate)
@@ -59,9 +135,7 @@ namespace KT::Application
 		if (gameUpdate)
 		{
 			update = [this, &gameUpdate](KT::World::Scene& scene, const KT::World::SceneUpdateContext& cpu, double deltaSeconds)
-			{
-				gameUpdate(scene, cpu, input_.GetSnapshot(), deltaSeconds);
-			};
+			{ gameUpdate(scene, cpu, input_.GetSnapshot(), deltaSeconds); };
 		}
 
 		running_ = true;
@@ -83,29 +157,37 @@ namespace KT::Application
 				// 入力を一度確定し、Scene切替・予約反映・CPU更新を直接呼ぶ。
 				input_.Update();
 				const auto deltaSeconds = timer_.Tick();
+				sceneUpdater_.Reset();
+				int width = 0;
+				int height = 0;
+				bool drawable = false;
 				try
 				{
-					(void)sceneHost_.Update(deltaSeconds, update);
+					const auto& cpu = sceneHost_.Update(deltaSeconds, update);
+					window_.GetFramebufferSize(width, height);
+					drawable = width > 0 && height > 0 && !window_.IsMinimized();
+					// 最小化中もCPU候補を更新する。描画する回だけCameraとviewportを評価する。
+					const auto camera =
+						drawable ? KT::RuntimeIntegration::SelectSceneCamera(*sceneHost_.GetScene(), renderCamera_) : std::nullopt;
+					const KT::World::Viewport viewport = drawable ?
+						KT::World::Viewport{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)} :
+						KT::World::Viewport{};
+					(void)sceneUpdater_.Update(cpu, camera, viewport);
 				}
 				catch (...)
 				{
-					KT_LOG_ERROR("SceneのCPU更新に失敗したため、Applicationの通常更新を停止します。");
+					KT_LOG_ERROR("SceneのCPU更新または描画候補生成に失敗したため、Applicationの通常更新を停止します。");
 					throw;
 				}
 
-				// CPU成功後だけ初期表示を行う。画面寸法が0でもScene更新は続ける。
+				// 成功した同じ回の候補とCameraだけを描画する。
 				if (stopRequested_ || window_.ShouldClose())
 				{
 					break;
 				}
-				int width = 0;
-				int height = 0;
-				window_.GetFramebufferSize(width, height);
-				if (!initialClearPresented_ && width > 0 && height > 0)
+				if (drawable)
 				{
-					PresentInitialClear(width, height);
-					// 初期GPU作成と完了待ちの時間を次のゲームdeltaへ持ち越さない。
-					timer_.Reset();
+					PresentScene(static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height));
 				}
 
 				// 可変deltaで実時間を渡し、描画がない間の空回りを約60Hzに抑える。
@@ -114,66 +196,52 @@ namespace KT::Application
 		}
 		catch (...)
 		{
-			// 適用済みScene状態は保持する。復旧・Scene交換をせず呼出側へ失敗を返す。
+			// GPUの借用を解消し、完成済みCPU状態を保持して呼出側へ失敗を返す。
+			if (renderer_)
+			{
+				renderer_->ReleaseFrame();
+			}
 			running_ = false;
 			throw;
 		}
 		running_ = false;
 	}
 
-	void Application::PresentInitialClear(int width, int height)
+	void Application::PresentScene(std::uint32_t width, std::uint32_t height)
 	{
-		// 有効な画面寸法でSwapchainを作る。初期表示の再試行では同じ所有先を使う。
+		if (presentation_.frames == (std::numeric_limits<std::uint64_t>::max)())
+		{
+			throw std::overflow_error("Applicationの表示回数が上限に達しました。");
+		}
+		bool resized = false;
 		if (!swapchain_)
 		{
-			swapchain_ = std::make_unique<KT::Graphics::Swapchain>(graphicsDevice_, commandQueue_, window_.GetNativeHandle(),
-				static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height));
-			KT_LOG_INFO("Swapchainの作成に成功");
+			swapchain_ =
+				std::make_unique<KT::Graphics::Swapchain>(graphicsDevice_, commandQueue_, window_.GetNativeHandle(), width, height);
+			resized = true;
 		}
-
+		if (!renderer_)
+		{
+			renderer_ = std::make_unique<KT::Renderer::StaticSceneRenderer>(graphicsDevice_, commandQueue_, assets_);
+		}
+		if (swapchain_->GetWidth() != width || swapchain_->GetHeight() != height)
+		{
+			// 完了したListにも旧画像の参照を残さず、全BackBufferを取り直す。
+			renderer_->ReleaseFrame();
+			swapchain_->Resize(width, height);
+			resized = true;
+		}
+		const auto& frame = sceneUpdater_.Get();
 		const auto backBufferIndex = swapchain_->GetCurrentBackBufferIndex();
-
-		// 送信・表示・完了待機：画像とRTVを保持したままFence完了まで待つ。
-		try
+		renderer_->Submit(frame.candidates, frame.view, KT::Graphics::ColorTargetView(*swapchain_, backBufferIndex));
+		swapchain_->Present();
+		renderer_->Wait();
+		presentation_ = {
+			presentation_.frames + 1, width, height, renderer_->LastDrawCount(), renderer_->MeshCount(), renderer_->MaterialCount()};
+		if (resized)
 		{
-			KT::Graphics::FrameResources frame(graphicsDevice_, commandQueue_);
-			KT::Renderer::RenderGraph graph;
-
-			// BackBufferのImport
-			KT::Renderer::GraphImportedTextureDesc output{};
-			output.name = "BackBuffer";
-			output.resource = swapchain_->GetBackBuffer(backBufferIndex);
-			output.initialState = D3D12_RESOURCE_STATE_PRESENT;
-			output.finalState = D3D12_RESOURCE_STATE_PRESENT;
-			output.contentsDefined = false;
-			output.requireDefineAtEnd = true;
-			const auto outputHandle = graph.ImportTexture(output);
-
-			// 色Viewを登録する
-			KT::Renderer::GraphViewDesc colorView{};
-			colorView.name = "BackBufferRTV";
-			colorView.resource = outputHandle;
-			colorView.binding = KT::Graphics::ColorTargetView(*swapchain_, backBufferIndex);
-			const auto colorHandle = graph.AddView(std::move(colorView));
-
-			// Passの追加
-			KT::Renderer::AddClearPass(graph, colorHandle, {0.0f, 1.0f, 1.0f, 1.0f});
-			graph.Compile();
-
-			// 同期1slotの経路で一度だけ送信・表示し、借用画像の最終利用完了を待つ。
-			frame.Begin();
-			graph.Record(frame);
-			frame.EndRecording();
-			frame.Submit();
-			swapchain_->Present();
-			frame.Wait();
-			initialClearPresented_ = true;
-		}
-		catch (const std::exception& error)
-		{
-			KT_LOG_ERROR("フレーム送信または完了待ちに失敗");
-			KT_LOG_ERROR("例外: " + std::string(error.what()));
-			throw;
+			// 初回GPU生成やResizeの待ち時間を次のゲームdeltaへ持ち越さない。
+			timer_.Reset();
 		}
 	}
 }

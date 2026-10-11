@@ -48,6 +48,11 @@ namespace KT::Platform
 		}
 	}
 
+	bool Window::IsMinimized() const
+	{
+		return glfwGetWindowAttrib(window_, GLFW_ICONIFIED) == GLFW_TRUE;
+	}
+
 	void Window::AttachInput(Input& input)
 	{
 		if (input_ != nullptr)

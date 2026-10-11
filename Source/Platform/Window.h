@@ -26,6 +26,8 @@ namespace KT::Platform
 
 		// 画面領域のピクセル寸法を取得する
 		void GetFramebufferSize(int& width, int& height) const;
+		// 最小化中は寸法が残る環境でもGPU描画を休止する。
+		[[nodiscard]] bool IsMinimized() const;
 
 	private:
 		friend class Input;

@@ -1,4 +1,7 @@
 target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/StaticSceneRenderer.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/StaticSceneRenderer.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/MeshRenderCandidate.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Graph/GraphExecutionContext.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Graph/GraphExecutionContext.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Graph/GraphImportedTexture.h"
