@@ -376,15 +376,21 @@ namespace KT::World
 			throw std::overflow_error("Worldのtransaction番号が上限に達しました。");
 		}
 
-		// 番号は確保失敗時も消費する。既存Componentを全収集せず、空き順序だけを保存する。
+		// 番号は準備失敗時も消費する。再利用領域を確保してから空き順序を保存する。
 		const auto transactionNumber = ++lastTransactionNumber_;
-		auto transaction = std::make_unique<Transaction>();
-		transaction->number = transactionNumber;
-		transaction->initialSlotCount = slots_.size();
-		transaction->freeSlots = freeSlots_;
-		transaction->freeSlots.reserve(slots_.size());
-		transaction->previousHierarchy = hierarchyCache_;
-		transaction_ = std::move(transaction);
+		auto& transaction = transactionStorage_;
+		if (transaction.freeSlots.capacity() < slots_.size())
+		{
+			const auto increment = (std::min)(
+				transaction.freeSlots.capacity() / 2 + 1, transaction.freeSlots.max_size() - transaction.freeSlots.capacity());
+			transaction.freeSlots.reserve((std::max)(slots_.size(), transaction.freeSlots.capacity() + increment));
+		}
+		transaction.freeSlots.assign(freeSlots_.begin(), freeSlots_.end());
+		transaction.number = transactionNumber;
+		transaction.initialSlotCount = slots_.size();
+		transaction.previousHierarchy = hierarchyCache_;
+		// 新しい記録の準備が全て成功するまで、更新中として公開しない。
+		transaction_ = &transaction;
 	}
 
 	void World::ReserveUndo(std::size_t count)
@@ -534,7 +540,13 @@ namespace KT::World
 			action.removed = {};
 			action.removedUuid = {};
 		}
-		transaction_.reset();
+		// 所有・借用と更新情報だけを消し、配列容量は次回の復元記録へ再利用する。
+		transaction_->actions.clear();
+		transaction_->freeSlots.clear();
+		transaction_->previousHierarchy.reset();
+		transaction_->number = 0;
+		transaction_->initialSlotCount = 0;
+		transaction_ = nullptr;
 		mutating_ = false;
 	}
 
@@ -623,7 +635,13 @@ namespace KT::World
 		freeSlots_.swap(restoredFreeSlots);
 		// 元の階層とEntity世代を戻してから、更新前の索引を確保なしで再公開する。
 		hierarchyCache_ = std::move(transaction_->previousHierarchy);
-		transaction_.reset();
+		// 所有・借用と更新情報だけを消し、配列容量は次回の復元記録へ再利用する。
+		transaction_->actions.clear();
+		transaction_->freeSlots.clear();
+		transaction_->previousHierarchy.reset();
+		transaction_->number = 0;
+		transaction_->initialSlotCount = 0;
+		transaction_ = nullptr;
 		mutating_ = false;
 	}
 
@@ -1221,7 +1239,16 @@ namespace KT::World
 		DestroyEntity(entity, destroyed);
 	}
 
-	void World::DestroyEntity(Entity entity, std::vector<Entity>& destroyed)
+	std::size_t World::DestroyedEntityHash::operator()(Entity entity) const noexcept
+	{
+		// 全識別値を混ぜる。衝突時もEntity全体の等値比較で照合する。
+		std::uint64_t hash = entity.worldId;
+		hash ^= static_cast<std::uint64_t>(entity.index) + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+		hash ^= entity.generation + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+		return static_cast<std::size_t>(hash);
+	}
+
+	void World::DestroyEntity(Entity entity, std::vector<Entity>& destroyed, DestroyedEntityIndex* destroyedIndex)
 	{
 		RequireStructuralChange();
 		RequireAlive(entity);
@@ -1266,11 +1293,59 @@ namespace KT::World
 			throw std::overflow_error("部分木削除のEntity記録数がコンテナーの上限を超えます。");
 		}
 
-		destroyed.reserve(destroyed.size() + subtree.size());
+		const auto required = destroyed.size() + subtree.size();
+		if (destroyed.capacity() < required)
+		{
+			const auto increment = (std::min)(destroyed.capacity() / 2 + 1, destroyed.max_size() - destroyed.capacity());
+			destroyed.reserve((std::max)(required, destroyed.capacity() + increment));
+		}
 		ReserveUndo(subtree.size());
+
+		// hash nodeも破棄前に用意する。生存する部分木のhandleは過去の削除履歴と重ならない。
+		if (destroyedIndex)
+		{
+			auto& index = *destroyedIndex;
+			if (subtree.size() > index.entities.max_size() - index.entities.size())
+			{
+				throw std::overflow_error("削除済みEntityの索引要素数が上限を超えます。");
+			}
+			const auto indexedRequired = index.entities.size() + subtree.size();
+			if (index.capacity < indexedRequired)
+			{
+				const auto increment = (std::min)(index.capacity / 2 + 1, index.entities.max_size() - index.capacity);
+				const auto capacity = (std::max)(indexedRequired, index.capacity + increment);
+				index.entities.reserve(capacity);
+				index.capacity = capacity;
+			}
+		}
 
 		// 対象を逆順に破棄し、子のcomponentを親より先に破棄する。
 		MutationGuard guard(*this);
+		if (destroyedIndex)
+		{
+			std::size_t insertedCount = 0;
+			try
+			{
+				for (const auto target : subtree)
+				{
+					if (!destroyedIndex->entities.insert(target).second)
+					{
+						throw std::logic_error("生存する部分木のEntityが削除済み索引に含まれています。");
+					}
+					++insertedCount;
+				}
+			}
+			catch (...)
+			{
+				// 登録途中の確保失敗では仮nodeだけを除き、Worldと以前の履歴を保つ。
+				for (std::size_t index = 0; index < insertedCount; ++index)
+				{
+					destroyedIndex->entities.erase(subtree[index]);
+				}
+				throw;
+			}
+		}
+
 		for (auto iterator = subtree.rbegin(); iterator != subtree.rend(); ++iterator)
 		{
 			const auto target = *iterator;

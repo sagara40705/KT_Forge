@@ -129,28 +129,29 @@ namespace KT::World
 
 			input = ComputeCpu(updateNumber_, previousSnapshot.get());
 
-			// 更新対象を確定してから呼ぶ。生成・削除は後段のFlushまで反映しない。
+			// Scriptを持つEntityだけをslot順で収集し、更新前に全対象を確定する。
+			// 構造変更は後段のFlushまで反映せず、捕捉中はWorldへの再入を拒否する。
 			scriptScratch_.clear();
-			for (const auto& entity : input->GetTransforms())
+			const auto& hierarchy = input->GetHierarchy();
+			const auto& transforms = input->GetTransforms();
+			world_.ForEachCandidate<ScriptComponent>([&](Entity entity)
 			{
-				const auto* component = world_.FindComponent<ScriptComponent>(entity.entity);
-				if (component)
+				const auto& component = std::as_const(world_).GetComponent<ScriptComponent>(entity);
+				const bool active = transforms[hierarchy.FindNode(entity)].active.value;
+				for (const auto& entry : component.entries_)
 				{
-					for (const auto& entry : component->entries_)
+					// 無効なものも含め、ゲーム処理で参照できる全実体を更新前に捕捉する。
+					// 開始反映で除去した実体は未更新のままjournalが保持している。
+					if (entry.instance)
 					{
-						// 無効なものも含め、ゲーム処理で参照できる全実体を更新前に捕捉する。
-						// 開始反映で除去した実体は未更新のままjournalが保持している。
-						if (entry.instance)
-						{
-							world_.BackupScript(*entry.instance);
-						}
-						if (entity.active.value && entry.definition.enabled && entry.instance)
-						{
-							scriptScratch_.emplace_back(entity.entity, entry.instance.get());
-						}
+						world_.BackupScript(*entry.instance);
+					}
+					if (active && entry.definition.enabled && entry.instance)
+					{
+						scriptScratch_.emplace_back(entity, entry.instance.get());
 					}
 				}
-			}
+			});
 
 			// Scriptを対象確定時の順序で呼び、その後にゲーム固有の更新を行う。
 			gamePhase_ = true;
@@ -203,6 +204,7 @@ namespace KT::World
 			{
 				result.rolledBack = true;
 				result.created.clear();
+				result.createdByCommand_.clear();
 				if (!result.error)
 				{
 					result.error = updateError;
@@ -227,12 +229,9 @@ namespace KT::World
 		// 今回の開始・終了境界で生成でき、まだ生存しているEntityだけを返す。
 		for (const auto& result : commandResults_)
 		{
-			for (const auto& entry : result.created)
+			if (const auto entity = result.FindCreated(reservation); entity && world_.IsAlive(*entity))
 			{
-				if (entry.reservation == reservation && world_.IsAlive(entry.entity))
-				{
-					return entry.entity;
-				}
+				return *entity;
 			}
 		}
 		throw std::invalid_argument("生成予約を解決できません。未反映・期限切れ、または生成したEntityが破棄済みです。");

@@ -98,27 +98,32 @@ namespace KT::World
 				throw std::logic_error("ForEachActiveはSceneのゲーム更新処理中だけ使用できます。");
 			}
 
-			for (const auto& entity : gameInput_->GetTransforms())
+			// 型別索引で候補を絞り、固定Snapshotの有効状態を完全handleで引く。
+			const auto& hierarchy = gameInput_->GetHierarchy();
+			const auto& transforms = gameInput_->GetTransforms();
+			world_.ForEachCandidate<Ts...>([&](Entity entity)
 			{
-				if (entity.active.value && (world_.HasComponent<Ts>(entity.entity) && ...))
+				if (!transforms[hierarchy.FindNode(entity)].active.value)
 				{
-					// callbackへ可変参照を渡す前に、対象の既存値を全て捕捉する。
-					(BackupEditable<Ts>(entity.entity), ...);
-					// 入れ子や例外でも、途中捕捉を世代だけで再利用しない印を戻す。
-					const bool previousCpuEditing = world_.cpuValueEditing_;
-					world_.cpuValueEditing_ = true;
-					try
-					{
-						std::invoke(update, entity.entity, world_.GetEditableComponent<Ts>(entity.entity)...);
-						world_.cpuValueEditing_ = previousCpuEditing;
-					}
-					catch (...)
-					{
-						world_.cpuValueEditing_ = previousCpuEditing;
-						throw;
-					}
+					return;
 				}
-			}
+
+				// callbackへ可変参照を渡す前に、対象の既存値を全て捕捉する。
+				(BackupEditable<Ts>(entity), ...);
+				// 入れ子や例外でも、途中捕捉を世代だけで再利用しない印を戻す。
+				const bool previousCpuEditing = world_.cpuValueEditing_;
+				world_.cpuValueEditing_ = true;
+				try
+				{
+					std::invoke(update, entity, world_.GetEditableComponent<Ts>(entity)...);
+					world_.cpuValueEditing_ = previousCpuEditing;
+				}
+				catch (...)
+				{
+					world_.cpuValueEditing_ = previousCpuEditing;
+					throw;
+				}
+			});
 		}
 
 	private:

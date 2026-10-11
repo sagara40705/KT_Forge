@@ -26,18 +26,32 @@ namespace KT::World
 		}
 	}
 
+	std::optional<Entity> CommandFlushResult::FindCreated(DeferredEntity reservation) const noexcept
+	{
+		if (rolledBack || reservation.bufferId != bufferId_ || reservation.batch != batch_ ||
+			reservation.commandIndex >= createdByCommand_.size())
+		{
+			return std::nullopt;
+		}
+
+		const auto position = createdByCommand_[reservation.commandIndex];
+		// 公開診断配列が変更されていても、範囲外や別予約の値を返さない。
+		if (position >= created.size() || created[position].reservation != reservation)
+		{
+			return std::nullopt;
+		}
+		return created[position].entity;
+	}
+
 	Entity CommandFlushResult::Resolve(DeferredEntity reservation) const
 	{
 		if (rolledBack)
 		{
 			throw std::invalid_argument("Scene更新を復元したため、この生成予約のEntityは取得できません。");
 		}
-		for (const auto& entry : created)
+		if (const auto entity = FindCreated(reservation))
 		{
-			if (entry.reservation == reservation)
-			{
-				return entry.entity;
-			}
+			return *entity;
 		}
 		throw std::invalid_argument("指定した生成予約はこの反映結果に含まれていません。");
 	}
@@ -60,6 +74,7 @@ namespace KT::World
 		{
 			// 結果表はFlushで確保済み。作成成功後に記録で失敗しない。
 			const auto entity = buffer.world_.CreateSceneEntity(uuid, std::move(name));
+			context.result.createdByCommand_[reservation.commandIndex] = context.result.created.size();
 			context.result.created.push_back({reservation, entity});
 			return true;
 		}
@@ -80,12 +95,12 @@ namespace KT::World
 			const auto entity = buffer.ResolveTarget(target, context);
 
 			// 生存確認はWorld側で行い、同じ世代の重複削除だけを先に除く。
-			if (std::find(context.destroyed.begin(), context.destroyed.end(), entity) != context.destroyed.end())
+			if (context.destroyedIndex.entities.contains(entity))
 			{
 				return false;
 			}
 
-			buffer.world_.DestroyEntity(entity, context.destroyed);
+			buffer.world_.DestroyEntity(entity, context.destroyed, &context.destroyedIndex);
 			return true;
 		}
 	};
@@ -219,14 +234,28 @@ namespace KT::World
 		bool hierarchyBatchStarted = false;
 		try
 		{
-			// 生成結果の記録領域を先に確保し、予約を記録順に反映する。
-			context.result.created.reserve(commands_.size());
-			// 親変更・削除を含むbatchだけ作業索引を作り、一件ごとのsnapshot再構築を避ける。
-			const bool needsHierarchy = std::any_of(commands_.begin(), commands_.end(), [](const auto& command)
+			// 生成件数と階層batchの要否を一度収集し、診断配列は生成数だけ確保する。
+			std::size_t createCount = 0;
+			bool needsHierarchy = false;
+			for (const auto& command : commands_)
 			{
-				return dynamic_cast<const ParentCommand*>(command.get()) != nullptr ||
-					dynamic_cast<const DestroyCommand*>(command.get()) != nullptr;
-			});
+				if (dynamic_cast<const CreateCommand*>(command.get()))
+				{
+					++createCount;
+				}
+				if (dynamic_cast<const ParentCommand*>(command.get()) || dynamic_cast<const DestroyCommand*>(command.get()))
+				{
+					needsHierarchy = true;
+				}
+			}
+			context.result.bufferId_ = bufferId_;
+			context.result.batch_ = batch_;
+			context.result.created.reserve(createCount);
+			if (createCount != 0)
+			{
+				// 非生成・未反映位置の印も反映前に用意し、作成後の記録を確保なしにする。
+				context.result.createdByCommand_.resize(commands_.size(), (std::numeric_limits<std::size_t>::max)());
+			}
 			if (needsHierarchy)
 			{
 				world_.BeginHierarchyBatch();

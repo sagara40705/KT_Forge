@@ -70,7 +70,19 @@ namespace KT::World
 			return !error && !rolledBack;
 		}
 
+		// command位置から直接解決する。診断用のcreated配列は生成順で保持する。
 		[[nodiscard]] Entity Resolve(DeferredEntity reservation) const;
+
+	private:
+		friend class WorldCommandBuffer;
+		friend class Scene;
+		// 同じ反映単位で生成済みの場合だけ返す。Sceneは現在の生存も別に確認する。
+		[[nodiscard]] std::optional<Entity> FindCreated(DeferredEntity reservation) const noexcept;
+		// command位置→created位置。非生成・未反映位置はsize_t最大値で表す。
+		std::vector<std::size_t> createdByCommand_;
+		// 結果が属する発行元と反映単位。別buffer・過去batchを直接照合する。
+		std::uint64_t bufferId_ = 0;
+		std::uint64_t batch_ = 0;
 	};
 
 	// Worldを借用し、設定値を所有する。反映はSceneの更新境界だけで行う。
@@ -84,6 +96,8 @@ namespace KT::World
 			CommandFlushResult result;
 			// スロットが再利用されても区別できるよう、Entityの世代も保持する。
 			std::vector<Entity> destroyed;
+			// 完全handleの所属だけを調べ、履歴の先頭から探索しない。
+			World::DestroyedEntityIndex destroyedIndex;
 		};
 
 		// 構造変更を記録順に適用する内部窓口。falseは重複削除の省略を表す。

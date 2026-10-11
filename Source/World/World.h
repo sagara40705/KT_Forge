@@ -18,6 +18,7 @@
 #include <type_traits>
 #include <typeindex>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -158,6 +159,20 @@ namespace KT::World
 		// 生存中の永続UUIDだけを、World識別と世代を含むEntityへ対応付ける。
 		using UuidIndex = std::unordered_map<ObjectUuid, Entity, ObjectUuidHash, ObjectUuidEqual>;
 
+		// 同じslotの再利用を区別し、破棄済みの完全handleをhashで照合する。
+		struct DestroyedEntityHash
+		{
+			std::size_t operator()(Entity entity) const noexcept;
+		};
+
+		// 一回のFlushだけの削除済み所属。順序付き履歴とは別に保持する。
+		struct DestroyedEntityIndex
+		{
+			std::unordered_set<Entity, DestroyedEntityHash> entities;
+			// bucketを確保した要素数。不足時だけ一定倍率で増やす。
+			std::size_t capacity = 0;
+		};
+
 		// 構造変更の逆操作と、削除した実体・map nodeを成功確定まで所有する。
 		struct UndoAction
 		{
@@ -231,7 +246,7 @@ namespace KT::World
 			void Remove(std::uint32_t entity) noexcept;
 		};
 
-		// 一回のScene更新を戻すための構造・値の記録。World自体はコピーしない。
+		// 一回のScene更新を戻す構造・値の記録。内容を境界で消し、容量は次回へ残す。
 		struct Transaction
 		{
 			// 実体の登録・捕捉を定数時間で照合する、このWorld内の一意番号。
@@ -399,55 +414,27 @@ namespace KT::World
 			requires(sizeof...(Ts) > 0 && std::invocable<Fn&, Entity, BorrowedComponent<Ts>&...>)
 		void ForEach(Fn&& callback)
 		{
-			// 最少件数の型を候補にし、残る型の所属を定数時間で照合する。
+			// 構造変更を拒否したまま、型別索引の候補へ可変参照を渡す。
 			EnumerationGuard guard(*this);
-			const std::array<const EntityIndex*, sizeof...(Ts)> indexes{FindComponentIndex(typeid(Ts))...};
-			const auto* candidates = SmallestIndex(indexes);
-			if (!candidates)
+			ForEachCandidate<Ts...>([&](Entity entity)
 			{
-				return;
-			}
-
-			for (const auto entity : candidates->Ordered())
-			{
-				if (std::all_of(indexes.begin(), indexes.end(),
-					[entity](const EntityIndex* index)
-					{
-						return index->Contains(entity);
-					}))
-				{
-					auto& data = *slots_[entity.index].data;
-					(MarkMutableBorrow<Ts>(data), ...);
-					std::invoke(callback, entity, static_cast<BorrowedComponent<Ts>&>(*FindIn<Ts>(data))...);
-				}
-			}
+				auto& data = *slots_[entity.index].data;
+				(MarkMutableBorrow<Ts>(data), ...);
+				std::invoke(callback, entity, static_cast<BorrowedComponent<Ts>&>(*FindIn<Ts>(data))...);
+			});
 		}
 
 		template <ComponentType... Ts, class Fn>
 			requires(sizeof...(Ts) > 0 && std::invocable<Fn&, Entity, const Ts&...>)
 		void ForEach(Fn&& callback) const
 		{
-			// const列挙も同じ所属索引とslot順を使い、Component実体は読み取るだけにする。
+			// const列挙も同じ候補・slot順を使い、Component実体は読み取るだけにする。
 			EnumerationGuard guard(*this);
-			const std::array<const EntityIndex*, sizeof...(Ts)> indexes{FindComponentIndex(typeid(Ts))...};
-			const auto* candidates = SmallestIndex(indexes);
-			if (!candidates)
+			ForEachCandidate<Ts...>([&](Entity entity)
 			{
-				return;
-			}
-
-			for (const auto entity : candidates->Ordered())
-			{
-				if (std::all_of(indexes.begin(), indexes.end(),
-					[entity](const EntityIndex* index)
-					{
-						return index->Contains(entity);
-					}))
-				{
-					const auto& data = std::as_const(*slots_[entity.index].data);
-					std::invoke(callback, entity, *FindIn<Ts>(data)...);
-				}
-			}
+				const auto& data = std::as_const(*slots_[entity.index].data);
+				std::invoke(callback, entity, *FindIn<Ts>(data)...);
+			});
 		}
 
 	private:
@@ -531,6 +518,33 @@ namespace KT::World
 		void PrepareComponentIndex(std::uint32_t slot, std::type_index type);
 		const EntityIndex* FindComponentIndex(std::type_index type) const noexcept;
 		static const EntityIndex* SmallestIndex(std::span<const EntityIndex* const> indexes) noexcept;
+		// 呼出側が構造を固定する。公開列挙はguard、Sceneは予約の境界で保証する。
+		// Sceneの値・Script捕捉を妨げず、候補配列もコピーしない。
+		template <ComponentType... Ts, class Fn> void ForEachCandidate(Fn&& callback) const
+		{
+			static_assert(sizeof...(Ts) > 0);
+			RequireReadable();
+			const std::array<const EntityIndex*, sizeof...(Ts)> indexes{FindComponentIndex(typeid(Ts))...};
+			const auto* candidates = SmallestIndex(indexes);
+			if (!candidates)
+			{
+				return;
+			}
+
+			// 最少件数の型をslot順に走査し、残る型の所属を定数時間で照合する。
+			for (const auto entity : candidates->Ordered())
+			{
+				if (std::all_of(indexes.begin(), indexes.end(),
+					[entity](const EntityIndex* index)
+					{
+						return index->Contains(entity);
+					}))
+				{
+					std::invoke(callback, entity);
+				}
+			}
+		}
+
 		void RecordAdded(Entity entity, EntityData& data, std::type_index type) noexcept;
 		void BackupScript(ScriptBehaviour& script);
 
@@ -589,7 +603,7 @@ namespace KT::World
 		}
 		Entity CreateSceneEntity(ObjectUuid uuid, std::string name);
 		Entity PublishEntity(std::unique_ptr<EntityData> data);
-		void DestroyEntity(Entity entity, std::vector<Entity>& destroyed);
+		void DestroyEntity(Entity entity, std::vector<Entity>& destroyed, DestroyedEntityIndex* destroyedIndex = nullptr);
 		// 検証・確保を完了した部分木削除からだけ呼び、単一スロットを破棄する。
 		void DestroySlot(Entity entity) noexcept;
 
@@ -644,7 +658,9 @@ namespace KT::World
 		std::uint64_t lastTransactionNumber_ = 0;
 		// 変更世代の発行元。rollbackでも消費し、失敗中のCPU入力と将来の値を混同しない。
 		std::uint64_t lastCpuChangeVersion_ = 0;
-		// Scene更新中だけ存在する。復元用領域は変更前に確保する。
-		std::unique_ptr<Transaction> transaction_;
+		// 待機中は所有記録を空にし、空きslot・値・構造journalの高水位容量だけを保持する。
+		Transaction transactionStorage_;
+		// 準備が成功したScene更新中だけstorageを指す。待機中・準備失敗時はnullptr。
+		Transaction* transaction_ = nullptr;
 	};
 }
