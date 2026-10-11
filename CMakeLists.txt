@@ -81,6 +81,21 @@ function(kt_forge_assimp)
 endfunction()
 kt_forge_assimp()
 
+# meshoptimizer 1.3 / MIT。静的Mesh最適化だけを使用し、付属toolとinstallは生成しない。
+function(kt_forge_meshoptimizer)
+    set(MESHOPT_BUILD_DEMO OFF)
+    set(MESHOPT_BUILD_GLTFPACK OFF)
+    set(MESHOPT_BUILD_SHARED_LIBS OFF)
+    set(MESHOPT_INSTALL OFF)
+    FetchContent_Declare(meshoptimizer
+        GIT_REPOSITORY https://github.com/zeux/meshoptimizer.git
+        GIT_TAG 9e1f07b159d3cb777f1c67ed31fc11fd117986f4
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(meshoptimizer)
+endfunction()
+kt_forge_meshoptimizer()
+
 # 製品ターゲットは1つとし、各モジュールのディレクトリではソースを明示的に登録する。
 add_executable(KT_Forge)
 include(cmake/ShaderBuild.cmake)
@@ -95,6 +110,8 @@ target_link_libraries(KT_Forge PRIVATE glfw Microsoft::DirectX-Headers d3d12 dxg
 target_link_libraries(KT_Forge PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(KT_Forge PRIVATE DirectXTex windowscodecs ole32)
 target_link_libraries(KT_Forge PRIVATE assimp::assimp)
+target_link_libraries(KT_Forge PRIVATE meshoptimizer)
+target_link_libraries(KT_Forge PRIVATE bcrypt)
 
 set_target_properties(KT_Forge PROPERTIES
     CXX_EXTENSIONS OFF

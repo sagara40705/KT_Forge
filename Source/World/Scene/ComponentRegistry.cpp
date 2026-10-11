@@ -8,6 +8,10 @@ namespace KT::World
 		{
 			throw std::invalid_argument("Component設定のUUID参照先がScene内にありません。");
 		}
+		if (uuid.IsValid() && references)
+		{
+			references->push_back(uuid);
+		}
 	}
 
 	void ComponentRegistry::Register(ComponentDescriptor descriptor)
@@ -87,11 +91,31 @@ namespace KT::World
 		try
 		{
 			entry.validate(data ? *data : definition.data, context);
+			// 直接登録した参照列挙もScene内の存在を検査し、制作時だけの契約にしない。
+			if (entry.enumerateReferences)
+			{
+				entry.enumerateReferences(data ? *data : definition.data, context);
+			}
 		}
 		catch (const std::invalid_argument& error)
 		{
 			throw std::invalid_argument("Component設定の検査に失敗しました: " + definition.type + " / " + error.what());
 		}
+	}
+
+	std::optional<std::vector<ObjectUuid>> ComponentRegistry::References(
+		const SceneComponentDefinition& definition, const SceneReadContext& context) const
+	{
+		const auto& descriptor = Find(definition.type);
+		if (!descriptor.enumerateReferences)
+		{
+			return std::nullopt;
+		}
+		const auto migrated = ReadLegacyData(definition);
+		std::vector<ObjectUuid> references;
+		const SceneReadContext enumeration{context.objects, context.scripts, &references};
+		descriptor.enumerateReferences(migrated ? *migrated : definition.data, enumeration);
+		return references;
 	}
 
 	std::optional<SceneValue> ComponentRegistry::ReadLegacyData(const SceneComponentDefinition& definition) const

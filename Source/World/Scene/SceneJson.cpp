@@ -269,8 +269,14 @@ namespace KT::World
 	void SceneJson::Save(
 		const std::filesystem::path& path, const Scene& scene, const ComponentRegistry& components, const ScriptRegistry& scripts)
 	{
+		Save(path, SceneLoader::Capture(scene, components, scripts), components, scripts);
+	}
+
+	void SceneJson::Save(
+		const std::filesystem::path& path, const SceneAsset& scene, const ComponentRegistry& components, const ScriptRegistry& scripts)
+	{
 		// 保存可能な完成状態と設定を検査し、既存ファイルへ触れる前に全JSONを作る。
-		const auto text = Stringify(SceneLoader::Capture(scene, components, scripts), components, scripts);
+		const auto text = Stringify(scene, components, scripts);
 		std::error_code error;
 		const auto target = std::filesystem::absolute(path, error);
 		if (error || path.empty())

@@ -14,6 +14,7 @@ namespace KT::Content
 		bool flipV = true;
 		MeshNormalMode normals = MeshNormalMode::Preserve;
 		bool generateTangents = true;
+		MeshOptimizationSettings optimization;
 	};
 
 	// ノードのCPU定義。親/meshはImportedModelの配列位置であり、Entityではない。
@@ -53,6 +54,7 @@ namespace KT::Content
 	public:
 		// sourceとそのディレクトリ内の依存を読む。previousIdsは明示的な再取込の対応表。
 		[[nodiscard]] static ImportedModel Load(
-			const std::filesystem::path& source, ModelImportOptions options = {}, const std::map<std::string, AssetId>& previousIds = {});
+			const std::filesystem::path& source, ModelImportOptions options = {}, const std::map<std::string, AssetId>& previousIds = {},
+			const std::map<std::string, ModelNodeId>& previousNodes = {});
 	};
 }

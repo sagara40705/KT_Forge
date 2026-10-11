@@ -1,4 +1,6 @@
 #include <Content/AssetJson.h>
+#include <Content/ModelRevision.h>
+#include <Content/MeshOptimizationJson.h>
 #include <nlohmann/json.hpp>
 #include <cmath>
 #include <limits>
@@ -111,17 +113,19 @@ namespace KT::Content
 					return true;
 				});
 			RequireFields(root, {"version", "assetId", "name", "type", "data"});
-			if (!root.at("version").is_number_integer() || (root.at("version") != 1 && root.at("version") != 2 && root.at("version") != 3))
+			if (!root.at("version").is_number_integer() ||
+				(root.at("version") != 1 && root.at("version") != 2 && root.at("version") != 3 && root.at("version") != 4))
 			{
-				throw std::invalid_argument("素材JSONのversionは1..3に対応しています。");
+				throw std::invalid_argument("素材JSONのversionは1..4に対応しています。");
 			}
-			const bool meshExtended = root.at("version") == 3;
+			const bool meshOptimized = root.at("version") == 4;
+			const bool meshExtended = root.at("version") == 3 || meshOptimized;
 			const bool extended = root.at("version") != 1;
 			const auto id = AssetId::Parse(root.at("assetId").get<std::string>());
 			const auto name = root.at("name").get<std::string>();
 			const auto type = root.at("type").get<std::string>();
 			const auto& data = root.at("data");
-			if (type == "kt.Model" && !extended)
+			if (type == "kt.Model" && !meshExtended)
 			{
 				RequireFields(data, {"nodes"});
 				const auto& values = data.at("nodes");
@@ -133,9 +137,17 @@ namespace KT::Content
 				nodes.reserve(values.size());
 				for (const auto& value : values)
 				{
-					RequireFields(value, {"key", "name", "parent", "position", "rotation", "scale", "mesh", "material", "materials"});
+					if (extended)
+					{
+						RequireFields(value, {"id", "key", "name", "parent", "position", "rotation", "scale", "mesh", "material", "materials"});
+					}
+					else
+					{
+						RequireFields(value, {"key", "name", "parent", "position", "rotation", "scale", "mesh", "material", "materials"});
+					}
 					ModelNode node;
 					node.key = value.at("key").get<std::string>();
+					node.id = extended ? ModelNodeId::Parse(value.at("id").get<std::string>()) : LegacyModelNodeId(id, node.key);
 					node.name = value.at("name").get<std::string>();
 					if (!value.at("parent").is_null())
 					{
@@ -273,7 +285,15 @@ namespace KT::Content
 					if (!data.at("import").is_null())
 					{
 						const auto& value = data.at("import");
-						RequireFields(value, {"source", "importerVersion", "scale", "flipZ", "flipV", "normals", "generateTangents"});
+						if (meshOptimized)
+						{
+							RequireFields(value,
+								{"source", "importerVersion", "scale", "flipZ", "flipV", "normals", "generateTangents", "optimization"});
+						}
+						else
+						{
+							RequireFields(value, {"source", "importerVersion", "scale", "flipZ", "flipV", "normals", "generateTangents"});
+						}
 						MeshNormalMode mode;
 						if (value.at("normals") == "Preserve")
 						{
@@ -286,6 +306,14 @@ namespace KT::Content
 						recipe = MeshImportRecipe{value.at("source").get<std::string>(), ReadUint(value.at("importerVersion")),
 							ReadFloat(value.at("scale")), value.at("flipZ").get<bool>(), value.at("flipV").get<bool>(), mode,
 							value.at("generateTangents").get<bool>()};
+						if (meshOptimized)
+						{
+							recipe->optimization = MeshOptimizationJson::Decode(value.at("optimization"));
+						}
+					}
+					if (meshOptimized && !recipe)
+					{
+						throw std::invalid_argument("Mesh JSON version 4には最適化記録付きOBJ取込recipeが必要です。");
 					}
 				}
 				return {id, name,
@@ -294,7 +322,7 @@ namespace KT::Content
 			}
 			if (meshExtended)
 			{
-				throw std::invalid_argument("素材JSONのversion 3はMeshだけに対応しています。");
+				throw std::invalid_argument("素材JSONのversion 3/4はMeshだけに対応しています。");
 			}
 			if (type == "kt.Material")
 			{
@@ -419,6 +447,11 @@ namespace KT::Content
 									recipe.normals == MeshNormalMode::Flat ? "Flat" :
 																			 "Smooth"},
 							{"generateTangents", recipe.generateTangents}};
+						if (recipe.optimization)
+						{
+							root["version"] = 4;
+							root["data"]["import"]["optimization"] = MeshOptimizationJson::Encode(*recipe.optimization);
+						}
 					}
 				}
 			}
@@ -447,6 +480,7 @@ namespace KT::Content
 			{
 				model->Validate();
 				root["type"] = "kt.Model";
+				root["version"] = 2;
 				root["data"]["nodes"] = Json::array();
 				for (const auto& node : model->Nodes())
 				{
@@ -455,7 +489,7 @@ namespace KT::Content
 					{
 						materials[slot] = material ? Json(material->ToString()) : Json(nullptr);
 					}
-					root["data"]["nodes"].push_back(Json{{"key", node.key}, {"name", node.name},
+					root["data"]["nodes"].push_back(Json{{"id", node.id.ToString()}, {"key", node.key}, {"name", node.name},
 						{"parent", node.parent ? Json(*node.parent) : Json(nullptr)},
 						{"position", {node.position.x, node.position.y, node.position.z}},
 						{"rotation", {node.rotation.x, node.rotation.y, node.rotation.z, node.rotation.w}},

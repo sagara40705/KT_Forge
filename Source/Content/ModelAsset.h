@@ -27,6 +27,8 @@ namespace KT::Content
 		std::optional<MaterialAssetId> material;
 		// 未指定slotは共通Materialへfallbackし、明示nullはそのslotを描画しない。
 		std::map<std::string, std::optional<MaterialAssetId>> materials;
+		// 名前や親の変更後も維持する。再取込のkeyとは区別する。
+		ModelNodeId id{AssetId::Generate()};
 	};
 
 	// 階層と初期設定を共有する不変CPU資源。形状・画像・実行状態は参照先が所有する。

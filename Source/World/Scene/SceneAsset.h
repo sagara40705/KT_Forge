@@ -14,6 +14,7 @@ namespace KT::World
 		std::uint32_t version = 1;
 		// 設定フィールドを所有する。Worldや外部メモリへの参照は持たない。
 		SceneValue data{SceneValue::Object{}};
+		bool operator==(const SceneComponentDefinition&) const = default;
 	};
 
 	// 保存・読込のCPU定義。Entityや実行中のScript実体は保存しない。
@@ -27,6 +28,7 @@ namespace KT::World
 		std::optional<ObjectUuid> parent;
 		// 存在するComponentだけを保存する。空配列ならComponentを追加しない。
 		std::vector<SceneComponentDefinition> components;
+		bool operator==(const SceneObjectDefinition&) const = default;
 	};
 
 	// 新しいSceneとWorldを生成するための保存用定義。
@@ -38,5 +40,6 @@ namespace KT::World
 		std::string name;
 		// 保存順に依存せず、UUIDで親参照を解決するオブジェクト定義。
 		std::vector<SceneObjectDefinition> objects;
+		bool operator==(const SceneAsset&) const = default;
 	};
 }

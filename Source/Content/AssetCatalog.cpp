@@ -4,6 +4,19 @@
 
 namespace KT::Content
 {
+	const AssetDocument& AssetCatalog::Document(AssetId id) const
+	{
+		if (!frozen_)
+		{
+			throw std::logic_error("素材定義の借用前にAssetCatalogをFreezeしてください。");
+		}
+		const auto found = assets_.find(id);
+		if (found == assets_.end())
+		{
+			throw std::invalid_argument("照合する素材がCatalogにありません: " + id.ToString());
+		}
+		return found->second;
+	}
 	void AssetCatalog::Register(AssetDocument document)
 	{
 		if (frozen_)

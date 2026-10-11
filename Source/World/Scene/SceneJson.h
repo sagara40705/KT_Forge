@@ -26,5 +26,8 @@ namespace KT::World
 		// 完成Sceneを同じディレクトリの一時ファイルへ書き、成功後に保存先を置換する。
 		static void Save(
 			const std::filesystem::path& path, const Scene& scene, const ComponentRegistry& components, const ScriptRegistry& scripts);
+		// 制作中の定義を実体生成せず保存する。既存ファイルの保持条件はScene版と共通。
+		static void Save(const std::filesystem::path& path, const SceneAsset& scene,
+			const ComponentRegistry& components, const ScriptRegistry& scripts);
 	};
 }

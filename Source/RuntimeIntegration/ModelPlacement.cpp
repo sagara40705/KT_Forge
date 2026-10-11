@@ -1,4 +1,5 @@
 #include <RuntimeIntegration/ModelPlacement.h>
+#include <RuntimeIntegration/ModelReconciler.h>
 #include <World/Scene/SceneLoader.h>
 #include <Core/Math/Matrix4.h>
 #include <set>
@@ -96,6 +97,12 @@ namespace KT::RuntimeIntegration
 		}
 		// UUID衝突・Component契約まで検査した後、確保を伴わないswapで公開する。
 		KT::World::SceneLoader::Validate(candidate, components, scripts);
+		std::map<KT::Content::ModelNodeId, KT::World::ObjectUuid> bindings;
+		for (const auto& node : model.asset->Nodes())
+		{
+			bindings.emplace(node.id, result.nodes.at(node.key));
+		}
+		ModelReconciler::Attach(candidate, catalog, id, result.root, bindings, components, scripts);
 		scene.objects.swap(candidate.objects);
 		return result;
 	}

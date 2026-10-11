@@ -3,10 +3,12 @@
 #include <Content/ObjMeshImporter.h>
 #include <RuntimeIntegration/ModelImport.h>
 #include <RuntimeIntegration/ModelPlacement.h>
+#include <Application/ModelWorkflowCommands.h>
 #include <Content/AssetJson.h>
 #include <BuiltinAssets/StaticMeshAssets.h>
 
 #include <stdexcept>
+#include <algorithm>
 #include <string>
 
 // 参照元の永続UUIDを表示し、Sceneファイル側で欠落参照を特定できるようにする。
@@ -25,6 +27,11 @@ int wmain(int argc, wchar_t* argv[])
 	try
 	{
 		const std::wstring_view command = argc > 1 ? argv[1] : L"";
+		if (const auto result = KT::Application::RunModelWorkflowCommand(argc, argv))
+		{
+			return *result;
+		}
+
 		if (command == L"--place-model" && argc == 6)
 		{
 			// 保存したModelを読み、既存Sceneへ別個体を追加する。外部モデルは再取込しない。
@@ -55,6 +62,7 @@ int wmain(int argc, wchar_t* argv[])
 		{
 			KT::Content::ObjMeshImportOptions options;
 			options.flipZ = command == L"--import-model";
+			bool optimizationSpecified = false;
 			for (int index = 4; index < argc; ++index)
 			{
 				const std::wstring_view option = argv[index];
@@ -87,6 +95,27 @@ int wmain(int argc, wchar_t* argv[])
 						throw std::invalid_argument("モデルの--scaleには数値だけを指定してください。");
 					}
 				}
+				else if (option == L"--mesh-optimization" && index + 1 < argc && !optimizationSpecified)
+				{
+					const std::wstring_view mode = argv[++index];
+					if (mode == L"none")
+					{
+						options.optimization.mode = KT::Content::MeshOptimizationMode::None;
+					}
+					else if (mode == L"standard")
+					{
+						options.optimization.mode = KT::Content::MeshOptimizationMode::Standard;
+					}
+					else if (mode == L"overdraw")
+					{
+						options.optimization.mode = KT::Content::MeshOptimizationMode::StandardOverdraw;
+					}
+					else
+					{
+						throw std::invalid_argument("取込の--mesh-optimizationにはnone/standard/overdrawを指定してください。");
+					}
+					optimizationSpecified = true;
+				}
 				else if (option == L"--no-tangents")
 				{
 					options.generateTangents = false;
@@ -114,13 +143,14 @@ int wmain(int argc, wchar_t* argv[])
 				else
 				{
 					throw std::invalid_argument(
-						"モデル取込は--flip-z、--keep-v、--scale 数値、--normals、--no-tangents、外部モデル専用の--keep-zに対応しています。");
+						"モデル取込は--flip-z、--keep-v、--scale "
+						"数値、--normals、--no-tangents、--mesh-optimization、外部モデル専用の--keep-zに対応しています。");
 				}
 			}
 			if (command == L"--import-model")
 			{
-				const auto result = KT::RuntimeIntegration::ModelImport::Import(
-					argv[2], argv[3], {options.scale, options.flipZ, options.flipV, options.normals, options.generateTangents});
+				const auto result = KT::RuntimeIntegration::ModelImport::Import(argv[2], argv[3],
+					{options.scale, options.flipZ, options.flipV, options.normals, options.generateTangents, options.optimization});
 				KT_LOG_INFO("モデルSceneを保存しました: 素材=" + std::to_string(result.assetCount) +
 					" / Object=" + std::to_string(result.objectCount) + " / Model=" + result.modelId->ToString());
 				for (const auto& diagnostic : result.diagnostics)
@@ -137,20 +167,40 @@ int wmain(int argc, wchar_t* argv[])
 			}
 			return 0;
 		}
-		if (command == L"--reimport-model" && argc == 4)
+		if (command == L"--reimport-mesh")
 		{
-			const auto result = KT::RuntimeIntegration::ModelImport::Reimport(argv[2], argv[3]);
-			KT_LOG_INFO("モデルSceneを再取込しました: 素材=" + std::to_string(result.assetCount) +
-				" / Object=" + std::to_string(result.objectCount) + " / Model=" + result.modelId->ToString());
-			for (const auto& diagnostic : result.diagnostics)
+			if (argc != 3 && argc != 5)
 			{
-				KT_LOG_WARNING(diagnostic);
+				throw std::invalid_argument("--reimport-meshにはMesh JSONと、省略可能な--mesh-optimization modeを指定してください。");
 			}
-			return 0;
-		}
-		if (command == L"--reimport-mesh" && argc == 3)
-		{
-			const auto result = KT::Content::ObjMeshImporter::Reimport(argv[2]);
+			std::optional<KT::Content::MeshOptimizationSettings> optimization;
+			if (argc == 5)
+			{
+				if (std::wstring_view(argv[3]) != L"--mesh-optimization")
+				{
+					throw std::invalid_argument("Mesh再取込の追加指定は--mesh-optimizationだけに対応しています。");
+				}
+				const std::wstring_view mode = argv[4];
+				KT::Content::MeshOptimizationSettings settings;
+				if (mode == L"none")
+				{
+					settings.mode = KT::Content::MeshOptimizationMode::None;
+				}
+				else if (mode == L"standard")
+				{
+					settings.mode = KT::Content::MeshOptimizationMode::Standard;
+				}
+				else if (mode == L"overdraw")
+				{
+					settings.mode = KT::Content::MeshOptimizationMode::StandardOverdraw;
+				}
+				else
+				{
+					throw std::invalid_argument("Mesh再取込の--mesh-optimizationにはnone/standard/overdrawを指定してください。");
+				}
+				optimization = settings;
+			}
+			const auto result = KT::Content::ObjMeshImporter::Reimport(argv[2], optimization);
 			KT_LOG_INFO("保存済みの設定でMeshを再取込しました: " + result.id.ToString());
 			return 0;
 		}
@@ -214,8 +264,11 @@ int wmain(int argc, wchar_t* argv[])
 				"--import-obj input.obj output.asset.json [--flip-z] [--keep-v] [--scale 数値] "
 				"[--normals preserve/flat/smooth] [--no-tangents] / --reimport-mesh output.asset.json / "
 				"--import-model input output-directory [--keep-z] [--keep-v] [--scale 数値] "
-				"[--normals preserve/flat/smooth] [--no-tangents] / --reimport-model previous-directory new-directory / "
-				"--place-model root model.asset.json source.scene.json output.scene.json");
+				"[--normals preserve/flat/smooth] [--no-tangents] / --reimport-model previous-directory new-directory "
+				"[--node-map correspondence.json] [--carry-scene old-root scene.json] [--accept-node-changes] / "
+				"--inspect-model-reimport previous-directory correspondence.json / --clone-material root material.asset.json new.asset.json / "
+				"--place-model root model.asset.json source.scene.json output.scene.json / "
+				"--reconcile-models new-root source.scene.json output.scene.json [--selection selection.json] [--resolutions resolutions.json]");
 		}
 		KT::Application::Application app(1280, 720, "KT_Forge", {}, std::move(project));
 		ReportAssetDiagnostics(app.GetAssetDiagnostics());

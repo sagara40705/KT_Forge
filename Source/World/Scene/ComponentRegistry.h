@@ -13,6 +13,8 @@ namespace KT::World
 		const std::set<ObjectUuid>& objects;
 		// ScriptComponentの設定検査とC++実体の生成に使用する。
 		const ScriptRegistry& scripts;
+		// 制作時の参照列挙だけが借用する出力先。通常の読込では指定しない。
+		std::vector<ObjectUuid>* references = nullptr;
 		// 全ゼロ値は参照未指定とし、有効なUUIDにはScene内の存在を要求する。
 		void RequireReference(ObjectUuid uuid) const;
 	};
@@ -34,6 +36,8 @@ namespace KT::World
 		std::function<void(Scene&, EntityTarget, const SceneValue&, const SceneReadContext&)> restore;
 		// 明示的に許可した旧versionだけを現行設定へ変換する。未設定なら旧versionを拒否する。
 		std::function<SceneValue(std::uint32_t, const SceneValue&)> migrate;
+		// UUID参照をRequireReferenceで列挙する。未設定は参照契約不明として削除を保護する。
+		std::function<void(const SceneValue&, const SceneReadContext&)> enumerateReferences;
 	};
 
 	// Component型と永続IDを対応づける。単一threadで所有者が登録し、読込前にFreezeする。
@@ -45,7 +49,8 @@ namespace KT::World
 
 		// decodeは検査と復元の両方で呼ぶ。副作用を持たせず、同じ設定から同じ値を作る。
 		template <ComponentType T, class Encode, class Decode>
-		void Register(std::string type, std::uint32_t version, Encode encode, Decode decode)
+		void Register(std::string type, std::uint32_t version, Encode encode, Decode decode,
+			std::function<void(const SceneValue&, const SceneReadContext&)> enumerateReferences = {})
 		{
 			static_assert(!ReservedComponent<T> && !std::is_same_v<T, Name> && !std::is_same_v<T, ScriptComponent>);
 			ComponentDescriptor descriptor;
@@ -54,6 +59,8 @@ namespace KT::World
 			descriptor.version = version;
 			descriptor.capture = [encode](const World& world, Entity entity) { return encode(world.GetComponent<T>(entity)); };
 			descriptor.validate = [decode](const SceneValue& data, const SceneReadContext& context) { (void)decode(data, context); };
+			// decodeがRequireReferenceへ渡した参照だけを列挙し、一般文字列は推測しない。
+			descriptor.enumerateReferences = enumerateReferences ? std::move(enumerateReferences) : descriptor.validate;
 			descriptor.restore = [decode](Scene& scene, EntityTarget entity, const SceneValue& data, const SceneReadContext& context)
 			{ scene.Commands().AddComponent<T>(entity, decode(data, context)); };
 			Register(std::move(descriptor));
@@ -65,6 +72,9 @@ namespace KT::World
 		[[nodiscard]] const ComponentDescriptor& Find(const std::string& type) const;
 		[[nodiscard]] const ComponentDescriptor& Find(std::type_index cppType) const;
 		void Validate(const SceneComponentDefinition& definition, const SceneReadContext& context) const;
+		// nulloptは未定義の参照契約。空配列は明示的に参照なしを示す。
+		[[nodiscard]] std::optional<std::vector<ObjectUuid>> References(
+			const SceneComponentDefinition& definition, const SceneReadContext& context) const;
 		// 現行versionはnulloptで原本を使用し、旧versionだけ登録済み変換の所有値を返す。
 		[[nodiscard]] std::optional<SceneValue> ReadLegacyData(const SceneComponentDefinition& definition) const;
 

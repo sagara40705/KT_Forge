@@ -1,5 +1,6 @@
 #include <World/Scene/ComponentRegistry.h>
 #include <World/Scene/SceneComponents.h>
+#include <World/Scene/ModelInstance.h>
 #include <numbers>
 
 namespace KT::World
@@ -123,6 +124,8 @@ namespace KT::World
 			return result;
 		};
 		mesh.validate = [decodeMesh](const SceneValue& data, const SceneReadContext&) { (void)decodeMesh(data); };
+		// Mesh/MaterialのUUIDはAsset参照であり、Sceneオブジェクト参照ではない。
+		mesh.enumerateReferences = mesh.validate;
 		mesh.restore = [decodeMesh](Scene& scene, EntityTarget entity, const SceneValue& data, const SceneReadContext&)
 		{ scene.Commands().AddComponent<MeshRenderer>(entity, decodeMesh(data)); };
 		mesh.migrate = [](std::uint32_t version, const SceneValue& data) -> SceneValue
@@ -137,6 +140,24 @@ namespace KT::World
 			return result;
 		};
 		registry.Register(std::move(mesh));
+		// 過去の原本参照は現在の資源と切り離す。欠落した個体ノードは反映時に抑止する。
+		registry.Register<ModelInstance>(
+			"kt.ModelInstance", 1, [](const ModelInstance& input) { return input.Encode(); },
+			[&registry](const SceneValue& data, const SceneReadContext& context)
+			{
+				auto result = ModelInstance::Decode(data);
+				for (const auto& binding : result.nodes)
+				{
+					registry.Validate({"kt.LocalTransform", 1, binding.source.At("transform")}, context);
+					if (!std::holds_alternative<std::nullptr_t>(binding.source.At("renderer").value))
+					{
+						registry.Validate({"kt.MeshRenderer", 3, binding.source.At("renderer")}, context);
+					}
+				}
+				return result;
+			},
+			// 対応表は歴史情報であり、生存Sceneオブジェクトへの実参照ではない。
+			[](const SceneValue&, const SceneReadContext&) {});
 		// Scriptは検査と生成を分離し、全定義の検査成功までfactoryを呼ばない。
 		ComponentDescriptor script;
 		script.type = "kt.ScriptComponent";
@@ -166,6 +187,20 @@ namespace KT::World
 				entries.push_back({std::move(definition), std::move(instance)});
 			}
 			scene.Commands().AddComponent<ScriptComponent>(entity, std::move(entries));
+		};
+		// Missing Scriptも型付きObjectUuidだけを列挙し、文字列設定と区別する。
+		script.enumerateReferences = [](const SceneValue& data, const SceneReadContext& context)
+		{
+			for (const auto& definition : ScriptRegistry::Decode(data))
+			{
+				for (const auto& [name, setting] : definition.settings)
+				{
+					if (const auto* uuid = std::get_if<ObjectUuid>(&setting))
+					{
+						context.RequireReference(*uuid);
+					}
+				}
+			}
 		};
 		registry.Register(std::move(script));
 	}

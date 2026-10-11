@@ -1,4 +1,6 @@
 #include <Renderer/Mesh.h>
+#include <algorithm>
+#include <cstring>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -81,12 +83,42 @@ namespace KT::Renderer
 	}
 
 	Mesh::Mesh(KT::Graphics::GraphicsDevice& device, const KT::Content::MeshAsset& source)
-		: Mesh(device, Pack(source), std::as_bytes(source.Indices()), DXGI_FORMAT_R32_UINT, KT::Graphics::BufferStorage::Default)
+		: Mesh(device, Pack(source), PackIndices(source))
 	{
 		submeshes_.assign(source.Submeshes().begin(), source.Submeshes().end());
 		hasNormals_ = !source.Normals().empty();
 		hasTangents_ = !source.Tangents().empty();
 		hasTexcoords_ = !source.Texcoords().empty();
+	}
+
+	Mesh::Mesh(KT::Graphics::GraphicsDevice& device, std::span<const MeshVertex> vertices, const PackedIndices& indices)
+		: Mesh(device, vertices, indices.bytes, indices.format, KT::Graphics::BufferStorage::Default)
+	{
+	}
+
+	Mesh::PackedIndices Mesh::PackIndices(const KT::Content::MeshAsset& source)
+	{
+		// 頂点数だけではなく参照される最大値を、縮小と資源作成より前に確認する。
+		source.Validate();
+		const auto indices = source.Indices();
+		const auto maximum = *std::max_element(indices.begin(), indices.end());
+		PackedIndices result;
+		if (maximum <= (std::numeric_limits<std::uint16_t>::max)())
+		{
+			result.format = DXGI_FORMAT_R16_UINT;
+			result.bytes.resize(indices.size() * sizeof(std::uint16_t));
+			for (std::size_t index = 0; index < indices.size(); ++index)
+			{
+				const auto value = static_cast<std::uint16_t>(indices[index]);
+				std::memcpy(result.bytes.data() + index * sizeof(value), &value, sizeof(value));
+			}
+		}
+		else
+		{
+			const auto bytes = std::as_bytes(indices);
+			result.bytes.assign(bytes.begin(), bytes.end());
+		}
+		return result;
 	}
 
 	void Mesh::Upload(KT::Graphics::CommandQueue& queue)

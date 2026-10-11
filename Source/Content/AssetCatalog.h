@@ -41,6 +41,8 @@ namespace KT::Content
 		[[nodiscard]] AssetLookup<MeshAsset> Resolve(std::optional<MeshAssetId> id) const;
 		[[nodiscard]] AssetLookup<MaterialAsset> Resolve(std::optional<MaterialAssetId> id) const;
 		[[nodiscard]] AssetLookup<ModelAsset> Resolve(std::optional<ModelAssetId> id) const;
+		// 制作時の内容照合用。固定後だけ定義を借用し、存在しないIDは拒否する。
+		[[nodiscard]] const AssetDocument& Document(AssetId id) const;
 
 	private:
 		// 種類をまたいで同一UUIDの二重登録を拒否する。

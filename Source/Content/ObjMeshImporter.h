@@ -14,6 +14,7 @@ namespace KT::Content
 		// Preserveは明示法線を保持し、欠落cornerだけOBJのs設定で生成する。
 		MeshNormalMode normals = MeshNormalMode::Preserve;
 		bool generateTangents = true;
+		MeshOptimizationSettings optimization;
 	};
 
 	// 幾何属性とMaterial slotを保持する。MTL内容とオブジェクト階層は別資源として扱う。
@@ -49,6 +50,12 @@ namespace KT::Content
 		[[nodiscard]] static ObjMeshSaveResult Import(
 			const std::filesystem::path& source, const std::filesystem::path& destination, ObjMeshImportOptions options = {});
 		// 保存済みrecipeから元OBJと設定を解決し、成功時だけ同じUUIDの素材を置換する。
-		[[nodiscard]] static ObjMeshSaveResult Reimport(const std::filesystem::path& destination);
+		[[nodiscard]] static ObjMeshSaveResult Reimport(
+			const std::filesystem::path& destination, std::optional<MeshOptimizationSettings> optimizationOverride = {});
+
+	private:
+		// 旧recipeの設定と保存形式を、明示移行しない再取込で維持する。
+		[[nodiscard]] static ObjMeshSaveResult ImportWithRecipe(
+			const std::filesystem::path& source, const std::filesystem::path& destination, ObjMeshImportOptions options, bool legacyRecipe);
 	};
 }

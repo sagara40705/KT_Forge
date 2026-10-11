@@ -152,11 +152,19 @@ namespace KT::Content
 			const auto& recipe = *recipe_;
 			const std::filesystem::path path(std::u8string(recipe.source.begin(), recipe.source.end()));
 			if (recipe.source.empty() || recipe.source.find('\0') != std::string::npos || path.is_absolute() || path.has_root_name() ||
-				recipe.importerVersion != 1 || !std::isfinite(recipe.scale) || recipe.scale <= 0 ||
+				(recipe.importerVersion != 1 && recipe.importerVersion != 2) || !std::isfinite(recipe.scale) || recipe.scale <= 0 ||
 				(recipe.normals != MeshNormalMode::Preserve && recipe.normals != MeshNormalMode::Flat &&
 					recipe.normals != MeshNormalMode::Smooth))
 			{
 				throw std::invalid_argument("MeshのOBJ取込recipeの相対パス・version・Scale・法線生成方針が不正です。");
+			}
+			if ((recipe.importerVersion == 2) != recipe.optimization.has_value())
+			{
+				throw std::invalid_argument("MeshのOBJ取込recipeのversionと最適化記録が一致しません。");
+			}
+			if (recipe.optimization)
+			{
+				recipe.optimization->Validate();
 			}
 		}
 	}

@@ -1,4 +1,10 @@
 target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/ModelWorkflowJson.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ModelWorkflowJson.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ModelReconcileJson.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ModelReconcileJson.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ModelReconciler.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ModelReconciler.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/ModelPlacement.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/ModelPlacement.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/ModelImport.h"

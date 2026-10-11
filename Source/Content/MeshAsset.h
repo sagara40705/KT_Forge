@@ -1,6 +1,7 @@
 #pragma once
 #include <Core/Math/AABB.h>
 #include <Core/Math/Vector2.h>
+#include <Content/MeshOptimization.h>
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -37,6 +38,8 @@ namespace KT::Content
 		bool flipV = true;
 		MeshNormalMode normals = MeshNormalMode::Preserve;
 		bool generateTangents = true;
+		// 旧recipeは未指定で、再取込でも最適化を自動追加しない。
+		std::optional<MeshOptimizationRecord> optimization;
 	};
 
 	// 検証済みの不変Triangle List。空の属性配列は未指定を表し、ゼロ埋めと区別する。

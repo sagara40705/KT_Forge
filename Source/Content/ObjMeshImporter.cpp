@@ -1,5 +1,6 @@
 #include <Content/ObjMeshImporter.h>
 #include <Content/MeshGeometry.h>
+#include <Content/MeshOptimizer.h>
 #include <array>
 #include <charconv>
 #include <cmath>
@@ -73,6 +74,7 @@ namespace KT::Content
 
 	ObjMeshImportResult ObjMeshImporter::Parse(std::string_view text, ObjMeshImportOptions options)
 	{
+		options.optimization.Validate();
 		if (text.size() > AssetJson::MaxBytes || text.find('\0') != std::string_view::npos)
 		{
 			throw std::invalid_argument("OBJの入力が64MiBを超えているか、NUL文字を含んでいます。");
@@ -296,11 +298,18 @@ namespace KT::Content
 		auto mesh = MeshGeometry::Generate(
 			MeshAsset(std::move(positions), std::move(indices), std::move(texcoords), std::move(normals), {}, std::move(submeshes)),
 			MeshNormalMode::Preserve, options.generateTangents);
-		return {std::move(mesh), false, false, omittedMaterials, groups};
+		auto optimized = MeshOptimizer::Optimize(mesh, options.optimization);
+		return {std::move(optimized.mesh), false, false, omittedMaterials, groups};
 	}
 
 	ObjMeshSaveResult ObjMeshImporter::Import(
 		const std::filesystem::path& source, const std::filesystem::path& destination, ObjMeshImportOptions options)
+	{
+		return ImportWithRecipe(source, destination, options, false);
+	}
+
+	ObjMeshSaveResult ObjMeshImporter::ImportWithRecipe(
+		const std::filesystem::path& source, const std::filesystem::path& destination, ObjMeshImportOptions options, bool legacyRecipe)
 	{
 		if (!destination.filename().wstring().ends_with(L".asset.json"))
 		{
@@ -345,6 +354,11 @@ namespace KT::Content
 		const auto relative =
 			std::filesystem::relative(std::filesystem::absolute(source), std::filesystem::absolute(destination).parent_path());
 		MeshImportRecipe recipe{Utf8(relative), 1, options.scale, options.flipZ, options.flipV, options.normals, options.generateTangents};
+		if (!legacyRecipe)
+		{
+			recipe.importerVersion = 2;
+			recipe.optimization = MeshOptimizationRecord{options.optimization};
+		}
 		const auto& mesh = result.mesh;
 		MeshAsset saved({mesh.Positions().begin(), mesh.Positions().end()}, {mesh.Indices().begin(), mesh.Indices().end()},
 			{mesh.Texcoords().begin(), mesh.Texcoords().end()}, {mesh.Normals().begin(), mesh.Normals().end()},
@@ -353,7 +367,8 @@ namespace KT::Content
 		return {MeshAssetId(id), replaced, false, false, result.omittedMaterials, result.mergedGroups};
 	}
 
-	ObjMeshSaveResult ObjMeshImporter::Reimport(const std::filesystem::path& destination)
+	ObjMeshSaveResult ObjMeshImporter::Reimport(
+		const std::filesystem::path& destination, std::optional<MeshOptimizationSettings> optimizationOverride)
 	{
 		const auto previous = AssetJson::Read(destination);
 		const auto* mesh = std::get_if<MeshAsset>(&previous.data);
@@ -362,8 +377,21 @@ namespace KT::Content
 			throw std::invalid_argument("再取込にはOBJ取込recipe付きのMesh素材が必要です。");
 		}
 		const auto& recipe = *mesh->ImportRecipe();
+		// 明示移行がなければ保存済み版を要求し、旧recipeはNoneで再現する。
+		MeshOptimizationSettings settings{MeshOptimizationMode::None};
+		if (optimizationOverride)
+		{
+			settings = *optimizationOverride;
+		}
+		else if (recipe.optimization)
+		{
+			recipe.optimization->RequireSupported();
+			settings = recipe.optimization->settings;
+		}
+		settings.Validate();
 		const std::filesystem::path source(std::u8string(recipe.source.begin(), recipe.source.end()));
-		return Import(destination.parent_path() / source, destination,
-			{recipe.scale, recipe.flipZ, recipe.flipV, recipe.normals, recipe.generateTangents});
+		return ImportWithRecipe(destination.parent_path() / source, destination,
+			{recipe.scale, recipe.flipZ, recipe.flipV, recipe.normals, recipe.generateTangents, settings},
+			!recipe.optimization && !optimizationOverride);
 	}
 }

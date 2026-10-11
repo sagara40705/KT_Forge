@@ -24,7 +24,7 @@ namespace KT::Renderer
 	public:
 		Mesh(KT::Graphics::GraphicsDevice& device, std::span<const MeshVertex> vertices, std::span<const std::byte> indexBytes,
 			DXGI_FORMAT indexFormat, KT::Graphics::BufferStorage storage = KT::Graphics::BufferStorage::Upload);
-		// 生byteのUPLOAD constructorは独立consumer互換用。製品素材はこのconstructorを使う。
+		// 素材はDEFAULTへ転送し、実際の最大IndexでR16/R32を選択する。
 		Mesh(KT::Graphics::GraphicsDevice& device, const KT::Content::MeshAsset& source);
 		void Upload(KT::Graphics::CommandQueue& queue);
 
@@ -64,6 +64,16 @@ namespace KT::Renderer
 		}
 
 	private:
+		// constructor間で、選択済みIndex byte列をBuffer生成まで所有する。
+		struct PackedIndices
+		{
+			std::vector<std::byte> bytes;
+			DXGI_FORMAT format = DXGI_FORMAT_R32_UINT;
+		};
+
+		[[nodiscard]] static PackedIndices PackIndices(const KT::Content::MeshAsset& source);
+		Mesh(KT::Graphics::GraphicsDevice& device, std::span<const MeshVertex> vertices, const PackedIndices& indices);
+
 		KT::Graphics::VertexBuffer vertices_;
 		KT::Graphics::IndexBuffer indices_;
 		std::vector<KT::Content::MeshSubmesh> submeshes_;

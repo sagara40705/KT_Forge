@@ -1,5 +1,6 @@
 #include <Content/ModelImporter.h>
 #include <Content/MeshGeometry.h>
+#include <Content/MeshOptimizer.h>
 #include <Core/Math/Matrix4.h>
 #include <assimp/Importer.hpp>
 #include <assimp/DefaultIOSystem.h>
@@ -244,8 +245,10 @@ namespace KT::Content
 	}
 
 	ImportedModel ModelImporter::Load(
-		const std::filesystem::path& source, ModelImportOptions options, const std::map<std::string, AssetId>& previousIds)
+		const std::filesystem::path& source, ModelImportOptions options, const std::map<std::string, AssetId>& previousIds,
+		const std::map<std::string, ModelNodeId>& previousNodes)
 	{
+		options.optimization.Validate();
 		if (!std::isfinite(options.scale) || options.scale <= 0)
 		{
 			throw std::invalid_argument("モデルのScaleには有限の正数が必要です。");
@@ -627,9 +630,11 @@ namespace KT::Content
 						groups.emplace(group, *target.mesh);
 						result.meshes.push_back(id);
 						result.materials.push_back(std::move(assignments));
-						result.assets.push_back({id.Value(), target.name,
-							MeshAsset(std::move(positions), std::move(indices), std::move(texcoords), std::move(normals),
-								std::move(tangents), std::move(submeshes))});
+						// 最終Submeshの結合後に一度だけ最適化し、素材keyとslotを保持する。
+						const MeshAsset combined(std::move(positions), std::move(indices), std::move(texcoords), std::move(normals),
+							std::move(tangents), std::move(submeshes));
+						auto optimized = MeshOptimizer::Optimize(combined, options.optimization);
+						result.assets.push_back({id.Value(), target.name, std::move(optimized.mesh)});
 						result.assetKeys.push_back(key);
 					}
 				};
@@ -680,6 +685,10 @@ namespace KT::Content
 		{
 			ModelNode node{sourceNode.key, sourceNode.name, sourceNode.parent,
 				sourceNode.position, sourceNode.rotation, sourceNode.scale, {}, {}, {}};
+			if (const auto previous = previousNodes.find(node.key); previous != previousNodes.end())
+			{
+				node.id = previous->second;
+			}
 			if (sourceNode.mesh)
 			{
 				node.mesh = result.meshes.at(*sourceNode.mesh);

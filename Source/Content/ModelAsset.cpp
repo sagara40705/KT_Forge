@@ -26,10 +26,15 @@ namespace KT::Content
 			throw std::invalid_argument("Modelのノード数には1..10万が必要です。");
 		}
 		std::unordered_set<std::string> keys;
+		std::unordered_set<AssetId, AssetIdHash> ids;
 		std::vector<std::size_t> depths(nodes_.size());
 		for (std::size_t index = 0; index < nodes_.size(); ++index)
 		{
 			const auto& node = nodes_[index];
+			if (!ids.insert(node.id.Value()).second)
+			{
+				throw std::invalid_argument("Modelの永続ノードIDが重複しています。");
+			}
 			if (node.key.empty() || node.key.find('\0') != std::string::npos || !keys.insert(node.key).second)
 			{
 				throw std::invalid_argument("Modelノードのkeyは空・NUL・重複を許可しません。");

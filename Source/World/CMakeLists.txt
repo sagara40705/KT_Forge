@@ -1,4 +1,8 @@
 target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/TransformMath.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/TransformMath.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/ModelInstance.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Scene/ModelInstance.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/MeshRendererMigration.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/MeshRendererMigration.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Scene/RollbackState.h"

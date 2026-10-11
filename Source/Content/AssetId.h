@@ -64,8 +64,11 @@ namespace KT::Content
 	struct MaterialAssetTag;
 	struct TextureAssetTag;
 	struct ModelAssetTag;
+	struct ModelNodeTag;
 	using MeshAssetId = TypedAssetId<MeshAssetTag>;
 	using MaterialAssetId = TypedAssetId<MaterialAssetTag>;
 	using TextureAssetId = TypedAssetId<TextureAssetTag>;
 	using ModelAssetId = TypedAssetId<ModelAssetTag>;
+	// Model内の永続ノード識別子。素材UUIDやSceneのObjectUuidとは別の役割を持つ。
+	using ModelNodeId = TypedAssetId<ModelNodeTag>;
 }
