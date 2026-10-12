@@ -96,6 +96,11 @@ namespace KT::World
 			{
 				input.mesh = *component;
 			}
+			if (const auto* component = world.FindComponent<Animator>(entity))
+			{
+				component->Validate();
+				input.animator = *component;
+			}
 
 			bool activationDirty = !oldInput;
 			bool transformDirty = !oldInput;

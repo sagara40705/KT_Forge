@@ -3,6 +3,7 @@
 #include <Core/Math/AABB.h>
 #include <Core/Math/Matrix4.h>
 #include <vector>
+#include <memory>
 
 namespace KT::Renderer
 {
@@ -14,6 +15,8 @@ namespace KT::Renderer
 		KT::Core::Math::Matrix4 world;
 		KT::Core::Math::AABB worldBounds;
 		std::uint32_t submesh = 0;
+		// 個体ごとの完成Skin行列を値所有で共有する。静的Meshは空。
+		std::shared_ptr<const std::vector<KT::Core::Math::Matrix4>> skinPalette;
 	};
 
 	// CameraやGPU資源の準備状態に依存しない値の集合。EntityやWorldへの参照は保持しない。

@@ -1,4 +1,10 @@
 target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Animation/SkinDefinition.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Animation/SkinDefinition.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Animation/SkinJson.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Animation/SkinJson.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Animation/SkinImporter.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Animation/SkinImporter.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/MeshOptimization.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/MeshOptimization.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/MeshOptimizationJson.h"

@@ -145,16 +145,21 @@ namespace KT::Renderer
 			world.objects.reserve(candidates.objects.size());
 			for (const auto& object : candidates.objects)
 			{
-				world.objects.push_back({ResolveMesh(object.mesh), ResolveMaterial(object.material), object.world, object.submesh});
+				world.objects.push_back({ResolveMesh(object.mesh), ResolveMaterial(object.material), object.world, object.submesh, object.skinPalette});
 			}
 		}
-		// 一回の定数はView一個と各Draw二個。加算・乗算前にUINT容量の上限を確認する。
+		// Viewと各Drawの定数にSkin palette容量を加え、加算前にUINT上限を確認する。
 		constexpr std::size_t maxCapacity = (std::numeric_limits<UINT>::max)() & ~std::size_t{255};
-		if (world.objects.size() > (maxCapacity / 256 - 1) / 2)
+		constexpr std::size_t bytesPerDraw = 512 + KT::Content::SkinDefinition::MaxJoints * sizeof(KT::Core::Math::Matrix4);
+		if (world.objects.size() > (maxCapacity - 256) / bytesPerDraw)
 		{
 			throw std::overflow_error("静的Sceneの描画数が定数領域の上限を超えています。");
 		}
-		const auto required = (1 + world.objects.size() * 2) * 256;
+		std::size_t required = 256;
+		for (const auto& object : world.objects)
+		{
+			required += 512 + (object.palette ? bytesPerDraw - 512 : 0);
+		}
 		if (view &&
 			(!depth_ || depth_->GetTexture().GetWidth() != color.GetWidth() || depth_->GetTexture().GetHeight() != color.GetHeight()))
 		{

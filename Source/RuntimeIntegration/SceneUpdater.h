@@ -1,10 +1,11 @@
 #pragma once
 #include <RuntimeIntegration/RenderExtractionSystem.h>
 #include <Core/Utility/NonCopyable.h>
+#include <RuntimeIntegration/Animation/AnimationExtraction.h>
 
 namespace KT::RuntimeIntegration
 {
-	// 完成CPU結果から静的Mesh候補を公開し、指定時だけCameraを計算する。
+	// 完成CPU結果から静的/Skin Mesh候補を公開し、指定時だけCameraを計算する。
 	// 戻り参照は次Updateまで。保持には値コピーを使い、素材Catalogを利用完了まで保持する。
 	class SceneUpdater : private KT::Core::NonCopyable
 	{
@@ -28,5 +29,7 @@ namespace KT::RuntimeIntegration
 		const KT::Content::AssetCatalog& assets_;
 		// 候補生成が完了したFrameを所有する。Cameraは独立した任意の派生結果。
 		std::optional<RenderFrame> frame_;
+		// 姿勢評価用cacheだけを所有し、ゲームの再生状態は保持しない。
+		AnimationExtraction animation_;
 	};
 }

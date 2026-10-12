@@ -32,14 +32,14 @@ namespace KT::Graphics
 		{
 			const UINT elementSize = element.Format == DXGI_FORMAT_R32G32_FLOAT ? 8u :
 				element.Format == DXGI_FORMAT_R32G32B32_FLOAT					? 12u :
-				element.Format == DXGI_FORMAT_R32G32B32A32_FLOAT				? 16u :
+				(element.Format == DXGI_FORMAT_R32G32B32A32_FLOAT || element.Format == DXGI_FORMAT_R32G32B32A32_UINT) ? 16u :
 																				  0u;
 			if (!element.SemanticName || !*element.SemanticName || elementSize == 0 || element.InputSlot != 0 ||
 				element.InputSlotClass != D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA || element.InstanceDataStepRate != 0 ||
 				element.AlignedByteOffset % 4 != 0 || element.AlignedByteOffset > vertexStride ||
 				elementSize > vertexStride - element.AlignedByteOffset)
 			{
-				throw std::invalid_argument("Pipeline input element is invalid.");
+				throw std::invalid_argument("Pipelineの頂点要素のsemantic・format・slot・stride内範囲が不正です。");
 			}
 		}
 

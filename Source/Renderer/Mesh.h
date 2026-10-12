@@ -18,6 +18,14 @@ namespace KT::Renderer
 
 	static_assert(sizeof(MeshVertex) == 48 && std::is_standard_layout_v<MeshVertex> && std::is_trivially_copyable_v<MeshVertex>);
 
+	// Skin頂点だけに追加する骨番号と重み。静的頂点の48byte配置は維持する。
+	struct SkinnedMeshVertex
+	{
+		MeshVertex vertex;
+		KT::Content::SkinInfluence influence;
+	};
+	static_assert(sizeof(SkinnedMeshVertex) == 80 && std::is_trivially_copyable_v<SkinnedMeshVertex>);
+
 	// CPU属性をGPU頂点へ変換する。素材経路はDEFAULTで、Upload成功後だけ描画できる。
 	class Mesh : private KT::Core::NonCopyable
 	{
@@ -43,6 +51,11 @@ namespace KT::Renderer
 			return hasNormals_;
 		}
 
+		[[nodiscard]] std::size_t SkinBindingCount() const noexcept
+		{
+			return skinBindingCount_;
+		}
+
 		[[nodiscard]] bool HasTangents() const noexcept
 		{
 			return hasTangents_;
@@ -64,6 +77,13 @@ namespace KT::Renderer
 		}
 
 	private:
+		// 生成までの頂点byte列と、その配置に一致するstrideを所有する。
+		struct PackedVertices
+		{
+			std::vector<std::byte> bytes;
+			UINT stride = sizeof(MeshVertex);
+		};
+		[[nodiscard]] static PackedVertices PackVertices(const KT::Content::MeshAsset& source);
 		// constructor間で、選択済みIndex byte列をBuffer生成まで所有する。
 		struct PackedIndices
 		{
@@ -72,12 +92,14 @@ namespace KT::Renderer
 		};
 
 		[[nodiscard]] static PackedIndices PackIndices(const KT::Content::MeshAsset& source);
-		Mesh(KT::Graphics::GraphicsDevice& device, std::span<const MeshVertex> vertices, const PackedIndices& indices);
+		Mesh(KT::Graphics::GraphicsDevice& device, const PackedVertices& vertices, const PackedIndices& indices);
 
 		KT::Graphics::VertexBuffer vertices_;
 		KT::Graphics::IndexBuffer indices_;
 		std::vector<KT::Content::MeshSubmesh> submeshes_;
 		// 素材constructorで読み取った実属性の有無。互換raw入力には属性契約を推測しない。
 		bool hasNormals_ = false, hasTangents_ = false, hasTexcoords_ = false;
+		// 0は静的Mesh。それ以外は描画ごとに必要なpalette要素数。
+		std::size_t skinBindingCount_ = 0;
 	};
 }

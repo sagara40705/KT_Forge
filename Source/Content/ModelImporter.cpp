@@ -1,6 +1,7 @@
 #include <Content/ModelImporter.h>
 #include <Content/MeshGeometry.h>
 #include <Content/MeshOptimizer.h>
+#include <Content/Animation/SkinImporter.h>
 #include <Core/Math/Matrix4.h>
 #include <assimp/Importer.hpp>
 #include <assimp/DefaultIOSystem.h>
@@ -285,9 +286,10 @@ namespace KT::Content
 		{
 			throw std::invalid_argument("モデルのMeshが空、またはMesh/Material数が10万を超えています。");
 		}
-		if (scene->HasAnimations())
+		if (scene->HasAnimations() && std::none_of(scene->mMeshes, scene->mMeshes + scene->mNumMeshes,
+			[](const aiMesh* mesh) { return mesh->HasBones(); }))
 		{
-			throw std::invalid_argument("モデルのAnimationは静的Sceneへ保存できません。静的モデルとして出力してください。");
+			throw std::invalid_argument("骨格を持たないモデルのノードAnimationは未対応です。");
 		}
 		ImportedModel result;
 		if (scene->HasLights() || scene->HasCameras())
@@ -473,9 +475,9 @@ namespace KT::Content
 		for (unsigned meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex)
 		{
 			const auto& mesh = *scene->mMeshes[meshIndex];
-			if (mesh.HasBones() || mesh.mNumAnimMeshes)
+			if (mesh.mNumAnimMeshes)
 			{
-				throw std::invalid_argument("モデルのSkinning/Morphは静的Meshへ保存できません。");
+				throw std::invalid_argument("モデルのMorphは未対応です。");
 			}
 			if (mesh.mNumVertices == 0 || mesh.mNumVertices > (std::numeric_limits<std::uint32_t>::max)() / 48 ||
 				mesh.mNumFaces > (std::numeric_limits<std::uint32_t>::max)() / 12 || mesh.mMaterialIndex >= materialIds.size())
@@ -523,8 +525,14 @@ namespace KT::Content
 			{
 				throw std::invalid_argument("Texture付きモデルMeshにUV0がありません。");
 			}
+			auto skin = ImportSkin(*scene, meshIndex, options.scale);
+			if (skin.reducedWeights)
+			{
+				result.diagnostics.push_back("Skinの頂点影響をWeight上位4件へ削減・正規化しました: " + std::string(mesh.mName.C_Str()));
+			}
 			meshes.push_back(
-				MeshGeometry::Generate(MeshAsset(std::move(positions), std::move(indices), std::move(texcoords), std::move(normals)),
+				MeshGeometry::Generate(MeshAsset(std::move(positions), std::move(indices), std::move(texcoords), std::move(normals),
+					{}, {}, {}, skin.definition, std::move(skin.influences)),
 					options.normals, options.generateTangents));
 			if (mesh.HasVertexColors(0) || mesh.HasTextureCoords(1))
 			{
@@ -595,12 +603,52 @@ namespace KT::Content
 						std::vector<std::array<float, 4>> tangents;
 						std::vector<std::uint32_t> indices;
 						std::vector<MeshSubmesh> submeshes;
+						std::shared_ptr<SkinDefinition> skin;
+						std::vector<SkinInfluence> influences;
 						std::map<std::string, std::optional<MaterialAssetId>> assignments;
 						const bool hasUv = !meshes.at(group.front()).Texcoords().empty();
 						const bool hasTangents = !meshes.at(group.front()).Tangents().empty();
 						for (const auto meshIndex : group)
 						{
 							const auto& mesh = meshes.at(meshIndex);
+							if (mesh.Skin())
+							{
+								if (!skin)
+								{
+									skin = std::make_shared<SkinDefinition>(*mesh.Skin());
+									skin->bindings.clear();
+								}
+								// Materialで分かれた同じboneは一つにまとめ、palette容量を消費しない。
+								std::vector<std::uint32_t> bindingMap;
+								for (const auto& binding : mesh.Skin()->bindings)
+								{
+									const auto found = std::find_if(skin->bindings.begin(), skin->bindings.end(), [&](const auto& existing)
+									{
+										return existing.joint == binding.joint && existing.inverseBind.elements == binding.inverseBind.elements;
+									});
+									if (found == skin->bindings.end())
+									{
+										if (skin->bindings.size() >= SkinDefinition::MaxJoints)
+										{
+											throw std::invalid_argument("結合したSkin Meshのbinding数が256を超えています。");
+										}
+										bindingMap.push_back(static_cast<std::uint32_t>(skin->bindings.size()));
+										skin->bindings.push_back(binding);
+									}
+									else
+									{
+										bindingMap.push_back(static_cast<std::uint32_t>(found - skin->bindings.begin()));
+									}
+								}
+								for (auto influence : mesh.Influences())
+								{
+									for (auto& joint : influence.joints)
+									{
+										joint = bindingMap.at(joint);
+									}
+									influences.push_back(influence);
+								}
+							}
 							if (hasUv != !mesh.Texcoords().empty() || hasTangents != !mesh.Tangents().empty())
 							{
 								throw std::invalid_argument("同じノードの複数MeshにはUV0/接線の有無を揃えてください。");
@@ -632,7 +680,7 @@ namespace KT::Content
 						result.materials.push_back(std::move(assignments));
 						// 最終Submeshの結合後に一度だけ最適化し、素材keyとslotを保持する。
 						const MeshAsset combined(std::move(positions), std::move(indices), std::move(texcoords), std::move(normals),
-							std::move(tangents), std::move(submeshes));
+							std::move(tangents), std::move(submeshes), {}, skin, std::move(influences));
 						auto optimized = MeshOptimizer::Optimize(combined, options.optimization);
 						result.assets.push_back({id.Value(), target.name, std::move(optimized.mesh)});
 						result.assetKeys.push_back(key);
@@ -640,7 +688,11 @@ namespace KT::Content
 				};
 				const bool hasUv = !meshes.at(group.front()).Texcoords().empty();
 				const bool uniform =
-					std::all_of(group.begin(), group.end(), [&](unsigned index) { return hasUv == !meshes.at(index).Texcoords().empty(); });
+					std::all_of(group.begin(), group.end(), [&](unsigned index)
+					{
+						return hasUv == !meshes.at(index).Texcoords().empty() &&
+							bool(meshes.at(group.front()).Skin()) == bool(meshes.at(index).Skin());
+					});
 				if (uniform)
 				{
 					assignMesh(group, node);

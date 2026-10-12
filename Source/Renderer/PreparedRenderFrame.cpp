@@ -12,9 +12,11 @@
 #include <Graphics/Commands/IndexedDrawPacket.h>
 #include <Core/Math/Matrix4.h>
 #include <array>
+#include <algorithm>
 #include <cstddef>
 #include <span>
 #include <stdexcept>
+#include <map>
 
 namespace KT::Renderer
 {
@@ -45,15 +47,44 @@ namespace KT::Renderer
 			}
 			const auto& submesh = draw.mesh->Submesh(object.submesh);
 			draw.range = {submesh.firstIndex, submesh.indexCount};
+			const auto skinCount = draw.mesh->SkinBindingCount();
+			if ((skinCount != 0) != bool(object.palette) || (object.palette && object.palette->size() != skinCount))
+			{
+				throw std::invalid_argument("描画Meshと個体別Skin paletteの要素数が一致しません。");
+			}
+			(void)draw.material->GetPipeline(skinCount != 0);
+			if (object.palette)
+			{
+				for (const auto& matrix : *object.palette)
+				{
+					if (!KT::Core::Math::IsAffine(matrix))
+					{
+						throw std::invalid_argument("Skin paletteには有限Affine行列が必要です。");
+					}
+				}
+			}
 		}
 		const ViewConstants vc{view.viewProjection};
 		result.viewConstants_ = constants.Write(std::as_bytes(std::span{&vc, 1}));
+		// 同じ個体のSubmesh間で一つの定数sliceを共有する。
+		std::map<const void*, KT::Graphics::ConstantSlice> palettes;
 		for (std::size_t i = 0; i < result.draws_.size(); ++i)
 		{
 			const ObjectConstants oc{world.objects[i].world};
 			const auto& mc = result.draws_[i].material->GetConstants();
 			result.draws_[i].objectConstants = constants.Write(std::as_bytes(std::span{&oc, 1}));
 			result.draws_[i].materialConstants = constants.Write(std::as_bytes(std::span{&mc, 1}));
+			if (const auto& palette = world.objects[i].palette)
+			{
+				auto found = palettes.find(palette.get());
+				if (found == palettes.end())
+				{
+					std::array<KT::Core::Math::Matrix4, KT::Content::SkinDefinition::MaxJoints> matrices;
+					std::copy(palette->begin(), palette->end(), matrices.begin());
+					found = palettes.emplace(palette.get(), constants.Write(std::as_bytes(std::span(matrices)))).first;
+				}
+				result.draws_[i].skinConstants = found->second;
+			}
 		}
 		return result;
 	}
@@ -69,9 +100,14 @@ namespace KT::Renderer
 			{
 				throw std::invalid_argument("準備済み描画の寸法が描画先と一致しません。");
 			}
-			const std::array<KT::Graphics::RootConstantBinding, 3> bindings{
-				{{0, viewConstants_}, {1, draw.objectConstants}, {2, draw.materialConstants}}};
-			const KT::Graphics::IndexedDrawPacket packet{&draw.material->GetPipeline().GetPipeline(), &draw.mesh->GetVertices(),
+			std::vector<KT::Graphics::RootConstantBinding> bindings{
+				{0, viewConstants_}, {1, draw.objectConstants}, {2, draw.materialConstants}};
+			const bool skinned = draw.mesh->SkinBindingCount() != 0;
+			if (skinned)
+			{
+				bindings.push_back({draw.material->GetTexture() ? 5u : 3u, draw.skinConstants});
+			}
+			const KT::Graphics::IndexedDrawPacket packet{&draw.material->GetPipeline(skinned).GetPipeline(), &draw.mesh->GetVertices(),
 				&draw.mesh->GetIndices(), bindings, width_, height_, draw.material->GetTexture(), draw.material->GetSampler(), 3, 4,
 				draw.range};
 			context.DrawIndexed(packet, target, KT::Graphics::DepthTargetView(depth), constants);

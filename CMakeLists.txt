@@ -98,6 +98,7 @@ kt_forge_meshoptimizer()
 
 # 製品ターゲットは1つとし、各モジュールのディレクトリではソースを明示的に登録する。
 add_executable(KT_Forge)
+include(cmake/OzzAnimation.cmake)
 include(cmake/JoltPhysics.cmake)
 include(cmake/ShaderBuild.cmake)
 add_subdirectory(Source)

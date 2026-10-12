@@ -36,7 +36,7 @@ namespace KT::Content
 		}
 
 		// 属性のbyte列を完全一致で比較し、UV継ぎ目・硬い法線・接線符号を残す。
-		std::array<meshopt_Stream, 4> streams{};
+		std::array<meshopt_Stream, 5> streams{};
 		std::size_t streamCount = 0;
 		streams[streamCount++] = {source.Positions().data(), 12, sizeof(KT::Core::Math::Vector3)};
 		if (!source.Texcoords().empty())
@@ -52,6 +52,12 @@ namespace KT::Content
 			streams[streamCount++] = {source.Tangents().data(), 16, sizeof(std::array<float, 4>)};
 		}
 		std::vector<unsigned int> remap(source.Positions().size());
+		if (source.Skin())
+		{
+			// 位置とUVが同じでも、異なる骨・Weightを持つ頂点は統合しない。
+			static_assert(sizeof(SkinInfluence) == 32);
+			streams[streamCount++] = {source.Influences().data(), sizeof(SkinInfluence), sizeof(SkinInfluence)};
+		}
 		const auto uniqueCount = meshopt_generateVertexRemapMulti(
 			remap.data(), source.Indices().data(), source.Indices().size(), source.Positions().size(), streams.data(), streamCount);
 		std::vector<std::uint32_t> indices(source.Indices().size());
@@ -60,6 +66,7 @@ namespace KT::Content
 		auto texcoords = Remap(source.Texcoords(), remap, uniqueCount);
 		auto normals = Remap(source.Normals(), remap, uniqueCount);
 		auto tangents = Remap(source.Tangents(), remap, uniqueCount);
+		auto influences = Remap(source.Influences(), remap, uniqueCount);
 		std::vector<MeshSubmesh> submeshes(source.Submeshes().begin(), source.Submeshes().end());
 		// Overdrawのfloat積・差のoverflowを避ける。比較用座標だけを一様に正規化する。
 		std::vector<KT::Core::Math::Vector3> overdrawPositions;
@@ -98,11 +105,12 @@ namespace KT::Content
 		texcoords = Remap<KT::Core::Math::Vector2>(texcoords, remap, fetchedCount);
 		normals = Remap<KT::Core::Math::Vector3>(normals, remap, fetchedCount);
 		tangents = Remap<std::array<float, 4>>(tangents, remap, fetchedCount);
+		influences = Remap<SkinInfluence>(influences, remap, fetchedCount);
 
 		// 新しいMeshの検証と境界計算が成功した結果だけを返す。
 		statistics.outputVertexCount = fetchedCount;
 		return {MeshAsset(std::move(positions), std::move(indices), std::move(texcoords), std::move(normals), std::move(tangents),
-					std::move(submeshes), source.ImportRecipe()),
+					std::move(submeshes), source.ImportRecipe(), source.Skin(), std::move(influences)),
 			statistics};
 	}
 }

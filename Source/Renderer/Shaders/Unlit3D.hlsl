@@ -18,6 +18,12 @@ cbuffer MaterialConstants : register(b2)
 Texture2D<float4> baseColorTexture : register(t0);
 SamplerState baseColorSampler : register(s0);
 
+// 1slotの定数arenaに置く個体別palette。CPUと同じrow-major配置。
+cbuffer SkinConstants : register(b3)
+{
+    row_major float4x4 skinMatrices[256];
+};
+
 struct VertexOutput
 {
     float4 position : SV_Position;
@@ -27,6 +33,20 @@ VertexOutput VSMain(float3 position : POSITION, float2 uv : TEXCOORD0)
 {
     VertexOutput output;
     output.position = mul(mul(float4(position, 1), world), viewProjection);
+    output.uv = uv;
+    return output;
+}
+
+VertexOutput SkinnedVSMain(float3 position : POSITION, float2 uv : TEXCOORD0,
+    uint4 joints : BLENDINDICES0, float4 weights : BLENDWEIGHT0)
+{
+    float4 local = float4(position, 1);
+    float4 posed = mul(local, skinMatrices[joints.x]) * weights.x;
+    posed += mul(local, skinMatrices[joints.y]) * weights.y;
+    posed += mul(local, skinMatrices[joints.z]) * weights.z;
+    posed += mul(local, skinMatrices[joints.w]) * weights.w;
+    VertexOutput output;
+    output.position = mul(mul(posed, world), viewProjection);
     output.uv = uv;
     return output;
 }

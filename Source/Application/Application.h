@@ -118,7 +118,7 @@ namespace KT::Application
 		KT::Physics::PhysicsRuntime physicsRuntime_;
 		// Sceneを入力・Graphics基盤より先に破棄し、Script側の借用先を保持する。
 		KT::World::SceneHost sceneHost_;
-		// 完成SceneからCameraに依存しない静的Mesh候補を保持する。
+		// 完成SceneからCameraに依存しないMesh候補と個体別Skin paletteを保持する。
 		KT::RuntimeIntegration::SceneUpdater sceneUpdater_;
 		std::optional<KT::World::ObjectUuid> renderCamera_;
 		PresentationStatistics presentation_;

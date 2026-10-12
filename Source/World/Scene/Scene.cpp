@@ -240,6 +240,15 @@ namespace KT::World
 			gamePhase_ = false;
 			gameInput_ = nullptr;
 			scriptScratch_.clear();
+			// 開始時に有効だった個体の再生時計を進め、Sceneのtransactionへ含める。
+			world_.ForEachCandidate<Animator>([&](Entity entity)
+			{
+				if (transforms[hierarchy.FindNode(entity)].active.value)
+				{
+					world_.BackupComponent<Animator>(entity);
+					world_.GetEditableComponent<Animator>(entity).Advance(deltaSeconds);
+				}
+			});
 			if (physics_)
 			{
 				WritePhysics(physics_->Simulate(world_));

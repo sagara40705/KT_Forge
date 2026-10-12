@@ -2,6 +2,7 @@
 #include <World/Scene/SceneComponents.h>
 #include <World/Scene/ModelInstance.h>
 #include <World/Physics/PhysicsSerialization.h>
+#include <World/Animation/AnimatorSerialization.h>
 #include <numbers>
 
 namespace KT::World
@@ -25,6 +26,7 @@ namespace KT::World
 	void RegisterEngineComponents(ComponentRegistry& registry)
 	{
 		RegisterPhysicsComponents(registry);
+		RegisterAnimatorComponent(registry);
 		registry.Register<ActiveSelf>(
 			"kt.ActiveSelf", 1, [](const ActiveSelf& input) -> SceneValue { return SceneValue::Object{{"value", input.value}}; },
 			[](const SceneValue& data, const SceneReadContext&) -> ActiveSelf

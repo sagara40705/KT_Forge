@@ -2,6 +2,8 @@
 #include <Core/Math/AABB.h>
 #include <Core/Math/Vector2.h>
 #include <Content/MeshOptimization.h>
+#include <Content/Animation/SkinDefinition.h>
+#include <memory>
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -49,7 +51,8 @@ namespace KT::Content
 		MeshAsset(std::vector<KT::Core::Math::Vector3> positions, std::vector<std::uint32_t> indices,
 			std::vector<KT::Core::Math::Vector2> texcoords = {}, std::vector<KT::Core::Math::Vector3> normals = {},
 			std::vector<std::array<float, 4>> tangents = {}, std::vector<MeshSubmesh> submeshes = {},
-			std::optional<MeshImportRecipe> recipe = {});
+			std::optional<MeshImportRecipe> recipe = {}, std::shared_ptr<const SkinDefinition> skin = {},
+			std::vector<SkinInfluence> influences = {});
 		MeshAsset(const MeshAsset&) = default;
 		MeshAsset(MeshAsset&&) noexcept = default;
 		// 確保失敗時は既存属性・範囲・派生境界をまとめて保持する。
@@ -91,6 +94,17 @@ namespace KT::Content
 
 		[[nodiscard]] const KT::Core::Math::AABB& LocalBounds() const noexcept;
 
+		// 静的Meshは空。骨格・Clipは共有し、頂点対応はこのMeshが所有する。
+		[[nodiscard]] const std::shared_ptr<const SkinDefinition>& Skin() const noexcept
+		{
+			return skin_;
+		}
+
+		[[nodiscard]] std::span<const SkinInfluence> Influences() const noexcept
+		{
+			return influences_;
+		}
+
 	private:
 		std::vector<KT::Core::Math::Vector3> positions_;
 		std::vector<std::uint32_t> indices_;
@@ -102,5 +116,7 @@ namespace KT::Content
 		// 参照Indexから計算する派生値。入力JSONには保存しない。
 		KT::Core::Math::AABB localBounds_;
 		std::vector<KT::Core::Math::AABB> submeshBounds_;
+		std::shared_ptr<const SkinDefinition> skin_;
+		std::vector<SkinInfluence> influences_;
 	};
 }

@@ -11,7 +11,7 @@
 
 namespace KT::Renderer
 {
-	// 静的MeshのGPU実体・深度・同期1slotを所有する。WorldとEntityには依存しない。
+	// 静的/Skin MeshのGPU実体・深度・同期1slotを所有する。WorldとEntityには依存しない。
 	// Device/Queue/固定Catalogはこの所有者より長く保持する。
 	class StaticSceneRenderer : private KT::Core::NonCopyable
 	{

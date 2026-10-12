@@ -73,12 +73,14 @@ namespace KT::Content
 		std::vector<std::uint32_t> indices(source.Indices().begin(), source.Indices().end());
 		std::vector<KT::Core::Math::Vector3> normals;
 		std::vector<MeshSubmesh> submeshes(source.Submeshes().begin(), source.Submeshes().end());
+		std::vector<SkinInfluence> influences(source.Influences().begin(), source.Influences().end());
 
 		// Flatは面ごとに頂点を分離し、既存のSubmesh範囲を保つ。
 		if (mode == MeshNormalMode::Flat)
 		{
 			positions.clear();
 			texcoords.clear();
+			influences.clear();
 			for (std::size_t first = 0; first < indices.size(); first += 3)
 			{
 				const auto direction = Unit(Cross(Wide(source.Positions()[indices[first + 1]]) - Wide(source.Positions()[indices[first]]),
@@ -92,6 +94,10 @@ namespace KT::Content
 					const auto original = indices[first + corner];
 					indices[first + corner] = static_cast<std::uint32_t>(positions.size());
 					positions.push_back(source.Positions()[original]);
+					if (source.Skin())
+					{
+						influences.push_back(source.Influences()[original]);
+					}
 					normals.push_back(Narrow(direction));
 					if (!source.Texcoords().empty())
 					{
@@ -134,6 +140,7 @@ namespace KT::Content
 			std::map<std::pair<std::uint32_t, int>, std::uint32_t> vertices;
 			std::vector<KT::Core::Math::Vector3> splitPositions, splitNormals;
 			std::vector<KT::Core::Math::Vector2> splitTexcoords;
+			std::vector<SkinInfluence> splitInfluences;
 			std::vector<Direction> tangentSums, bitangentSums;
 			for (std::size_t first = 0; first < indices.size(); first += 3)
 			{
@@ -172,6 +179,10 @@ namespace KT::Content
 						splitPositions.push_back(positions[original]);
 						splitNormals.push_back(normals[original]);
 						splitTexcoords.push_back(texcoords[original]);
+						if (source.Skin())
+						{
+							splitInfluences.push_back(influences[original]);
+						}
 						tangentSums.push_back({});
 						bitangentSums.push_back({});
 					}
@@ -191,6 +202,7 @@ namespace KT::Content
 			positions.swap(splitPositions);
 			normals.swap(splitNormals);
 			texcoords.swap(splitTexcoords);
+			influences.swap(splitInfluences);
 		}
 		auto recipe = source.ImportRecipe();
 		if (recipe)
@@ -202,6 +214,6 @@ namespace KT::Content
 			recipe->generateTangents = generateTangents;
 		}
 		return MeshAsset(std::move(positions), std::move(indices), std::move(texcoords), std::move(normals), std::move(tangents),
-			std::move(submeshes), std::move(recipe));
+			std::move(submeshes), std::move(recipe), source.Skin(), std::move(influences));
 	}
 }

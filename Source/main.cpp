@@ -1,6 +1,8 @@
 #include <Core/Log.h>
 #include <Application/Application.h>
 #include <Application/PhysicsDemo.h>
+#include <Application/AnimationDemo.h>
+#include <World/Animation/Animator.h>
 #include <Content/ObjMeshImporter.h>
 #include <RuntimeIntegration/ModelImport.h>
 #include <RuntimeIntegration/ModelPlacement.h>
@@ -28,7 +30,7 @@ int wmain(int argc, wchar_t* argv[])
 	try
 	{
 		const std::wstring_view command = argc > 1 ? argv[1] : L"";
-		if (command == L"--physics-demo")
+		if (command == L"--physics-demo" || command == L"--animation-demo")
 		{
 			// 終了tickを指定すると、同じ製品の描画経路を有限回だけ実行できる。
 			unsigned tickLimit = 0;
@@ -36,35 +38,47 @@ int wmain(int argc, wchar_t* argv[])
 			{
 				if (argc != 4 || std::wstring_view(argv[2]) != L"--ticks")
 				{
-					throw std::invalid_argument("物理例の使用法: --physics-demo [--ticks 1..6000]");
+					throw std::invalid_argument("描画例の使用法: --physics-demo/--animation-demo [--ticks 1..6000]");
 				}
 				unsigned count = 0;
 				for (const auto character : std::wstring_view(argv[3]))
 				{
 					if (character < L'0' || character > L'9' || count > 600)
 					{
-						throw std::invalid_argument("物理例の終了tickは1..6000の整数で指定してください。");
+						throw std::invalid_argument("描画例の終了tickは1..6000の整数で指定してください。");
 					}
 					count = count * 10 + static_cast<unsigned>(character - L'0');
 				}
 				if (count < 1 || count > 6000)
 				{
-					throw std::invalid_argument("物理例の終了tickは1..6000の整数で指定してください。");
+					throw std::invalid_argument("描画例の終了tickは1..6000の整数で指定してください。");
 				}
 				tickLimit = count;
 			}
-			KT::Application::Application app(1280, 720, "KT_Forge - Jolt Physics", {}, {}, KT::Application::CreatePhysicsDemoScene);
+			const bool animationDemo = command == L"--animation-demo";
+			KT::Application::Application app(1280, 720, "KT_Forge - Demo",
+				animationDemo ? KT::Application::Application::AssetSetup(KT::Application::RegisterAnimationDemoAssets) :
+					KT::Application::Application::AssetSetup{}, {},
+				animationDemo ? KT::Application::CreateAnimationDemoScene : KT::Application::CreatePhysicsDemoScene);
 			unsigned ticks = 0;
 			app.Run(
-				[&](auto&, const auto&, const auto&, double)
+				[&](auto& scene, const auto&, const auto&, double)
 				{
 					++ticks;
+					// ゲーム更新から個体の再生値を編集し、二Clipを遷移する例。
+					if (animationDemo && (ticks == 120 || ticks == 240))
+					{
+						scene.template ForEachActive<KT::World::Animator>([&](auto, auto& animator)
+						{
+							animator.CrossFade(ticks == 120 ? "Idle" : "Sway", 0.5);
+						});
+					}
 					if (tickLimit != 0 && ticks >= tickLimit)
 					{
 						app.RequestStop();
 					}
 				});
-			KT_LOG_INFO("物理例を終了しました。tick=" + std::to_string(app.CompletedSimulationTicks()) +
+			KT_LOG_INFO("描画例を終了しました。tick=" + std::to_string(app.CompletedSimulationTicks()) +
 				" / Present=" + std::to_string(app.GetPresentationStatistics().frames));
 			return 0;
 		}

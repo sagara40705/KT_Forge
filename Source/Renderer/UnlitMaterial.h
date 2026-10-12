@@ -1,6 +1,7 @@
 #pragma once
 #include <Renderer/UnlitPipeline.h>
 #include <array>
+#include <stdexcept>
 #include <Content/MaterialAsset.h>
 #include <Renderer/RenderConstants.h>
 #include <Graphics/Textures/SampledTexture.h>
@@ -14,7 +15,8 @@ namespace KT::Renderer
 	public:
 		UnlitMaterial(const UnlitPipeline& pipeline, std::array<float, 4> color);
 		UnlitMaterial(const UnlitPipeline& pipeline, const KT::Content::MaterialAsset& material,
-			const KT::Graphics::SampledTexture* texture, const KT::Graphics::Sampler* sampler);
+			const KT::Graphics::SampledTexture* texture, const KT::Graphics::Sampler* sampler,
+			const UnlitPipeline* skinnedPipeline = nullptr);
 
 		[[nodiscard]] const MaterialConstants& GetConstants() const noexcept
 		{
@@ -36,13 +38,23 @@ namespace KT::Renderer
 			return constants_.color;
 		}
 
-		const UnlitPipeline& GetPipeline() const noexcept
+		const UnlitPipeline& GetPipeline(bool skinned = false) const
 		{
+			if (skinned)
+			{
+				if (!skinnedPipeline_)
+				{
+					throw std::logic_error("MaterialにSkin用Pipelineが登録されていません。");
+				}
+				return *skinnedPipeline_;
+			}
 			return pipeline_;
 		}
 
 	private:
 		const UnlitPipeline& pipeline_;
+		// 同じMaterial設定をSkin頂点へ適用する共有Pipelineを借用する。
+		const UnlitPipeline* skinnedPipeline_ = nullptr;
 		MaterialConstants constants_;
 		// Rendererのcacheから借用する。GPU完了までcacheが所有する。
 		const KT::Graphics::SampledTexture* texture_ = nullptr;

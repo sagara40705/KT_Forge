@@ -27,6 +27,8 @@ namespace KT::Renderer
 		const UnlitMaterial* material = nullptr;
 		KT::Graphics::ConstantSlice objectConstants, materialConstants;
 		KT::Graphics::IndexedDrawRange range;
+		// Skin Meshだけで使う個体別CBV。判定はMeshのbinding数で行う。
+		KT::Graphics::ConstantSlice skinConstants;
 	};
 
 	// CPU RenderWorld/Viewの値snapshotをID解決し、現在frameのGPU定数を用意する。

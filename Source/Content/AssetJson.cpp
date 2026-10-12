@@ -1,6 +1,7 @@
 #include <Content/AssetJson.h>
 #include <Content/ModelRevision.h>
 #include <Content/MeshOptimizationJson.h>
+#include <Content/Animation/SkinJson.h>
 #include <nlohmann/json.hpp>
 #include <cmath>
 #include <limits>
@@ -114,12 +115,13 @@ namespace KT::Content
 				});
 			RequireFields(root, {"version", "assetId", "name", "type", "data"});
 			if (!root.at("version").is_number_integer() ||
-				(root.at("version") != 1 && root.at("version") != 2 && root.at("version") != 3 && root.at("version") != 4))
+				(root.at("version") != 1 && root.at("version") != 2 && root.at("version") != 3 && root.at("version") != 4 && root.at("version") != 5))
 			{
-				throw std::invalid_argument("素材JSONのversionは1..4に対応しています。");
+				throw std::invalid_argument("素材JSONのversionは1..5に対応しています。");
 			}
 			const bool meshOptimized = root.at("version") == 4;
-			const bool meshExtended = root.at("version") == 3 || meshOptimized;
+			const bool skinned = root.at("version") == 5;
+			const bool meshExtended = root.at("version") == 3 || meshOptimized || skinned;
 			const bool extended = root.at("version") != 1;
 			const auto id = AssetId::Parse(root.at("assetId").get<std::string>());
 			const auto name = root.at("name").get<std::string>();
@@ -190,7 +192,11 @@ namespace KT::Content
 			}
 			if (type == "kt.Mesh")
 			{
-				if (meshExtended)
+				if (skinned)
+				{
+					RequireFields(data, {"positions", "indices", "texcoords", "normals", "tangents", "submeshes", "import", "skin"});
+				}
+				else if (meshExtended)
 				{
 					RequireFields(data, {"positions", "indices", "texcoords", "normals", "tangents", "submeshes", "import"});
 				}
@@ -285,7 +291,7 @@ namespace KT::Content
 					if (!data.at("import").is_null())
 					{
 						const auto& value = data.at("import");
-						if (meshOptimized)
+						if (meshOptimized || (skinned && value.contains("optimization")))
 						{
 							RequireFields(value,
 								{"source", "importerVersion", "scale", "flipZ", "flipV", "normals", "generateTangents", "optimization"});
@@ -306,7 +312,7 @@ namespace KT::Content
 						recipe = MeshImportRecipe{value.at("source").get<std::string>(), ReadUint(value.at("importerVersion")),
 							ReadFloat(value.at("scale")), value.at("flipZ").get<bool>(), value.at("flipV").get<bool>(), mode,
 							value.at("generateTangents").get<bool>()};
-						if (meshOptimized)
+						if (meshOptimized || (skinned && value.contains("optimization")))
 						{
 							recipe->optimization = MeshOptimizationJson::Decode(value.at("optimization"));
 						}
@@ -316,9 +322,11 @@ namespace KT::Content
 						throw std::invalid_argument("Mesh JSON version 4には最適化記録付きOBJ取込recipeが必要です。");
 					}
 				}
+				std::vector<SkinInfluence> influences;
+				const auto skin = skinned ? DecodeSkin(data.at("skin"), influences) : nullptr;
 				return {id, name,
 					MeshAsset(std::move(positions), std::move(indices), std::move(texcoords), std::move(normals), std::move(tangents),
-						std::move(submeshes), std::move(recipe))};
+						std::move(submeshes), std::move(recipe), skin, std::move(influences))};
 			}
 			if (meshExtended)
 			{
@@ -411,7 +419,7 @@ namespace KT::Content
 					}
 				}
 				const auto ranges = mesh->Submeshes();
-				if (!mesh->Normals().empty() || !mesh->Tangents().empty() || mesh->ImportRecipe() || ranges.size() != 1 ||
+				if (mesh->Skin() || !mesh->Normals().empty() || !mesh->Tangents().empty() || mesh->ImportRecipe() || ranges.size() != 1 ||
 					ranges[0].materialSlot != "default")
 				{
 					root["version"] = 3;
@@ -453,6 +461,11 @@ namespace KT::Content
 							root["data"]["import"]["optimization"] = MeshOptimizationJson::Encode(*recipe.optimization);
 						}
 					}
+				}
+				if (mesh->Skin())
+				{
+					root["version"] = 5;
+					root["data"]["skin"] = EncodeSkin(*mesh->Skin(), mesh->Influences());
 				}
 			}
 			else if (const auto* value = std::get_if<MaterialAsset>(&document.data))

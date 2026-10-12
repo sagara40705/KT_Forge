@@ -2,6 +2,7 @@
 #include <Core/Math/Matrix4.h>
 #include <cstdint>
 #include <vector>
+#include <memory>
 
 namespace KT::Renderer
 {
@@ -11,6 +12,8 @@ namespace KT::Renderer
 		std::uint64_t meshId = 0, materialId = 0;
 		KT::Core::Math::Matrix4 world{};
 		std::uint32_t submesh = 0;
+		// RuntimeIntegrationが完成させた個体別palette。静的Meshは空。
+		std::shared_ptr<const std::vector<KT::Core::Math::Matrix4>> palette;
 	};
 
 	struct RenderWorld

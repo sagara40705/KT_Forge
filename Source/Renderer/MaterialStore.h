@@ -14,7 +14,9 @@ namespace KT::Renderer
 			DXGI_FORMAT depth = DXGI_FORMAT_D32_FLOAT)
 			: device_(device),
 			  pipeline_(device, target, depth),
-			  texturedPipeline_(device, target, depth, true)
+			  texturedPipeline_(device, target, depth, true),
+			  skinnedPipeline_(device, target, depth, false, true),
+			  texturedSkinnedPipeline_(device, target, depth, true, true)
 		{
 		}
 
@@ -26,6 +28,8 @@ namespace KT::Renderer
 	private:
 		KT::Graphics::GraphicsDevice& device_;
 		UnlitPipeline pipeline_, texturedPipeline_;
+		// 静的Materialと設定を共有する、単色とTextureのSkin描画経路。
+		UnlitPipeline skinnedPipeline_, texturedSkinnedPipeline_;
 		// Point/LinearとUV各軸のWrap/Clampの8通りを必要時だけ生成する。
 		std::array<std::unique_ptr<KT::Graphics::Sampler>, 8> samplers_{};
 		std::unordered_map<std::uint64_t, std::unique_ptr<UnlitMaterial>> materials_;

@@ -83,17 +83,50 @@ namespace KT::Renderer
 	}
 
 	Mesh::Mesh(KT::Graphics::GraphicsDevice& device, const KT::Content::MeshAsset& source)
-		: Mesh(device, Pack(source), PackIndices(source))
+		: Mesh(device, PackVertices(source), PackIndices(source))
 	{
 		submeshes_.assign(source.Submeshes().begin(), source.Submeshes().end());
 		hasNormals_ = !source.Normals().empty();
 		hasTangents_ = !source.Tangents().empty();
 		hasTexcoords_ = !source.Texcoords().empty();
+		skinBindingCount_ = source.Skin() ? source.Skin()->bindings.size() : 0;
 	}
 
-	Mesh::Mesh(KT::Graphics::GraphicsDevice& device, std::span<const MeshVertex> vertices, const PackedIndices& indices)
-		: Mesh(device, vertices, indices.bytes, indices.format, KT::Graphics::BufferStorage::Default)
+	Mesh::Mesh(KT::Graphics::GraphicsDevice& device, const PackedVertices& vertices, const PackedIndices& indices)
+		: vertices_(device, vertices.bytes, vertices.stride, KT::Graphics::BufferStorage::Default),
+		  indices_(device, indices.bytes, indices.format, KT::Graphics::BufferStorage::Default)
 	{
+		if (indices_.GetMaximumIndex() >= vertices_.GetCount() || indices_.GetCount() % 3 != 0)
+		{
+			throw std::invalid_argument("MeshのIndex範囲または三角形のIndex数が不正です。");
+		}
+		submeshes_.push_back({0, indices_.GetCount(), "default"});
+	}
+
+	Mesh::PackedVertices Mesh::PackVertices(const KT::Content::MeshAsset& source)
+	{
+		const auto vertices = Pack(source);
+		PackedVertices result;
+		if (!source.Skin())
+		{
+			const auto bytes = std::as_bytes(std::span(vertices));
+			result.bytes.assign(bytes.begin(), bytes.end());
+			return result;
+		}
+
+		// byte数を縮小する前に検査し、変換済み属性と同じ順で重みを追加する。
+		if (vertices.size() > (std::numeric_limits<UINT>::max)() / sizeof(SkinnedMeshVertex))
+		{
+			throw std::overflow_error("Skin Meshの頂点byte数がUINT範囲を超えています。");
+		}
+		result.stride = sizeof(SkinnedMeshVertex);
+		result.bytes.resize(vertices.size() * sizeof(SkinnedMeshVertex));
+		for (std::size_t index = 0; index < vertices.size(); ++index)
+		{
+			const SkinnedMeshVertex vertex{vertices[index], source.Influences()[index]};
+			std::memcpy(result.bytes.data() + index * sizeof(vertex), &vertex, sizeof(vertex));
+		}
+		return result;
 	}
 
 	Mesh::PackedIndices Mesh::PackIndices(const KT::Content::MeshAsset& source)

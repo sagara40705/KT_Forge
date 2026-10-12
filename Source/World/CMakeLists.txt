@@ -1,4 +1,8 @@
 target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Animation/Animator.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Animation/Animator.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Animation/AnimatorSerialization.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Animation/AnimatorSerialization.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Physics/PhysicsComponents.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Physics/PhysicsSerialization.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Physics/PhysicsSerialization.cpp"

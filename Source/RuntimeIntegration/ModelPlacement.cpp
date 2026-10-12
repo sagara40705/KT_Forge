@@ -82,6 +82,20 @@ namespace KT::RuntimeIntegration
 		ModelPlacementResult result{KT::World::ObjectUuid::Generate(), {}};
 		KT::World::SceneObjectDefinition root{result.root, std::move(options.name), options.parent,
 			{TransformDefinition(options.transform.position, options.transform.rotation, options.transform.scale)}};
+		// 個体rootの再生値を子のSkin Meshへ継承する。素材と時刻を個体間で共有しない。
+		for (const auto& node : model.asset->Nodes())
+		{
+			if (node.mesh)
+			{
+				const auto mesh = catalog.Resolve(node.mesh);
+				if (mesh.asset && mesh.asset->Skin() && !mesh.asset->Skin()->clips.empty())
+				{
+					root.components.push_back({"kt.Animator", 1, KT::World::SceneValue::Object{
+						{"clip", mesh.asset->Skin()->clips.front().name}, {"speed", 1.0}, {"loop", true}, {"playing", true}, {"enabled", true}}});
+					break;
+				}
+			}
+		}
 		auto candidate = scene;
 		candidate.objects.reserve(candidate.objects.size() + instance.objects.size() + 1);
 		candidate.objects.push_back(std::move(root));

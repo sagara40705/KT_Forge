@@ -49,11 +49,16 @@ namespace KT::Renderer
 						throw std::invalid_argument("PreparedDrawのmeshまたはmaterialがnullptrです");
 					}
 					// 描画のためのbindingを作成する
-					const std::array<KT::Graphics::RootConstantBinding, 3> bindings{
-						{{0, snapshot.GetViewConstants()}, {1, draw.objectConstants}, {2, draw.materialConstants}}};
+					std::vector<KT::Graphics::RootConstantBinding> bindings{
+						{0, snapshot.GetViewConstants()}, {1, draw.objectConstants}, {2, draw.materialConstants}};
+					const bool skinned = draw.mesh->SkinBindingCount() != 0;
+					if (skinned)
+					{
+						bindings.push_back({draw.material->GetTexture() ? 5u : 3u, draw.skinConstants});
+					}
 					// IndexedDrawPacketを作成して、context.DrawIndexedに渡す
 					KT::Graphics::IndexedDrawPacket packet{};
-					packet.pipeline = &draw.material->GetPipeline().GetPipeline();
+					packet.pipeline = &draw.material->GetPipeline(skinned).GetPipeline();
 					packet.vertices = &draw.mesh->GetVertices();
 					packet.indices = &draw.mesh->GetIndices();
 					packet.bindings = bindings;

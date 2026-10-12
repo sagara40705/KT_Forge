@@ -48,7 +48,7 @@ namespace KT::Content
 		[[nodiscard]] const AssetDocument& ModelDocument() const;
 	};
 
-	// 外部モデルを静的Mesh・Unlit設定・階層へ変換する。World/GPUを生成しない。
+	// 外部モデルを静的/Skin Mesh・Clip・Unlit設定・階層へ変換する。World/GPUを生成しない。
 	class ModelImporter
 	{
 	public:

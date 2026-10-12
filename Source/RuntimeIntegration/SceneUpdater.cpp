@@ -19,6 +19,7 @@ namespace KT::RuntimeIntegration
 
 		// Cameraなしでも候補を完成させる。以後のCamera失敗はこのCPU結果を失効させない。
 		auto pending = RenderExtractionSystem{}.Extract(cpu, assets_);
+		animation_.Apply(cpu, assets_, pending);
 
 		// 完成した候補だけを公開し、任意のCamera結果を同じ入力から追加する。
 		static_assert(std::is_nothrow_move_constructible_v<RenderFrame>);

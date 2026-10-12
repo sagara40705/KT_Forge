@@ -33,7 +33,8 @@ namespace KT::Renderer
 			}
 			sampler = samplers_[index].get();
 		}
-		auto material = std::make_unique<UnlitMaterial>(texture ? texturedPipeline_ : pipeline_, asset, texture, sampler);
+		auto material = std::make_unique<UnlitMaterial>(texture ? texturedPipeline_ : pipeline_, asset, texture, sampler,
+			texture ? &texturedSkinnedPipeline_ : &skinnedPipeline_);
 		const auto [found, added] = materials_.emplace(id, std::move(material));
 		(void)added;
 		return *found->second;

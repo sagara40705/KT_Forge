@@ -9,14 +9,17 @@ namespace KT::Content
 {
 	MeshAsset::MeshAsset(std::vector<KT::Core::Math::Vector3> positions, std::vector<std::uint32_t> indices,
 		std::vector<KT::Core::Math::Vector2> texcoords, std::vector<KT::Core::Math::Vector3> normals,
-		std::vector<std::array<float, 4>> tangents, std::vector<MeshSubmesh> submeshes, std::optional<MeshImportRecipe> recipe)
+		std::vector<std::array<float, 4>> tangents, std::vector<MeshSubmesh> submeshes, std::optional<MeshImportRecipe> recipe,
+		std::shared_ptr<const SkinDefinition> skin, std::vector<SkinInfluence> influences)
 		: positions_(std::move(positions)),
 		  indices_(std::move(indices)),
 		  texcoords_(std::move(texcoords)),
 		  normals_(std::move(normals)),
 		  tangents_(std::move(tangents)),
 		  submeshes_(std::move(submeshes)),
-		  recipe_(std::move(recipe))
+		  recipe_(std::move(recipe)),
+		  skin_(std::move(skin)),
+		  influences_(std::move(influences))
 	{
 		// 旧単一MeshはIndex全体とdefault slotへ明示変換する。
 		if (submeshes_.empty() && !indices_.empty() && indices_.size() <= (std::numeric_limits<std::uint32_t>::max)())
@@ -45,6 +48,8 @@ namespace KT::Content
 		tangents_.swap(other.tangents_);
 		submeshes_.swap(other.submeshes_);
 		recipe_.swap(other.recipe_);
+		skin_.swap(other.skin_);
+		influences_.swap(other.influences_);
 		submeshBounds_.swap(other.submeshBounds_);
 		std::swap(localBounds_, other.localBounds_);
 		return *this;
@@ -52,6 +57,16 @@ namespace KT::Content
 
 	void MeshAsset::Validate() const
 	{
+		// 骨格がないMeshへ影響配列だけを混ぜず、全頂点との対応を確認する。
+		if (skin_)
+		{
+			skin_->Validate();
+			skin_->ValidateInfluences(influences_, positions_.size());
+		}
+		else if (!influences_.empty())
+		{
+			throw std::invalid_argument("静的MeshにSkinの影響配列だけを指定できません。");
+		}
 		if (positions_.empty() || indices_.empty())
 		{
 			throw std::invalid_argument("MeshAssetの頂点とIndexは空にできません。");
