@@ -11,6 +11,7 @@
 #include <Graphics/Textures/ColorDepthTextureTable.h>
 #include <variant>
 #include <Renderer/Effects/EffectPlayer.h>
+#include <Renderer/UI/UiRenderer.h>
 
 namespace KT::Renderer
 {
@@ -209,6 +210,33 @@ namespace KT::Renderer
 				}
 			}
 			commands_.DrawIndexed(packet, *colorTarget, *depthTarget, constants_);
+		}
+		catch (...)
+		{
+			commands_.Invalidate();
+			throw;
+		}
+	}
+
+	void GraphExecutionContext::DrawUi(GraphViewHandle color, UiRenderer& ui)
+	{
+		try
+		{
+			(void)commands_.GetRecordingList();
+			const auto& description = RequireDeclaredView(color, GraphResourceUsage::RenderTarget);
+			const auto* target = std::get_if<KT::Graphics::ColorTargetView>(&description.binding);
+			if (!target)
+			{
+				throw std::invalid_argument("UI passには色RTVが必要です。");
+			}
+			for (const auto& use : graph_.storage_.passes[passIndex_].desc.views)
+			{
+				if (use.view.index == color.index && use.access != GraphResourceAccess::ReadWrite)
+				{
+					throw std::invalid_argument("UI passには色ReadWriteの宣言が必要です。");
+				}
+			}
+			ui.Record(commands_, *target);
 		}
 		catch (...)
 		{

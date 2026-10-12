@@ -125,6 +125,11 @@ namespace KT::Platform
 		glfwGetFramebufferSize(window_, &width, &height);
 	}
 
+	void Window::GetContentSize(int& width, int& height) const
+	{
+		glfwGetWindowSize(window_, &width, &height);
+	}
+
 	HWND Window::GetNativeHandle() const
 	{
 		HWND hwnd = glfwGetWin32Window(window_);

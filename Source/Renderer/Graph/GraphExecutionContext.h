@@ -17,6 +17,7 @@ namespace KT::Renderer
 	class RenderGraph;
 	struct GraphViewDesc;
 	class EffectPlayer;
+	class UiRenderer;
 	struct RenderView;
 
 	// 現在passの画像宣言だけを解決する記録窓口。callback中のみ有効、保存禁止。
@@ -41,6 +42,8 @@ namespace KT::Renderer
 		void DrawDepth(GraphViewHandle depth, const KT::Graphics::IndexedDrawPacket& packet);
 		// Effect専用窓口。色ReadWriteとreadonly深度Readの宣言を検査する。
 		void DrawEffects(GraphViewHandle color, GraphViewHandle depth, EffectPlayer& effects, const RenderView& view);
+		// UI専用窓口。先行定義済みの色ReadWriteだけを借用する。
+		void DrawUi(GraphViewHandle color, UiRenderer& ui);
 
 	private:
 		friend class RenderGraph;

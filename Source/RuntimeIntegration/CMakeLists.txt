@@ -28,3 +28,10 @@ target_sources(KT_Forge PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Effects/SceneEffects.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Effects/SceneEffects.cpp"
 )
+
+target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/UI/GameUi.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/UI/GameUi.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/UI/UiInput.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/UI/UiInput.cpp"
+)

@@ -1,0 +1,14 @@
+<rml>
+<head>
+    <title>ポーズ</title>
+    <link type="text/rcss" href="game.rcss" />
+</head>
+<body id="pause" class="pause">
+    <div id="pause-panel">
+        <div id="pause-title">一時停止</div>
+        <div id="pause-description">冒険を再開しますか？</div>
+        <button id="resume-button" data-game-action="resume">ゲームに戻る</button>
+        <button id="quit-button" data-game-action="quit">終了</button>
+    </div>
+</body>
+</rml>

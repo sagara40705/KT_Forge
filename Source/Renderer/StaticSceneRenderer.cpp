@@ -7,6 +7,7 @@
 #include <Renderer/Passes/ShadowPass.h>
 #include <Renderer/Passes/EffectPass.h>
 #include <Renderer/Effects/EffectPlayer.h>
+#include <Renderer/Passes/UiPass.h>
 #include <Renderer/RenderConstants.h>
 #include <Graphics/Textures/DepthTargetView.h>
 #include <Graphics/GraphicsValidation.h>
@@ -125,7 +126,8 @@ namespace KT::Renderer
 	}
 
 	void StaticSceneRenderer::Submit(const RenderCandidates& candidates, const std::optional<RenderView>& view,
-		const KT::Graphics::ColorTargetView& color, D3D12_RESOURCE_STATES colorState, const SceneLighting& lighting, EffectPlayer* effects)
+		const KT::Graphics::ColorTargetView& color, D3D12_RESOURCE_STATES colorState, const SceneLighting& lighting, EffectPlayer* effects,
+		UiRenderer* ui)
 	{
 		Wait();
 		lastDrawCount_ = 0;
@@ -237,6 +239,10 @@ namespace KT::Renderer
 					const auto effectDepth = graph.AddView({"EffectDepthDSV", depth, {}, KT::Graphics::DepthTargetView(*depth_, true)});
 					AddEffectPass(graph, colorView, effectDepth, *effects, *view);
 				}
+			}
+			if (ui)
+			{
+				AddUiPass(graph, colorView, *ui);
 			}
 			graph.Compile();
 			graph.Record(*frame_);

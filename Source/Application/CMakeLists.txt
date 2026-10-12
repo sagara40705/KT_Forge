@@ -22,3 +22,7 @@ target_sources(KT_Forge PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/EffectDemo.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/EffectDemo.cpp"
 )
+target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/UiDemo.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/UiDemo.cpp"
+)

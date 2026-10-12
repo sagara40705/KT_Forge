@@ -1,0 +1,15 @@
+<rml>
+<head>
+    <title>ゲームHUD</title>
+    <link type="text/rcss" href="game.rcss" />
+</head>
+<body id="hud" class="hud">
+    <div id="hud-panel">
+        <img id="portrait" src="health.png" />
+        <div id="player-name">旅人</div>
+        <div id="hp-track"><div id="hp-fill"></div></div>
+        <div id="hp-label">HP 100 / 100</div>
+    </div>
+    <button id="pause-button" data-game-action="pause">ポーズ</button>
+</body>
+</rml>

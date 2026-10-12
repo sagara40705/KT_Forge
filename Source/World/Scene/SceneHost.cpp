@@ -23,6 +23,22 @@ namespace KT::World
 		pending_ = std::move(scene);
 	}
 
+	void SceneHost::ActivateQueuedScene()
+	{
+		if (updating_ || (active_ && active_->IsUpdating()))
+		{
+			throw std::logic_error("Scene更新中は表示用のScene切替を行えません。");
+		}
+		if (!pending_ || !pending_->HasSnapshot() || pending_->commands_.PendingCount() != 0)
+		{
+			throw std::logic_error("表示用のScene切替には、予約のない完成候補が必要です。");
+		}
+
+		// 固定tickの開始条件だけを検査し、読込時に完成したsnapshotをそのまま使う。
+		pending_->ValidateUpdateStart(KT::Physics::FixedDeltaSeconds);
+		active_ = std::move(pending_);
+	}
+
 	const SceneUpdateContext& SceneHost::Update(double deltaSeconds, const Scene::GameUpdate& gameUpdate)
 	{
 		// 再入と経過時間を検査し、失敗時はSceneを切り替えない。

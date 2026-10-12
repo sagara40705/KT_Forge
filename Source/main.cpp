@@ -4,6 +4,7 @@
 #include <Application/AnimationDemo.h>
 #include <Application/ToonDemo.h>
 #include <Application/EffectDemo.h>
+#include <Application/UiDemo.h>
 #include <World/Lighting/DirectionalLight.h>
 #include <cmath>
 #include <World/Animation/Animator.h>
@@ -59,7 +60,7 @@ int wmain(int argc, wchar_t* argv[])
 			KT::Application::RunEffectDemo(argv[2], ticks);
 			return 0;
 		}
-		if (command == L"--physics-demo" || command == L"--animation-demo" || command == L"--toon-demo")
+		if (command == L"--physics-demo" || command == L"--animation-demo" || command == L"--toon-demo" || command == L"--ui-demo")
 		{
 			// 終了tickを指定すると、同じ製品の描画経路を有限回だけ実行できる。
 			unsigned tickLimit = 0;
@@ -67,7 +68,7 @@ int wmain(int argc, wchar_t* argv[])
 			{
 				if (argc != 4 || std::wstring_view(argv[2]) != L"--ticks")
 				{
-					throw std::invalid_argument("描画例の使用法: --physics-demo/--animation-demo/--toon-demo [--ticks 1..6000]");
+					throw std::invalid_argument("描画例の使用法: --physics-demo/--animation-demo/--toon-demo/--ui-demo [--ticks 1..6000]");
 				}
 				unsigned count = 0;
 				for (const auto character : std::wstring_view(argv[3]))
@@ -85,6 +86,11 @@ int wmain(int argc, wchar_t* argv[])
 				tickLimit = count;
 			}
 			const bool toonDemo = command == L"--toon-demo";
+			if (command == L"--ui-demo")
+			{
+				KT::Application::RunUiDemo(tickLimit);
+				return 0;
+			}
 			const bool animationDemo = command == L"--animation-demo" || toonDemo;
 			KT::Application::Application app(1280, 720, "KT_Forge - Demo",
 				toonDemo		  ? KT::Application::Application::AssetSetup(KT::Application::RegisterToonDemoAssets) :

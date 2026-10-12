@@ -14,6 +14,8 @@
 #include <RuntimeIntegration/ProjectSceneLoader.h>
 #include <Renderer/StaticSceneRenderer.h>
 #include <RuntimeIntegration/Effects/SceneEffects.h>
+#include <RuntimeIntegration/UI/GameUi.h>
+#include <Renderer/UI/UiRenderer.h>
 #include <functional>
 #include <memory>
 
@@ -26,6 +28,8 @@ namespace KT::Application
 		// Scriptの後に呼ぶゲーム処理。同じ回の入力と固定CPU結果を呼出中だけ借用する。
 		using GameUpdate =
 			std::function<void(KT::World::Scene&, const KT::World::SceneUpdateContext&, const KT::Platform::InputSnapshot&, double)>;
+		// ポーズ中も呼ぶUI処理。ゲームのScene更新と分離して操作イベントを受け取る。
+		using UiUpdate = std::function<void(KT::RuntimeIntegration::GameUi&, double)>;
 		// 組込み素材登録後、初回Scene使用前に独自CPU素材を追加する起動処理。
 		using AssetSetup = std::function<void(KT::Content::AssetCatalog&)>;
 		// ファイル起動を使わない場合に、検証済みの起動Sceneを生成する。
@@ -59,13 +63,13 @@ namespace KT::Application
 		// Presentを含むQueueの完了後にGPU所有物を破棄する。完了待ちの失敗は継続不能とする。
 		~Application();
 
-		// Script・ゲーム・物理を1/60秒で更新する。1描画につき最大4tick、最小化中も継続する。
+		// Script・ゲーム・物理を1/60秒で更新する。最大4tick、最小化中も継続し、UIポーズ中は停止する。
 		// Run終了後の完成CPU結果はGetScene()->GetSnapshot()で取得する。callbackとRunへ再入しない。
-		void Run(GameUpdate gameUpdate = {});
+		void Run(GameUpdate gameUpdate = {}, UiUpdate uiUpdate = {});
 
 		// Loaderで検証した候補を所有し、次のCPU更新開始時に切り替える。
 		void QueueScene(std::unique_ptr<KT::World::Scene> scene);
-		// 初回更新前はnullptr。借用は次のScene切替・Application破棄まで。
+		// 初回更新/ポーズ初回表示前はnullptr。借用は次のScene切替・Application破棄まで。
 		// SceneがFailedならResetAfterFailureと修復を明示するか、新しい候補を予約してRunを再開する。
 		[[nodiscard]] KT::World::Scene* GetScene() noexcept;
 		[[nodiscard]] const KT::World::Scene* GetScene() const noexcept;
@@ -92,6 +96,8 @@ namespace KT::Application
 		void RequestStop() noexcept;
 		// 基本エフェクトのゲーム窓口。初回取得でDX12資源を準備し、起動時に素材を読む。
 		KT::RuntimeIntegration::SceneEffects& Effects();
+		// Run前に取得し、標準日本語HUD/ポーズを準備する。RML/画像はexe横のUIから読む。
+		KT::RuntimeIntegration::GameUi& UI();
 
 	private:
 		// CPU結果を描画する。寸法変更時は旧CommandListを解放してからResizeする。
@@ -132,6 +138,9 @@ namespace KT::Application
 		std::unique_ptr<KT::Renderer::EffectPlayer> effectPlayer_;
 		std::unique_ptr<KT::RuntimeIntegration::SceneEffects> effects_;
 		bool effectsTick_ = false;
+		// 上流ContextはUiRendererより先に終了し、両者ともFrameより長く保持する。
+		std::unique_ptr<KT::Renderer::UiRenderer> uiRenderer_;
+		std::unique_ptr<KT::RuntimeIntegration::GameUi> ui_;
 		std::unique_ptr<KT::Renderer::StaticSceneRenderer> renderer_;
 		// Run開始時に計測を再設定し、起動・復旧待ちの時間をdeltaへ含めない。
 		KT::Core::Timer timer_;

@@ -9,6 +9,8 @@ namespace KT::World
 	public:
 		~SceneHost();
 		void QueueScene(std::unique_ptr<Scene> scene);
+		// ポーズ中の初回表示用。完成候補の所有だけを交換し、Script/物理/時計を進めない。
+		void ActivateQueuedScene();
 		const SceneUpdateContext& Update(double deltaSeconds, const Scene::GameUpdate& gameUpdate = {});
 
 		[[nodiscard]] Scene* GetScene() noexcept

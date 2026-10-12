@@ -1,0 +1,33 @@
+KT_Forge game UI dependencies and asset notices
+Recorded: 2026-10-12. This directory is copied with the product UI assets.
+
+RmlUi 6.3
+https://github.com/mikke89/RmlUi
+Commit: ba95ffe8bfb6370efb2cdcca927eaad4710c5413
+MIT license: RMLUI-LICENSE.txt. Container notices: CONTAINERS-LICENSE.txt.
+Upstream sources are linked without modification.
+
+FreeType 2.14.1
+https://github.com/freetype/freetype
+Commit: 526ec5c47b9ebccc4754c85ac0c0cdf7c85a5e9b
+Used under the FreeType License (FTL), see FREETYPE-FTL.txt and FREETYPE-LICENSE.txt.
+Portions of this software are copyright © 2025 The FreeType Project
+(https://freetype.org). All rights reserved.
+Bundled BDF, PCF, HarfBuzz declarations and internal zlib notices are preserved
+in the corresponding FREETYPE-*-NOTICE.txt files. Optional external PNG,
+HarfBuzz, Brotli, BZip2 and zlib libraries are disabled.
+
+Noto Sans CJK JP Regular, Sans 2.004
+https://github.com/notofonts/noto-cjk
+Commit: 523d033d6cb47f4a80c58a35753646f5c3608a78
+© 2014-2021 Adobe (http://www.adobe.com/).
+SIL Open Font License 1.1: NOTO-OFL.txt.
+The unmodified font is distributed as UI/NotoSansCJKjp-Regular.otf.
+SHA256: 68a3fc98800b2a27b371f2fb79991daf3633bd89309d4ffaa6946fd587f375b5
+
+KT_Forge integration
+The basic DX12 RenderInterface adapter, GameUi facade, input filtering,
+RenderGraph UI pass, sample RML/RCSS and procedural health.png were created
+with Codex assistance at the user's request. The adapter was implemented
+against the official interfaces; the upstream DX12 backend was not copied.
+This notice does not determine the authorship or license of other engine code.

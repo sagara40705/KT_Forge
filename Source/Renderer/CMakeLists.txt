@@ -79,3 +79,14 @@ target_sources(KT_Forge PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Passes/EffectPass.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Passes/EffectPass.cpp"
 )
+
+target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/UI/UiRenderer.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/UI/UiRenderer.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Passes/UiPass.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Passes/UiPass.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Ui2D.hlsl"
+)
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Ui2D.hlsl" TARGET_DIRECTORY KT_Forge PROPERTIES HEADER_FILE_ONLY TRUE)
+kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Ui2D.hlsl" Ui2DVS vs_6_0 VSMain)
+kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Ui2D.hlsl" Ui2DPS ps_6_0 PSMain)

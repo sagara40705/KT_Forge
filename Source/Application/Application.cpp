@@ -5,6 +5,8 @@
 #include <RuntimeIntegration/SceneCamera.h>
 #include <RuntimeIntegration/Physics/JoltScenePhysics.h>
 #include <BuiltinAssets/StaticMeshAssets.h>
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <exception>
 #include <limits>
@@ -132,6 +134,30 @@ namespace KT::Application
 		return *effects_;
 	}
 
+	KT::RuntimeIntegration::GameUi& Application::UI()
+	{
+		if (!ui_)
+		{
+			if (running_)
+			{
+				throw std::logic_error("UIはRun前に取得し、素材を準備してください。");
+			}
+			// exe横の素材を使い、起動カレントディレクトリに依存させない。
+			std::array<wchar_t, 32768> filename{};
+			const auto length = GetModuleFileNameW(nullptr, filename.data(), static_cast<DWORD>(filename.size()));
+			if (length == 0 || length >= filename.size())
+			{
+				throw std::runtime_error("UI素材の基準となる製品exeパスを取得できませんでした。");
+			}
+			auto renderer = std::make_unique<KT::Renderer::UiRenderer>(graphicsDevice_, commandQueue_, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
+			auto ui = std::make_unique<KT::RuntimeIntegration::GameUi>(*renderer);
+			ui->LoadBuiltin(std::filesystem::path(filename.data()).parent_path() / "UI");
+			uiRenderer_ = std::move(renderer);
+			ui_ = std::move(ui);
+		}
+		return *ui_;
+	}
+
 	void Application::RequestStop() noexcept
 	{
 		stopRequested_ = true;
@@ -151,7 +177,7 @@ namespace KT::Application
 		return presentation_;
 	}
 
-	void Application::Run(GameUpdate gameUpdate)
+	void Application::Run(GameUpdate gameUpdate, UiUpdate uiUpdate)
 	{
 		if (running_)
 		{
@@ -163,7 +189,7 @@ namespace KT::Application
 		if (gameUpdate)
 		{
 			update = [this, &gameUpdate](KT::World::Scene& scene, const KT::World::SceneUpdateContext& cpu, double deltaSeconds)
-			{ gameUpdate(scene, cpu, input_.GetSnapshot(), deltaSeconds); };
+			{ gameUpdate(scene, cpu, ui_ ? ui_->GameInput() : input_.GetSnapshot(), deltaSeconds); };
 		}
 
 		running_ = true;
@@ -184,19 +210,46 @@ namespace KT::Application
 				}
 
 				// 0tickの回は入力edgeを保留し、追いつき中は最初のtickだけで消費する。
-				const auto ticks = fixedClock_.Advance(timer_.Tick());
+				const auto elapsed = timer_.Tick();
+				const auto ticks = fixedClock_.Advance(elapsed);
 				int width = 0;
 				int height = 0;
 				bool drawable = false;
 				try
 				{
+					if (ui_)
+					{
+						// UIは描画ごとに入力を処理し、ポーズ中も操作とanimationを継続する。
+						int contentWidth = 0, contentHeight = 0;
+						window_.GetContentSize(contentWidth, contentHeight);
+						window_.GetFramebufferSize(width, height);
+						input_.Update();
+						ui_->Update(input_.GetSnapshot(), contentWidth, contentHeight, static_cast<unsigned>((std::max)(width, 0)),
+							static_cast<unsigned>((std::max)(height, 0)));
+						if (uiUpdate)
+						{
+							uiUpdate(*ui_, elapsed);
+						}
+						// 最初からポーズでも、起動Sceneの完成snapshotを一度用意する。
+						if (ui_->IsPaused() && !sceneHost_.GetScene())
+						{
+							sceneHost_.ActivateQueuedScene();
+						}
+					}
 					for (unsigned tick = 0; tick < ticks && !stopRequested_; ++tick)
 					{
+						if (ui_ && ui_->IsPaused())
+						{
+							break;
+						}
 						if (simulationTicks_ == (std::numeric_limits<std::uint64_t>::max)())
 						{
 							throw std::overflow_error("Applicationのsimulation tick数が上限に達しました。");
 						}
-						input_.Update();
+						if (!ui_)
+						{
+							input_.Update();
+						}
 						sceneUpdater_.Reset();
 						// ゲーム中の再生予約はScene成功後だけ公開する。
 						if (effects_)
@@ -223,6 +276,10 @@ namespace KT::Application
 							throw;
 						}
 						++simulationTicks_;
+						if (ui_)
+						{
+							ui_->ConsumeGameInput();
+						}
 					}
 					const auto* scene = sceneHost_.GetScene();
 					window_.GetFramebufferSize(width, height);
@@ -297,9 +354,14 @@ namespace KT::Application
 			resized = true;
 		}
 		const auto& frame = sceneUpdater_.Get();
+		if (ui_)
+		{
+			// 上流UIのTexture転送と描画列作成はGraph/Frame開始前に完了する。
+			ui_->PrepareFrame(width, height);
+		}
 		const auto backBufferIndex = swapchain_->GetCurrentBackBufferIndex();
 		renderer_->Submit(frame.candidates, frame.view, KT::Graphics::ColorTargetView(*swapchain_, backBufferIndex),
-			D3D12_RESOURCE_STATE_PRESENT, frame.lighting, effectPlayer_.get());
+			D3D12_RESOURCE_STATE_PRESENT, frame.lighting, effectPlayer_.get(), uiRenderer_.get());
 		swapchain_->Present();
 		renderer_->Wait();
 		presentation_ = {
