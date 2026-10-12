@@ -2,9 +2,7 @@
 #include <Content/AssetJson.h>
 #include <nlohmann/json.hpp>
 #include <fstream>
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <Windows.h>
+#include <Platform/FileReplacement.h>
 
 namespace KT::RuntimeIntegration
 {
@@ -49,26 +47,6 @@ namespace KT::RuntimeIntegration
 					return true;
 				});
 		}
-
-		// この保存で新規作成した一時ファイルだけを失敗時に破棄する。
-		struct TemporaryFile
-		{
-			std::filesystem::path path;
-			HANDLE handle = INVALID_HANDLE_VALUE;
-			bool created = false;
-
-			~TemporaryFile()
-			{
-				if (handle != INVALID_HANDLE_VALUE)
-				{
-					CloseHandle(handle);
-				}
-				if (created)
-				{
-					DeleteFileW(path.c_str());
-				}
-			}
-		};
 	}
 
 	ModelReimportOptions ModelWorkflowJson::ReadCorrespondence(const std::filesystem::path& path)
@@ -169,28 +147,7 @@ namespace KT::RuntimeIntegration
 		{
 			throw std::invalid_argument("Model対応表JSONが64MiBを超えています。");
 		}
-		TemporaryFile temporary;
-		temporary.path = path;
-		temporary.path += "." + KT::Content::AssetId::Generate().ToString() + ".tmp";
-		temporary.handle = CreateFileW(temporary.path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
-		if (temporary.handle == INVALID_HANDLE_VALUE)
-		{
-			throw std::runtime_error("Model対応表の一時ファイルを作成できません。Win32=" + std::to_string(GetLastError()));
-		}
-		temporary.created = true;
-		DWORD written = 0;
-		if (!WriteFile(temporary.handle, text.data(), static_cast<DWORD>(text.size()), &written, nullptr) || written != text.size() ||
-			!FlushFileBuffers(temporary.handle))
-		{
-			throw std::runtime_error("Model対応表の書込またはflushに失敗しました。");
-		}
-		const auto closed = CloseHandle(temporary.handle);
-		temporary.handle = INVALID_HANDLE_VALUE;
-		if (!closed || !MoveFileExW(temporary.path.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-		{
-			throw std::runtime_error("Model対応表の保存先置換に失敗しました。Win32=" + std::to_string(GetLastError()));
-		}
-		temporary.created = false;
+		KT::Platform::ReplaceFileWithText(path, text, KT::Content::AssetId::Generate().ToString());
 	}
 
 	std::vector<KT::Content::AssetId> CollectModelSceneAssets(

@@ -1,5 +1,6 @@
 #include <Graphics/Commands/FrameResources.h>
 #include <Graphics/GraphicsValidation.h>
+#include <Core/Log.h>
 #include <exception>
 #include <stdexcept>
 
@@ -22,8 +23,15 @@ namespace KT::Graphics
 		{
 			Wait();
 		}
+		catch (const std::exception& error)
+		{
+			KT_LOG_ERROR("FrameResourcesの破棄前にGPU完了を確認できません。資源を解放せず終了します。");
+			KT_LOG_ERROR(error.what());
+			std::terminate();
+		}
 		catch (...)
 		{
+			KT_LOG_ERROR("FrameResourcesの破棄前のGPU待機で不明な例外が発生しました。資源を解放せず終了します。");
 			std::terminate();
 		}
 	}
@@ -33,7 +41,7 @@ namespace KT::Graphics
 	{
 		if (state_ == State::Recording || state_ == State::Ready || state_ == State::Failed)
 		{
-			throw std::logic_error("Frame Begin requires idle/submitted slot.");
+			throw std::logic_error("FrameのBeginには待機中または送信済みのslotが必要です。");
 		}
 		// 再利用条件：前回送信した命令が使う領域を、GPU完了前に上書きしない。
 		Wait();
@@ -59,7 +67,7 @@ namespace KT::Graphics
 	{
 		if (state_ != State::Recording)
 		{
-			throw std::logic_error("Frame End requires recording.");
+			throw std::logic_error("FrameのEndRecordingは記録中だけ実行できます。");
 		}
 		try
 		{
@@ -82,7 +90,7 @@ namespace KT::Graphics
 	{
 		if (state_ != State::Ready)
 		{
-			throw std::logic_error("Frame Submit requires ended recording.");
+			throw std::logic_error("FrameのSubmitには記録終了済みのslotが必要です。");
 		}
 		// Listの有効性は送信前に確認。送信後のSignal等の失敗は回復/資源解放できないためfatal。
 		context_.frameSubmit_ = true;
@@ -105,8 +113,15 @@ namespace KT::Graphics
 			state_ = State::Submitted;
 			return fence_;
 		}
+		catch (const std::exception& error)
+		{
+			KT_LOG_ERROR("FrameのGPU送信またはFenceのSignalに失敗しました。GPU資源の寿命を保証できないため終了します。");
+			KT_LOG_ERROR(error.what());
+			std::terminate();
+		}
 		catch (...)
 		{
+			KT_LOG_ERROR("FrameのGPU送信またはFenceのSignalで不明な例外が発生しました。資源を解放せず終了します。");
 			std::terminate();
 		}
 	}
@@ -124,8 +139,15 @@ namespace KT::Graphics
 			queue_.Wait(fence_);
 			state_ = State::Idle;
 		}
+		catch (const std::exception& error)
+		{
+			KT_LOG_ERROR("FrameのFence完了待機に失敗しました。GPU資源の寿命を保証できないため終了します。");
+			KT_LOG_ERROR(error.what());
+			std::terminate();
+		}
 		catch (...)
 		{
+			KT_LOG_ERROR("FrameのFence完了待機で不明な例外が発生しました。資源を解放せず終了します。");
 			std::terminate();
 		}
 	}
@@ -135,7 +157,7 @@ namespace KT::Graphics
 	{
 		if (state_ != State::Recording)
 		{
-			throw std::logic_error("Frame Context is only borrowed while recording.");
+			throw std::logic_error("FrameのContextは記録中だけ借用できます。");
 		}
 		return context_;
 	}

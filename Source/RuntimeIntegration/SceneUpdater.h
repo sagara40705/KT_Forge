@@ -13,8 +13,11 @@ namespace KT::RuntimeIntegration
 		// Catalogを借用する。登録・Freezeを済ませてからUpdateを呼ぶ。
 		explicit SceneUpdater(const KT::Content::AssetCatalog& assets);
 		// 候補生成失敗時はFrameなし。Camera失敗時は今回の候補と診断を保持し、viewを空にする。
+		// 同じ完成捕捉と境界用途では候補を再利用する。Cameraとviewportは毎回独立に計算する。
+		// calculateSkinnedBounds=falseは通常描画用。SkinのworldBoundsはbind境界となり、姿勢の判定に使わない。
 		const RenderFrame& Update(
-			const KT::World::SceneUpdateContext& cpu, std::optional<KT::World::Entity> camera = {}, KT::World::Viewport viewport = {});
+			const KT::World::SceneUpdateContext& cpu, std::optional<KT::World::Entity> camera = {}, KT::World::Viewport viewport = {},
+			bool calculateSkinnedBounds = true);
 		const RenderFrame& Get() const;
 		// Scene更新開始時に旧候補を失効させ、CPU更新失敗後の誤利用を防ぐ。
 		void Reset() noexcept;
@@ -29,6 +32,9 @@ namespace KT::RuntimeIntegration
 		const KT::Content::AssetCatalog& assets_;
 		// 候補生成が完了したFrameを所有する。Cameraは独立した任意の派生結果。
 		std::optional<RenderFrame> frame_;
+		// 候補が属する捕捉とSkin境界の用途。CPU入力への借用pointerは保持しない。
+		std::uint64_t sourceCaptureId_ = 0;
+		bool skinnedBounds_ = true;
 		// 姿勢評価用cacheだけを所有し、ゲームの再生状態は保持しない。
 		AnimationExtraction animation_;
 	};

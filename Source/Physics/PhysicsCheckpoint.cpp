@@ -81,9 +81,8 @@ namespace KT::Physics
 			}
 		}
 
-		// 読取cursorは候補側へコピーする。確定worldにはSaveStateもRestoreStateも呼ばない。
-		CheckpointStream checkpoint;
-		checkpoint.bytes = impl_->checkpoint.bytes;
+		// 不変bytesは復元中だけ借用し、読取cursorは候補側に持つ。確定worldを変更しない。
+		CheckpointStream checkpoint(impl_->checkpoint.bytes);
 		if (!candidate->system.RestoreState(checkpoint) || checkpoint.failed || !checkpoint.IsEOF())
 		{
 			throw std::runtime_error("物理checkpointの復元に失敗しました。");

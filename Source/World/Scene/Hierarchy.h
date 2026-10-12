@@ -40,6 +40,8 @@ namespace KT::World
 
 		// 別World・失効世代・範囲外を拒否し、対応するノード番号を定数時間で返す。
 		[[nodiscard]] std::size_t FindNode(Entity entity) const;
+		// 消滅・別World・失効世代を通常の未検出として返す照会。
+		[[nodiscard]] std::optional<std::size_t> TryFindNode(Entity entity) const noexcept;
 	};
 
 	HierarchySnapshot ValidateHierarchy(const World& world);

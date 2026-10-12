@@ -12,7 +12,9 @@ namespace KT::RuntimeIntegration
 	class AnimationExtraction
 	{
 	public:
-		void Apply(const KT::World::SceneUpdateContext& cpu, const KT::Content::AssetCatalog& assets, RenderFrame& frame);
+		// 厳密な変形境界はプレビュー等が要求する場合だけ求める。既定は従来の厳密境界。
+		void Apply(const KT::World::SceneUpdateContext& cpu, const KT::Content::AssetCatalog& assets, RenderFrame& frame,
+			bool calculateSkinnedBounds = true);
 
 	private:
 		// World・slot・世代・素材を区別し、Entity再利用やScene切替でContextを混ぜない。

@@ -48,12 +48,25 @@ namespace KT::Physics
 	class CheckpointStream final : public JPH::StateRecorder
 	{
 	public:
+		CheckpointStream() = default;
+		// 復元呼出中だけ不変checkpointを借用する。cursorは各streamが独立して持つ。
+		explicit CheckpointStream(std::span<const std::byte> input)
+			: input_(input)
+		{
+		}
+
+		// 保存用の所有領域。読取専用streamでは使用しない。
 		std::vector<std::byte> bytes;
 		std::size_t cursor = 0;
 		bool failed = false;
 
 		void WriteBytes(const void* data, std::size_t size) override
 		{
+			if (input_)
+			{
+				failed = true;
+				return;
+			}
 			if (failed)
 			{
 				return;
@@ -71,25 +84,30 @@ namespace KT::Physics
 
 		void ReadBytes(void* data, std::size_t size) override
 		{
-			if (size > bytes.size() - cursor)
+			const auto input = input_.value_or(std::span<const std::byte>(bytes));
+			if (cursor > input.size() || size > input.size() - cursor)
 			{
 				failed = true;
 				std::memset(data, 0, size);
 				return;
 			}
-			std::memcpy(data, bytes.data() + cursor, size);
+			std::memcpy(data, input.data() + cursor, size);
 			cursor += size;
 		}
 
 		bool IsEOF() const override
 		{
-			return cursor == bytes.size();
+			return cursor == (input_ ? input_->size() : bytes.size());
 		}
 
 		bool IsFailed() const override
 		{
 			return failed;
 		}
+
+	private:
+		// 所有者のClone呼出中だけ有効。保存済みbytesの内容・cursorを変更しない。
+		std::optional<std::span<const std::byte>> input_;
 	};
 
 	// 静止物と可動物の二つのbroadphase。ObjectLayerの下位3bitはゲーム層。

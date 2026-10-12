@@ -65,6 +65,12 @@ namespace KT::World
 			return updateNumber_;
 		}
 
+		// 捕捉ごとの識別値。直接構築・idle編集・作業context再利用でも同じ値を発行しない。
+		[[nodiscard]] std::uint64_t CaptureId() const noexcept
+		{
+			return captureId_;
+		}
+
 		Stage CurrentStage() const noexcept
 		{
 			return stage_;
@@ -110,6 +116,8 @@ namespace KT::World
 		std::uint64_t worldId_;
 		// Sceneが発行したCPU更新番号。直接構築した場合の既定値は0。
 		std::uint64_t updateNumber_;
+		// アドレスやScene更新番号に依存せず、同じ完成入力の再利用を照合する。
+		std::uint64_t captureId_ = 0;
 		// CameraSystem::Updateで使うCameraの指定。CPU計算だけなら未指定。
 		std::optional<Entity> camera_;
 		// Camera計算に使う描画領域。CPU階層・Transform計算では使用しない。

@@ -64,6 +64,12 @@ namespace KT::Application
 		{
 			Shutdown();
 		}
+		catch (const std::exception& error)
+		{
+			KT_LOG_ERROR("Applicationの終了処理に失敗しました。安全に資源を破棄できないため終了します。");
+			KT_LOG_ERROR(error.what());
+			std::terminate();
+		}
 		catch (...)
 		{
 			// GPU完了を確認できないまま借用資源を解放することはできない。
@@ -109,7 +115,11 @@ namespace KT::Application
 		}
 		catch (...)
 		{
-			lastRunFailure_ = std::current_exception();
+			// 先に発生したRun例外を、後からのShutdown失敗で上書きしない。
+			if (!lastRunFailure_)
+			{
+				lastRunFailure_ = std::current_exception();
+			}
 			runState_ = RunState::Failed;
 			shuttingDown_ = false;
 			throw;
@@ -434,7 +444,8 @@ namespace KT::Application
 						KT::World::Viewport{};
 					if (scene)
 					{
-						(void)sceneUpdater_.Update(scene->GetSnapshot(), camera, viewport);
+						// 通常描画は境界によるカリングを行わず、Skinの全頂点走査を必要としない。
+						(void)sceneUpdater_.Update(scene->GetSnapshot(), camera, viewport, false);
 					}
 				}
 				catch (...)
@@ -462,7 +473,21 @@ namespace KT::Application
 			// 元の失敗を先に保持し、後始末の失敗でもRun中という状態を残さない。
 			lastRunFailure_ = std::current_exception();
 			runState_ = RunState::Failed;
-			// GPUの借用を解消し、完成済みCPU状態を保持して呼出側へ失敗を返す。
+			// 後始末が診断終了しても、先に発生したRunの原因をログへ残す。
+			try
+			{
+				std::rethrow_exception(lastRunFailure_);
+			}
+			catch (const std::exception& error)
+			{
+				KT_LOG_ERROR("Application::Runに失敗しました。");
+				KT_LOG_ERROR(error.what());
+			}
+			catch (...)
+			{
+				KT_LOG_ERROR("Application::Runで不明な例外が発生しました。");
+			}
+			// 未送信の記録は破棄できる。送信済みFrameの同期失敗はFrameResourcesで診断終了する。
 			try
 			{
 				if (renderer_)

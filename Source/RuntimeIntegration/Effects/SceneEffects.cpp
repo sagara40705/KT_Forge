@@ -154,6 +154,7 @@ namespace KT::RuntimeIntegration
 		// Scene切替では旧個体を捨て、新Sceneのcallbackで発行した予約だけを残す。
 		auto pending = entries_;
 		const auto& transforms = cpu.GetTransforms();
+		const auto& hierarchy = cpu.GetHierarchy();
 		std::erase_if(pending,
 			[&](auto& entry)
 			{
@@ -163,13 +164,13 @@ namespace KT::RuntimeIntegration
 				}
 				if (entry.target)
 				{
-					const auto found = std::find_if(
-						transforms.begin(), transforms.end(), [&](const auto& entity) { return entity.entity == *entry.target; });
-					if (found == transforms.end() || !found->active.value)
+					// 捕捉済み索引で照会し、削除・世代失効・別Worldは従来どおり追従停止にする。
+					const auto nodeIndex = hierarchy.TryFindNode(*entry.target);
+					if (!nodeIndex || !transforms[*nodeIndex].active.value)
 					{
 						return true;
 					}
-					entry.instance.world = entry.local * found->transform.matrix;
+					entry.instance.world = entry.local * transforms[*nodeIndex].transform.matrix;
 				}
 				return false;
 			});

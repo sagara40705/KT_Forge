@@ -1,9 +1,7 @@
 #include <World/Scene/SceneJson.h>
 #include <World/Physics/PhysicsSerialization.h>
 #include <nlohmann/json.hpp>
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <Windows.h>
+#include <Platform/FileReplacement.h>
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -259,29 +257,6 @@ namespace KT::World
 		}
 		return Parse(text, components, scripts, legacyAssets);
 	}
-
-	// この保存で作成した一時ファイルだけを、失敗時に閉じて除去する。
-	struct TemporarySceneFile : private KT::Core::NonCopyable
-	{
-		// この保存だけが所有する一時ファイルの名前とhandle。
-		std::filesystem::path path;
-		HANDLE handle = INVALID_HANDLE_VALUE;
-		// 作成に成功した場合だけ、失敗後に一時ファイルを除去する。
-		bool created = false;
-
-		~TemporarySceneFile()
-		{
-			if (handle != INVALID_HANDLE_VALUE)
-			{
-				CloseHandle(handle);
-			}
-			if (created)
-			{
-				DeleteFileW(path.c_str());
-			}
-		}
-	};
-
 	void SceneJson::Save(
 		const std::filesystem::path& path, const Scene& scene, const ComponentRegistry& components, const ScriptRegistry& scripts)
 	{
@@ -293,50 +268,6 @@ namespace KT::World
 	{
 		// 保存可能な完成状態と設定を検査し、既存ファイルへ触れる前に全JSONを作る。
 		const auto text = Stringify(scene, components, scripts);
-		std::error_code error;
-		const auto target = std::filesystem::absolute(path, error);
-		if (error || path.empty())
-		{
-			throw std::invalid_argument("Scene JSONの保存先パスが不正です。");
-		}
-
-		TemporarySceneFile temporary;
-		temporary.path =
-			target.parent_path() / (L".kt-scene-" + std::filesystem::path(ObjectUuid::Generate().ToString()).wstring() + L".tmp");
-		temporary.handle = CreateFileW(temporary.path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
-		if (temporary.handle == INVALID_HANDLE_VALUE)
-		{
-			throw std::runtime_error("Scene一時ファイルの作成に失敗しました。Win32=" + std::to_string(GetLastError()));
-		}
-		temporary.created = true;
-
-		std::size_t offset = 0;
-		while (offset < text.size())
-		{
-			DWORD written = 0;
-			const auto size = static_cast<DWORD>(text.size() - offset);
-			if (!WriteFile(temporary.handle, text.data() + offset, size, &written, nullptr) || written == 0)
-			{
-				throw std::runtime_error("Scene一時ファイルの書込に失敗しました。Win32=" + std::to_string(GetLastError()));
-			}
-			offset += written;
-		}
-		if (!FlushFileBuffers(temporary.handle))
-		{
-			throw std::runtime_error("Scene一時ファイルの書込確定に失敗しました。Win32=" + std::to_string(GetLastError()));
-		}
-		const auto closed = CloseHandle(temporary.handle);
-		temporary.handle = INVALID_HANDLE_VALUE;
-		if (!closed)
-		{
-			throw std::runtime_error("Scene一時ファイルを閉じられません。Win32=" + std::to_string(GetLastError()));
-		}
-
-		// 同じディレクトリの完成ファイルへ置換する。既存保存先を先に削除しない。
-		if (!MoveFileExW(temporary.path.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-		{
-			throw std::runtime_error("Scene JSON保存先の置換に失敗しました。Win32=" + std::to_string(GetLastError()));
-		}
-		temporary.created = false;
+		KT::Platform::ReplaceFileWithText(path, text, ObjectUuid::Generate().ToString());
 	}
 }

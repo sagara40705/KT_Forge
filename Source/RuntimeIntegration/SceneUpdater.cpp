@@ -12,18 +12,31 @@ namespace KT::RuntimeIntegration
 	}
 
 	const RenderFrame& SceneUpdater::Update(
-		const KT::World::SceneUpdateContext& cpu, std::optional<KT::World::Entity> camera, KT::World::Viewport viewport)
+		const KT::World::SceneUpdateContext& cpu, std::optional<KT::World::Entity> camera, KT::World::Viewport viewport,
+		bool calculateSkinnedBounds)
 	{
-		// 前回の公開結果を失効させ、失敗時に古いFrameを返さない。
-		frame_.reset();
+		// 捕捉の失敗・未完成では、同じcontextの古い候補も公開しない。
+		if (cpu.CurrentStage() < KT::World::SceneUpdateContext::Stage::Transform ||
+			cpu.CurrentStage() == KT::World::SceneUpdateContext::Stage::Failed)
+		{
+			Reset();
+			(void)cpu.GetTransforms();
+		}
 
-		// Cameraなしでも候補を完成させる。以後のCamera失敗はこのCPU結果を失効させない。
-		auto pending = RenderExtractionSystem{}.Extract(cpu, assets_);
-		animation_.Apply(cpu, assets_, pending);
+		// 固定Catalogと同じ完成捕捉だけを再利用し、新しい候補の失敗ではFrameを失効させる。
+		if (!frame_ || sourceCaptureId_ != cpu.CaptureId() || skinnedBounds_ != calculateSkinnedBounds)
+		{
+			Reset();
+			auto pending = RenderExtractionSystem{}.Extract(cpu, assets_);
+			animation_.Apply(cpu, assets_, pending, calculateSkinnedBounds);
+			static_assert(std::is_nothrow_move_constructible_v<RenderFrame>);
+			frame_.emplace(std::move(pending));
+			sourceCaptureId_ = cpu.CaptureId();
+			skinnedBounds_ = calculateSkinnedBounds;
+		}
 
-		// 完成した候補だけを公開し、任意のCamera結果を同じ入力から追加する。
-		static_assert(std::is_nothrow_move_constructible_v<RenderFrame>);
-		frame_.emplace(std::move(pending));
+		// Cameraの失敗で完成候補を失効させず、前回のviewだけを必ず消す。
+		frame_->view.reset();
 		const auto view = KT::World::CameraSystem{}.Calculate(cpu, camera, viewport);
 		if (view)
 		{
@@ -36,6 +49,7 @@ namespace KT::RuntimeIntegration
 	void SceneUpdater::Reset() noexcept
 	{
 		frame_.reset();
+		sourceCaptureId_ = 0;
 	}
 
 	const RenderFrame& SceneUpdater::Get() const

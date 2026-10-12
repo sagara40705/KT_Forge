@@ -5,7 +5,8 @@
 
 namespace KT::RuntimeIntegration
 {
-	void AnimationExtraction::Apply(const KT::World::SceneUpdateContext& cpu, const KT::Content::AssetCatalog& assets, RenderFrame& frame)
+	void AnimationExtraction::Apply(const KT::World::SceneUpdateContext& cpu, const KT::Content::AssetCatalog& assets, RenderFrame& frame,
+		bool calculateSkinnedBounds)
 	{
 		const auto& inputs = cpu.Inputs();
 		const auto& hierarchy = cpu.GetHierarchy();
@@ -67,7 +68,14 @@ namespace KT::RuntimeIntegration
 				poses.emplace(key, candidate.skinPalette);
 			}
 
-			// bind poseのAABBで動いた頂点を隠さない。描画と同じWeightで完成姿勢の境界を求める。
+			// 通常Rendererは境界でカリングしない。配置プレビュー等の要求時だけ全Indexを走査する。
+			candidate.boundsMatchPose = calculateSkinnedBounds;
+			if (!calculateSkinnedBounds)
+			{
+				continue;
+			}
+
+			// 描画と同じWeightで完成姿勢の厳密境界を求める。
 			KT::Core::Math::AABB bounds;
 			const auto& submesh = mesh.asset->Submeshes()[candidate.submesh];
 			for (std::size_t offset = submesh.firstIndex; offset < std::size_t(submesh.firstIndex) + submesh.indexCount; ++offset)

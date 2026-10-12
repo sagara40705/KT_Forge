@@ -1,10 +1,14 @@
 #include <World/Scene/SceneUpdateContext.h>
 #include <algorithm>
 #include <bit>
+#include <atomic>
 #include <stdexcept>
 
 namespace KT::World
 {
+	// 最大値は枯渇状態として予約し、捕捉IDをプロセス内で再発行しない。
+	static std::atomic<std::uint64_t> nextCaptureId{1};
+
 	SceneUpdateContext::SceneUpdateContext(const World& world, std::optional<Entity> camera, Viewport viewport,
 		std::uint64_t updateNumber, const SceneUpdateContext* previous)
 	{
@@ -26,6 +30,19 @@ namespace KT::World
 
 		// 公開・比較中でないcontextの配列容量を再利用する。捕捉失敗時は参照を禁止する。
 		stage_ = Stage::Failed;
+		auto captureId = nextCaptureId.load(std::memory_order_relaxed);
+		for (;;)
+		{
+			if (captureId == (std::numeric_limits<std::uint64_t>::max)())
+			{
+				throw std::overflow_error("CPU入力の捕捉IDが枯渇しました。");
+			}
+			if (nextCaptureId.compare_exchange_weak(captureId, captureId + 1, std::memory_order_relaxed))
+			{
+				captureId_ = captureId;
+				break;
+			}
+		}
 		worldId_ = world.Identity();
 		updateNumber_ = updateNumber;
 		camera_ = camera;
@@ -53,7 +70,14 @@ namespace KT::World
 				}
 			}
 			const auto* oldInput = oldIndex == NoParent ? nullptr : &previous->inputs_[oldIndex];
-			SceneEntityInput input;
+			// 公開中でない入力を直接埋め、map・文字列を持つ中間入力の二重コピーを避ける。
+			auto& input = inputs_[nodeIndex];
+			input.activeSelf = {};
+			input.local = {};
+			input.camera.reset();
+			input.mesh.reset();
+			input.animator.reset();
+			input.light.reset();
 			input.entity = entity;
 			input.changes = world.GetCpuChangeState(entity);
 			input.hierarchy.parent = node.parent == NoParent ? Entity{} : hierarchy_->nodes[node.parent].entity;
@@ -145,7 +169,6 @@ namespace KT::World
 				frame_.entities[nodeIndex] = {};
 			}
 			frame_.entities[nodeIndex].entity = entity;
-			inputs_[nodeIndex] = input;
 			if (activationDirty)
 			{
 				activationSeeds_.push_back(nodeIndex);

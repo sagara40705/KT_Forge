@@ -30,6 +30,21 @@ namespace KT::World
 		return nodeIndex;
 	}
 
+	std::optional<std::size_t> HierarchySnapshot::TryFindNode(Entity entity) const noexcept
+	{
+		// 失効対象は例外にせず、同じslotの新しいEntityも取り違えない。
+		if (entity.index >= nodeByEntityIndex.size())
+		{
+			return std::nullopt;
+		}
+		const auto nodeIndex = nodeByEntityIndex[entity.index];
+		if (nodeIndex == NoParent || nodeIndex >= nodes.size() || nodes[nodeIndex].entity != entity)
+		{
+			return std::nullopt;
+		}
+		return nodeIndex;
+	}
+
 	HierarchySnapshot ValidateHierarchy(const World& world)
 	{
 		// 値を返す既存APIは維持し、検証済みの共有階層からコピーする。

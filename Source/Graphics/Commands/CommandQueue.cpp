@@ -2,6 +2,7 @@
 #include <Graphics/Commands/CommandContext.h>
 #include <Core/Log.h>
 #include <stdexcept>
+#include <string>
 #include <limits>
 #include <execution>
 
@@ -52,7 +53,7 @@ namespace KT::Graphics
 		HRESULT result = queue_->Signal(fence_.Get(), value);
 		if (FAILED(result))
 		{
-			throw std::runtime_error("FenceのSignalに失敗");
+			throw std::runtime_error("FenceのSignalに失敗しました。HRESULT=" + std::to_string(result));
 		}
 
 		// 次のFenceの値を進める
@@ -91,7 +92,7 @@ namespace KT::Graphics
 		HRESULT result = fence_->SetEventOnCompletion(fenceValue, nullptr);
 		if (FAILED(result))
 		{
-			throw std::runtime_error("FenceのSetEventOnCompletionに失敗");
+			throw std::runtime_error("FenceのSetEventOnCompletionに失敗しました。HRESULT=" + std::to_string(result));
 		}
 
 		// 再度、Fenceの完了を確認

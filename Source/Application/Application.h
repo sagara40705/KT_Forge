@@ -79,6 +79,7 @@ namespace KT::Application
 		// Script・ゲーム・物理を1/60秒で更新する。最大4tick、最小化中も再生する。
 		// UI/FrameUpdateと描画は停止中も継続する。時間進行は実行制御に従う。
 		// Run終了後の完成CPU結果はGetScene()->GetSnapshot()で取得する。callbackとRunへ再入しない。
+		// 通常の失敗は元例外を保持して返す。送信後のFrame同期失敗は原因を診断して終了する。
 		void Run(GameUpdate gameUpdate = {}, UiUpdate uiUpdate = {}, FrameUpdate frameUpdate = {});
 		// 完成Sceneを保持して時間進行を切り替える。StopPlaybackはRunから戻らない。
 		// 編集Sceneの巻戻しは行わない。一コマ更新はPause後に一回だけ予約する。
@@ -91,7 +92,7 @@ namespace KT::Application
 		// 元のRun/Shutdown失敗を保持する。明示的な次Run開始時に消去する。
 		[[nodiscard]] std::exception_ptr GetLastRunFailure() const noexcept;
 		// Run外だけで終了する。GPU完了→Scene/Script→描画/UI/Effect資源の順に解放する。
-		// 繰り返しは何もしない。GPU待機失敗では資源を保持して例外を返す。
+		// 繰り返しは何もしない。Frame同期失敗は診断終了。追加Queue待機の例外では資源を保持する。
 		void Shutdown();
 
 		// Loaderで検証した候補を所有し、次のCPU更新開始時に切り替える。
