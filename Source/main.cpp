@@ -2,6 +2,10 @@
 #include <Application/Application.h>
 #include <Application/PhysicsDemo.h>
 #include <Application/AnimationDemo.h>
+#include <Application/ToonDemo.h>
+#include <Application/EffectDemo.h>
+#include <World/Lighting/DirectionalLight.h>
+#include <cmath>
 #include <World/Animation/Animator.h>
 #include <Content/ObjMeshImporter.h>
 #include <RuntimeIntegration/ModelImport.h>
@@ -30,7 +34,32 @@ int wmain(int argc, wchar_t* argv[])
 	try
 	{
 		const std::wstring_view command = argc > 1 ? argv[1] : L"";
-		if (command == L"--physics-demo" || command == L"--animation-demo")
+		if (command == L"--effect-demo")
+		{
+			if (argc != 3 && (argc != 5 || std::wstring_view(argv[3]) != L"--ticks"))
+			{
+				throw std::invalid_argument("Effect描画例の使用法: --effect-demo <effect.efkefc> [--ticks 1..6000]");
+			}
+			unsigned ticks = 0;
+			if (argc == 5)
+			{
+				for (const auto digit : std::wstring_view(argv[4]))
+				{
+					if (digit < L'0' || digit > L'9' || ticks > 600)
+					{
+						throw std::invalid_argument("Effect描画例の終了tickは1..6000の整数です。");
+					}
+					ticks = ticks * 10 + static_cast<unsigned>(digit - L'0');
+				}
+				if (ticks < 1 || ticks > 6000)
+				{
+					throw std::invalid_argument("Effect描画例の終了tickは1..6000の整数です。");
+				}
+			}
+			KT::Application::RunEffectDemo(argv[2], ticks);
+			return 0;
+		}
+		if (command == L"--physics-demo" || command == L"--animation-demo" || command == L"--toon-demo")
 		{
 			// 終了tickを指定すると、同じ製品の描画経路を有限回だけ実行できる。
 			unsigned tickLimit = 0;
@@ -38,7 +67,7 @@ int wmain(int argc, wchar_t* argv[])
 			{
 				if (argc != 4 || std::wstring_view(argv[2]) != L"--ticks")
 				{
-					throw std::invalid_argument("描画例の使用法: --physics-demo/--animation-demo [--ticks 1..6000]");
+					throw std::invalid_argument("描画例の使用法: --physics-demo/--animation-demo/--toon-demo [--ticks 1..6000]");
 				}
 				unsigned count = 0;
 				for (const auto character : std::wstring_view(argv[3]))
@@ -55,16 +84,31 @@ int wmain(int argc, wchar_t* argv[])
 				}
 				tickLimit = count;
 			}
-			const bool animationDemo = command == L"--animation-demo";
+			const bool toonDemo = command == L"--toon-demo";
+			const bool animationDemo = command == L"--animation-demo" || toonDemo;
 			KT::Application::Application app(1280, 720, "KT_Forge - Demo",
-				animationDemo ? KT::Application::Application::AssetSetup(KT::Application::RegisterAnimationDemoAssets) :
-					KT::Application::Application::AssetSetup{}, {},
-				animationDemo ? KT::Application::CreateAnimationDemoScene : KT::Application::CreatePhysicsDemoScene);
+				toonDemo		  ? KT::Application::Application::AssetSetup(KT::Application::RegisterToonDemoAssets) :
+					animationDemo ? KT::Application::Application::AssetSetup(KT::Application::RegisterAnimationDemoAssets) :
+									KT::Application::Application::AssetSetup{},
+				{},
+				toonDemo		  ? KT::Application::CreateToonDemoScene :
+					animationDemo ? KT::Application::CreateAnimationDemoScene :
+									KT::Application::CreatePhysicsDemoScene);
 			unsigned ticks = 0;
 			app.Run(
 				[&](auto& scene, const auto&, const auto&, double)
 				{
 					++ticks;
+					if (toonDemo)
+					{
+						// ゲームから光の向きと影範囲を編集し、同じtickの描画へ反映する。
+						scene.template ForEachActive<KT::World::DirectionalLight>(
+							[&](auto, auto& light)
+							{
+								light.direction = {0.4f + 0.2f * std::sin(ticks / 60.0f), -1, 0.3f};
+								light.shadowCenter = {0, 0, 3};
+							});
+					}
 					// ゲーム更新から個体の再生値を編集し、二Clipを遷移する例。
 					if (animationDemo && (ticks == 120 || ticks == 240))
 					{
@@ -280,6 +324,15 @@ int wmain(int argc, wchar_t* argv[])
 				{
 					const auto& id = loaded.scene->GetWorld().GetComponent<KT::World::PersistentId>(diagnostic.source);
 					KT_LOG_WARNING("Texture付きMaterialのMeshにUVがありません: Object=" + id.value.ToString());
+				}
+				else if (diagnostic.code == KT::RuntimeIntegration::RenderDiagnosticCode::MissingNormals ||
+					diagnostic.code == KT::RuntimeIntegration::RenderDiagnosticCode::SingularToonTransform)
+				{
+					const auto& id = loaded.scene->GetWorld().GetComponent<KT::World::PersistentId>(diagnostic.source);
+					KT_LOG_WARNING(std::string(diagnostic.code == KT::RuntimeIntegration::RenderDiagnosticCode::MissingNormals ?
+										   "Toon MaterialのMeshに法線がありません: Object=" :
+										   "Toonの法線を変換できない特異World行列です: Object=") +
+						id.value.ToString());
 				}
 				else if (diagnostic.code == KT::RuntimeIntegration::RenderDiagnosticCode::UnknownMaterialSlot)
 				{

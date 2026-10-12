@@ -42,6 +42,14 @@ namespace KT::Renderer
 					requiredState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
 					break;
 
+				case GraphResourceUsage::PixelShaderRead:
+					requiredState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+					break;
+
+				case GraphResourceUsage::DepthStencilRead:
+					requiredState = D3D12_RESOURCE_STATE_DEPTH_READ;
+					break;
+
 				// 初版GPUで状態を決められない用途は拒否する。
 				case GraphResourceUsage::Unspecified:
 				default:

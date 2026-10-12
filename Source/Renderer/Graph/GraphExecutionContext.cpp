@@ -8,7 +8,9 @@
 #include <Graphics/Textures/ColorTargetView.h>
 #include <Graphics/Textures/DepthTargetView.h>
 #include <stdexcept>
+#include <Graphics/Textures/ColorDepthTextureTable.h>
 #include <variant>
+#include <Renderer/Effects/EffectPlayer.h>
 
 namespace KT::Renderer
 {
@@ -81,7 +83,7 @@ namespace KT::Renderer
 				}
 			}
 
-			// 記録依頼：DepthTargetView版のGraphics窓口は未実装。
+			// 宣言検査後に借用DSVの全域Clearを記録する。
 			commands_.ClearDepth(*depthView);
 		}
 		catch (...)
@@ -100,6 +102,10 @@ namespace KT::Renderer
 			// 前検査：失敗済みのContextでは、宣言検査や追加記録を始めない。
 			(void)commands_.GetRecordingList();
 
+			if (packet.texturePair)
+			{
+				throw std::invalid_argument("影を読むDrawにはGraphExecutionContext::DrawToonを使用してください。");
+			}
 			// 色と深度の宣言を取得する
 			const auto& colorViewDesc = RequireDeclaredView(color, GraphResourceUsage::RenderTarget);
 			const auto& depthViewDesc = RequireDeclaredView(depth, GraphResourceUsage::DepthStencil);
@@ -143,6 +149,100 @@ namespace KT::Renderer
 		catch (...)
 		{
 			// 失敗保持：callbackが例外をcatchしても、このlistの記録・送信を禁止する。
+			commands_.Invalidate();
+			throw;
+		}
+	}
+
+	void GraphExecutionContext::DrawDepth(GraphViewHandle depth, const KT::Graphics::IndexedDrawPacket& packet)
+	{
+		try
+		{
+			(void)commands_.GetRecordingList();
+			const auto& desc = RequireDeclaredView(depth, GraphResourceUsage::DepthStencil);
+			const auto* target = std::get_if<KT::Graphics::DepthTargetView>(&desc.binding);
+			for (const auto& use : graph_.storage_.passes[passIndex_].desc.views)
+			{
+				if ((use.view.graphid == depth.graphid && use.view.index == depth.index) && use.access != GraphResourceAccess::ReadWrite)
+				{
+					throw std::invalid_argument("Shadow Drawの深度には先行Clear後のReadWrite宣言が必要です。");
+				}
+			}
+			if (!target || packet.texturePair)
+			{
+				throw std::invalid_argument("Shadow Drawの深度viewまたはTexture指定が不正です。");
+			}
+			commands_.DrawDepth(packet, *target, constants_);
+		}
+		catch (...)
+		{
+			commands_.Invalidate();
+			throw;
+		}
+	}
+
+	void GraphExecutionContext::DrawToon(
+		GraphViewHandle color, GraphViewHandle depth, GraphViewHandle shadow, const KT::Graphics::IndexedDrawPacket& packet)
+	{
+		try
+		{
+			(void)commands_.GetRecordingList();
+			const auto& colorDesc = RequireDeclaredView(color, GraphResourceUsage::RenderTarget);
+			const auto& depthDesc = RequireDeclaredView(depth, GraphResourceUsage::DepthStencil);
+			const auto& shadowDesc = RequireDeclaredView(shadow, GraphResourceUsage::PixelShaderRead);
+			const auto* colorTarget = std::get_if<KT::Graphics::ColorTargetView>(&colorDesc.binding);
+			const auto* depthTarget = std::get_if<KT::Graphics::DepthTargetView>(&depthDesc.binding);
+			const auto* sampled = std::get_if<KT::Graphics::PixelDepthView>(&shadowDesc.binding);
+			if (!colorTarget || !depthTarget || !sampled || !packet.texturePair ||
+				packet.texturePair->GetDepthResource() != sampled->GetResource())
+			{
+				throw std::invalid_argument("Toon Drawの影table画像がGraphの読取viewと一致しません。");
+			}
+			for (const auto& use : graph_.storage_.passes[passIndex_].desc.views)
+			{
+				if ((((use.view.graphid == color.graphid && use.view.index == color.index) ||
+						 (use.view.graphid == depth.graphid && use.view.index == depth.index)) &&
+						use.access != GraphResourceAccess::ReadWrite) ||
+					((use.view.graphid == shadow.graphid && use.view.index == shadow.index) && use.access != GraphResourceAccess::Read))
+				{
+					throw std::invalid_argument("Toon Drawには色/深度のReadWriteと影のRead宣言が必要です。");
+				}
+			}
+			commands_.DrawIndexed(packet, *colorTarget, *depthTarget, constants_);
+		}
+		catch (...)
+		{
+			commands_.Invalidate();
+			throw;
+		}
+	}
+
+	void GraphExecutionContext::DrawEffects(GraphViewHandle color, GraphViewHandle depth, EffectPlayer& effects, const RenderView& view)
+	{
+		try
+		{
+			(void)commands_.GetRecordingList();
+			const auto& colorDesc = RequireDeclaredView(color, GraphResourceUsage::RenderTarget);
+			const auto& depthDesc = RequireDeclaredView(depth, GraphResourceUsage::DepthStencilRead);
+			const auto* colorTarget = std::get_if<KT::Graphics::ColorTargetView>(&colorDesc.binding);
+			const auto* depthTarget = std::get_if<KT::Graphics::DepthTargetView>(&depthDesc.binding);
+			if (!colorTarget || !depthTarget || !depthTarget->IsReadOnly())
+			{
+				throw std::invalid_argument("Effect passには色RTVとreadonly深度DSVが必要です。");
+			}
+			// 現在passの画像宣言を確認し、上流へ未宣言の出力を渡さない。
+			for (const auto& use : graph_.storage_.passes[passIndex_].desc.views)
+			{
+				if ((use.view.index == color.index && use.access != GraphResourceAccess::ReadWrite) ||
+					(use.view.index == depth.index && use.access != GraphResourceAccess::Read))
+				{
+					throw std::invalid_argument("Effect passには色ReadWriteと深度Readの宣言が必要です。");
+				}
+			}
+			effects.Record(commands_, *colorTarget, *depthTarget, view);
+		}
+		catch (...)
+		{
 			commands_.Invalidate();
 			throw;
 		}

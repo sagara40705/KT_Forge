@@ -21,7 +21,7 @@
 namespace KT::Renderer
 {
 	PreparedRenderFrame PreparedRenderFrame::Prepare(const RenderWorld& world, const RenderView& view, const MeshStore& meshes,
-		const MaterialStore& materials, KT::Graphics::ConstantBufferArena& constants)
+		const MaterialStore& materials, KT::Graphics::ConstantBufferArena& constants, const SceneLighting& lighting)
 	{
 		if (view.width == 0 || view.height == 0 || view.width > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
 			view.height > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION || !KT::Core::Math::IsFinite(view.viewProjection))
@@ -52,7 +52,20 @@ namespace KT::Renderer
 			{
 				throw std::invalid_argument("描画Meshと個体別Skin paletteの要素数が一致しません。");
 			}
-			(void)draw.material->GetPipeline(skinCount != 0);
+			(void)draw.material->GetSurfacePipeline(skinCount != 0);
+			if (draw.material->IsToon())
+			{
+				if (!draw.mesh->HasNormals())
+				{
+					throw std::invalid_argument("Toon描画のMeshには法線が必要です。");
+				}
+				(void)KT::Core::Math::Inverse(object.world);
+				draw.texturePair = materials.GetToonTextures(object.materialId);
+				if (!draw.texturePair)
+				{
+					throw std::logic_error("Toon描画のMaterialStoreへ影画像を接続してください。");
+				}
+			}
 			if (object.palette)
 			{
 				for (const auto& matrix : *object.palette)
@@ -64,13 +77,20 @@ namespace KT::Renderer
 				}
 			}
 		}
+		if (std::any_of(result.draws_.begin(), result.draws_.end(), [](const auto& draw) { return draw.material->IsToon(); }))
+		{
+			lighting.Validate();
+			result.lightConstants_ = constants.Write(std::as_bytes(std::span{&lighting.constants, 1}));
+		}
 		const ViewConstants vc{view.viewProjection};
 		result.viewConstants_ = constants.Write(std::as_bytes(std::span{&vc, 1}));
 		// 同じ個体のSubmesh間で一つの定数sliceを共有する。
 		std::map<const void*, KT::Graphics::ConstantSlice> palettes;
 		for (std::size_t i = 0; i < result.draws_.size(); ++i)
 		{
-			const ObjectConstants oc{world.objects[i].world};
+			const ObjectConstants oc{world.objects[i].world,
+				result.draws_[i].material->IsToon() ? KT::Core::Math::Transpose(KT::Core::Math::Inverse(world.objects[i].world)) :
+													  KT::Core::Math::Matrix4{}};
 			const auto& mc = result.draws_[i].material->GetConstants();
 			result.draws_[i].objectConstants = constants.Write(std::as_bytes(std::span{&oc, 1}));
 			result.draws_[i].materialConstants = constants.Write(std::as_bytes(std::span{&mc, 1}));
@@ -96,6 +116,10 @@ namespace KT::Renderer
 		try
 		{
 			const auto& draw = draws_.at(index);
+			if (draw.material->IsToon())
+			{
+				throw std::logic_error("Toon描画は影のRead宣言を含むGraph passから記録してください。");
+			}
 			if (target.GetWidth() != width_ || target.GetHeight() != height_)
 			{
 				throw std::invalid_argument("準備済み描画の寸法が描画先と一致しません。");

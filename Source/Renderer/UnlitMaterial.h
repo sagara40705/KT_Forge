@@ -1,5 +1,6 @@
 #pragma once
 #include <Renderer/UnlitPipeline.h>
+#include <Renderer/Lighting/ToonPipeline.h>
 #include <array>
 #include <stdexcept>
 #include <Content/MaterialAsset.h>
@@ -9,14 +10,16 @@
 
 namespace KT::Renderer
 {
-	// immutable色と共有pipelineの非所有借用。pipelineはmaterialより長生きする。
+	// Forward Materialの色・設定と共有PSOを借用する。旧Unlit名/APIを互換用に維持する。
 	class UnlitMaterial
 	{
 	public:
 		UnlitMaterial(const UnlitPipeline& pipeline, std::array<float, 4> color);
 		UnlitMaterial(const UnlitPipeline& pipeline, const KT::Content::MaterialAsset& material,
 			const KT::Graphics::SampledTexture* texture, const KT::Graphics::Sampler* sampler,
-			const UnlitPipeline* skinnedPipeline = nullptr);
+			const UnlitPipeline* skinnedPipeline = nullptr, const ToonPipeline* toonPipeline = nullptr,
+			const ToonPipeline* toonSkinnedPipeline = nullptr, const UnlitPipeline* shadowPipeline = nullptr,
+			const UnlitPipeline* shadowSkinnedPipeline = nullptr);
 
 		[[nodiscard]] const MaterialConstants& GetConstants() const noexcept
 		{
@@ -51,7 +54,21 @@ namespace KT::Renderer
 			return pipeline_;
 		}
 
+		[[nodiscard]] bool IsToon() const noexcept
+		{
+			return toonPipeline_ != nullptr;
+		}
+
+		// ゲームのMaterial方式で可視PSOを選ぶ。旧GetPipelineはUnlit consumer向けに維持する。
+		const KT::Graphics::GraphicsPipelineState& GetSurfacePipeline(bool skinned) const;
+		const KT::Graphics::GraphicsPipelineState& GetShadowPipeline(bool skinned) const;
+
 	private:
+		// Toonは単色/Texture共通のPSOを使い、定数でSampleを選択する。
+		const ToonPipeline* toonPipeline_ = nullptr;
+		const ToonPipeline* toonSkinnedPipeline_ = nullptr;
+		const UnlitPipeline* shadowPipeline_ = nullptr;
+		const UnlitPipeline* shadowSkinnedPipeline_ = nullptr;
 		const UnlitPipeline& pipeline_;
 		// 同じMaterial設定をSkin頂点へ適用する共有Pipelineを借用する。
 		const UnlitPipeline* skinnedPipeline_ = nullptr;

@@ -6,11 +6,12 @@
 namespace KT::Graphics
 {
 	// DepthBufferの画像・DSV・寸法・formatを検査し、借用値として保持する。
-	DepthTargetView::DepthTargetView(const DepthBuffer& owner)
+	DepthTargetView::DepthTargetView(const DepthBuffer& owner, bool readOnly)
 	{
+		readOnly_ = readOnly;
 		const auto& texture = owner.GetTexture();
 		resource_ = texture.GetResource();
-		dsv_ = owner.GetDsv();
+		dsv_ = readOnly ? owner.GetReadOnlyDsv() : owner.GetDsv();
 		width_ = texture.GetWidth();
 		height_ = texture.GetHeight();
 		format_ = texture.GetFormat();
@@ -51,7 +52,7 @@ namespace KT::Graphics
 		{
 			throw std::invalid_argument("DepthBufferの配列サイズが1ではありません");
 		}
-		if (resourceDesc.Format != DXGI_FORMAT_D32_FLOAT)
+		if (resourceDesc.Format != DXGI_FORMAT_D32_FLOAT && resourceDesc.Format != DXGI_FORMAT_R32_TYPELESS)
 		{
 			throw std::invalid_argument("DepthBufferのフォーマットがD32_FLOATではありません");
 		}

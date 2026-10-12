@@ -81,6 +81,36 @@ namespace KT::RuntimeIntegration
 		result.updateNumber = context.UpdateNumber();
 		const auto& inputs = context.Inputs();
 
+		// 同じ完成入力から主光源をコピーする。設定はWorld座標で扱う。
+		bool foundLight = false;
+		for (std::size_t index = 0; index < inputs.size(); ++index)
+		{
+			if (!state.entities[index].active.value || !inputs[index].light || !inputs[index].light->enabled)
+			{
+				continue;
+			}
+			if (foundLight)
+			{
+				throw std::invalid_argument("activeでenabledなDirectionalLightはSceneに一つだけ指定してください。");
+			}
+			foundLight = true;
+			const auto& source = *inputs[index].light;
+			source.Validate();
+			auto& light = result.lighting;
+			light.constants.direction = KT::Core::Math::Normalized(source.direction);
+			light.constants.color = source.color;
+			light.constants.ambient = source.ambient;
+			light.constants.intensity = source.intensity;
+			light.constants.depthBias = source.depthBias;
+			light.constants.normalBias = source.normalBias;
+			light.constants.shadowStrength = source.shadowStrength;
+			light.constants.shadowViewProjection = KT::Renderer::DirectionalShadowMatrix(
+				source.direction, source.shadowCenter, source.shadowExtent, source.shadowDepth, source.shadowResolution);
+			light.shadowResolution = source.shadowResolution;
+			light.shadows = source.shadows && source.intensity > 0 && source.shadowStrength > 0;
+			light.constants.shadowEnabled = light.shadows ? 1.0f : 0.0f;
+		}
+
 		// Snapshotのslot順を維持し、各Entityのコピー済み設定だけから候補を作る。
 		for (std::size_t index = 0; index < state.entities.size(); ++index)
 		{
@@ -134,6 +164,27 @@ namespace KT::RuntimeIntegration
 							result.diagnostics.push_back(
 								{entity.entity, RenderDiagnosticField::Texcoords, RenderDiagnosticCode::MissingTexcoords,
 									renderer->mesh->Value(), static_cast<std::uint32_t>(submeshIndex), submesh.materialSlot});
+							continue;
+						}
+					}
+					if (material.asset->Model() == KT::Content::MaterialModel::Toon)
+					{
+						if (mesh.asset->Normals().empty())
+						{
+							result.diagnostics.push_back(
+								{entity.entity, RenderDiagnosticField::Normals, RenderDiagnosticCode::MissingNormals,
+									renderer->mesh->Value(), static_cast<std::uint32_t>(submeshIndex), submesh.materialSlot});
+							continue;
+						}
+						try
+						{
+							(void)KT::Core::Math::Inverse(entity.transform.matrix);
+						}
+						catch (const std::exception&)
+						{
+							result.diagnostics.push_back(
+								{entity.entity, RenderDiagnosticField::NormalTransform, RenderDiagnosticCode::SingularToonTransform, {},
+									static_cast<std::uint32_t>(submeshIndex), submesh.materialSlot});
 							continue;
 						}
 					}

@@ -116,6 +116,22 @@ namespace KT::Application
 		return &frame;
 	}
 
+	KT::RuntimeIntegration::SceneEffects& Application::Effects()
+	{
+		if (!effects_)
+		{
+			auto player = std::make_unique<KT::Renderer::EffectPlayer>(graphicsDevice_, commandQueue_, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
+			auto effects = std::make_unique<KT::RuntimeIntegration::SceneEffects>(*player);
+			if (effectsTick_)
+			{
+				effects->BeginTick();
+			}
+			effectPlayer_ = std::move(player);
+			effects_ = std::move(effects);
+		}
+		return *effects_;
+	}
+
 	void Application::RequestStop() noexcept
 	{
 		stopRequested_ = true;
@@ -182,7 +198,30 @@ namespace KT::Application
 						}
 						input_.Update();
 						sceneUpdater_.Reset();
-						(void)sceneHost_.Update(KT::Physics::FixedDeltaSeconds, update);
+						// ゲーム中の再生予約はScene成功後だけ公開する。
+						if (effects_)
+						{
+							effects_->BeginTick();
+						}
+						effectsTick_ = true;
+						try
+						{
+							(void)sceneHost_.Update(KT::Physics::FixedDeltaSeconds, update);
+							effectsTick_ = false;
+							if (effects_)
+							{
+								effects_->CompleteTick(sceneHost_.GetScene()->GetSnapshot(), KT::Physics::FixedDeltaSeconds);
+							}
+						}
+						catch (...)
+						{
+							effectsTick_ = false;
+							if (effects_)
+							{
+								effects_->AbortTick();
+							}
+							throw;
+						}
 						++simulationTicks_;
 					}
 					const auto* scene = sceneHost_.GetScene();
@@ -259,7 +298,8 @@ namespace KT::Application
 		}
 		const auto& frame = sceneUpdater_.Get();
 		const auto backBufferIndex = swapchain_->GetCurrentBackBufferIndex();
-		renderer_->Submit(frame.candidates, frame.view, KT::Graphics::ColorTargetView(*swapchain_, backBufferIndex));
+		renderer_->Submit(frame.candidates, frame.view, KT::Graphics::ColorTargetView(*swapchain_, backBufferIndex),
+			D3D12_RESOURCE_STATE_PRESENT, frame.lighting, effectPlayer_.get());
 		swapchain_->Present();
 		renderer_->Wait();
 		presentation_ = {

@@ -4,14 +4,32 @@
 
 namespace KT::Content
 {
-	MaterialAsset::MaterialAsset(std::array<float, 4> baseColor, MaterialModel model, UnlitSettings settings)
+	MaterialAsset::MaterialAsset(std::array<float, 4> baseColor, MaterialModel model, UnlitSettings settings, ToonSettings toon)
 		: baseColor_(baseColor),
 		  model_(model),
-		  settings_(std::move(settings))
+		  settings_(std::move(settings)),
+		  toon_(toon)
 	{
-		if (model_ != MaterialModel::UnlitOpaque)
+		if (model_ != MaterialModel::Unlit && model_ != MaterialModel::Toon)
 		{
 			throw std::invalid_argument("MaterialAssetの描画方式が未対応です。");
+		}
+		// 保存可能なトゥーン設定を先に確認する。
+		if (!std::isfinite(toon.threshold) || toon.threshold < 0 || toon.threshold > 1 || !std::isfinite(toon.smoothness) ||
+			toon.smoothness < 0 || toon.smoothness > 1)
+		{
+			throw std::invalid_argument("Toonの明暗境界と滑らかさには0以上1以下の有限値が必要です。");
+		}
+		for (const auto value : toon.shadeColor)
+		{
+			if (!std::isfinite(value) || value < 0 || value > 1)
+			{
+				throw std::invalid_argument("Toonの暗部色には0以上1以下の有限RGBが必要です。");
+			}
+		}
+		if (model == MaterialModel::Unlit && toon != ToonSettings{})
+		{
+			throw std::invalid_argument("Unlitには既定以外のToon設定を指定できません。");
 		}
 		for (const auto value : baseColor_)
 		{

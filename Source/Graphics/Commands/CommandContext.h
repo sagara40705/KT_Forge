@@ -75,6 +75,15 @@ namespace KT::Graphics
 		// 色とdepthのownerはFenceまで保持。状態遷移/clear/submitを隠さない。
 		void DrawIndexed(const IndexedDrawPacket& packet, const ColorTargetView& color, const DepthTargetView& depth,
 			const ConstantBufferArena& constants);
+		// 深度のみのPSOを記録する。colorなしでも同じpacket検査と失敗保持を行う。
+		void DrawDepth(const IndexedDrawPacket& packet, const DepthTargetView& depth, const ConstantBufferArena& constants);
+
+	private:
+		// すべてのDraw検査と命令追加を一か所で行う。color=nullptrは深度のみ。
+		void RecordIndexed(const IndexedDrawPacket& packet, const ColorTargetView* color, const DepthTargetView& depth,
+			const ConstantBufferArena& constants);
+
+	public:
 		// 借用DSVに全域clear0を記録する。借用元の画像・heapはFence完了まで保持する。
 		void ClearDepth(const DepthTargetView& depth);
 		// 記録失敗時にContextを使用禁止にする。GPU待機や命令の取り消しは行わない

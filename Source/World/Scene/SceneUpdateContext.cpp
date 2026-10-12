@@ -102,6 +102,12 @@ namespace KT::World
 				input.animator = *component;
 			}
 
+			if (const auto* component = world.FindComponent<DirectionalLight>(entity))
+			{
+				component->Validate();
+				input.light = *component;
+			}
+
 			bool activationDirty = !oldInput;
 			bool transformDirty = !oldInput;
 			if (oldInput)

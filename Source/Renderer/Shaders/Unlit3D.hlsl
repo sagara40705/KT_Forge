@@ -68,3 +68,20 @@ float4 TexturedPSMain(VertexOutput input) : SV_Target0
 {
     return FinishUnlit(baseColorTexture.Sample(baseColorSampler, input.uv * uvScale + uvOffset) * color);
 }
+
+// 深度だけの影passでも可視Materialの切抜きを維持する。
+void ShadowPSMain(VertexOutput input)
+{
+    if (alphaCutoff >= 0)
+    {
+        clip(color.a - alphaCutoff);
+    }
+}
+void ShadowTexturedPSMain(VertexOutput input)
+{
+    if (alphaCutoff >= 0)
+    {
+        const float alpha = baseColorTexture.Sample(baseColorSampler, input.uv * uvScale + uvOffset).a * color.a;
+        clip(alpha - alphaCutoff);
+    }
+}

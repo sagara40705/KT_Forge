@@ -3,7 +3,7 @@
 
 namespace KT::Renderer
 {
-	// b0=View,b1=Object,b2=Material、Skin版はb3を追加。Textureはt0/s0、種類ごとにPSOを共有する。
+	// Unlitと深度専用ShadowのPSO。target=UNKNOWNは影を選ぶ。Skin版はb3、Texture版はt0/s0を追加する。
 	class UnlitPipeline : private KT::Core::NonCopyable
 	{
 	public:

@@ -11,7 +11,7 @@ namespace KT::Graphics
 		{
 			throw std::invalid_argument("Root parameterの数が1から32の範囲外です。");
 		}
-		// space0のCBVと、Pixel Shader用の単一SRV/Sampler tableに限定する。
+		// space0のCBVと、Pixel Shader用のSRV 1/2個またはSampler 1個に限定する。
 		for (std::size_t index = 0; index < parameters.size(); ++index)
 		{
 			const auto& parameter = parameters[index];
@@ -35,12 +35,14 @@ namespace KT::Graphics
 				}
 				const auto& range = parameter.DescriptorTable.pDescriptorRanges[0];
 				if ((range.RangeType != D3D12_DESCRIPTOR_RANGE_TYPE_SRV && range.RangeType != D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER) ||
-					range.NumDescriptors != 1 || range.RegisterSpace != 0 ||
+					(range.NumDescriptors != 1 && !(range.RangeType == D3D12_DESCRIPTOR_RANGE_TYPE_SRV && range.NumDescriptors == 2)) ||
+					range.RegisterSpace != 0 ||
 					(range.OffsetInDescriptorsFromTableStart != 0 &&
 						range.OffsetInDescriptorsFromTableStart != D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND))
 				{
-					throw std::invalid_argument("Root tableはspace0・先頭の単一SRVまたはSamplerが必要です。");
+					throw std::invalid_argument("Root tableはspace0・先頭のSRV 1/2個またはSampler 1個が必要です。");
 				}
+				descriptorCounts_[index] = range.NumDescriptors;
 				kinds_[index] = range.RangeType == D3D12_DESCRIPTOR_RANGE_TYPE_SRV ? RootBindingKind::Texture : RootBindingKind::Sampler;
 			}
 			else

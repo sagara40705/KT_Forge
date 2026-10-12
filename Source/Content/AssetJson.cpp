@@ -121,7 +121,8 @@ namespace KT::Content
 			}
 			const bool meshOptimized = root.at("version") == 4;
 			const bool skinned = root.at("version") == 5;
-			const bool meshExtended = root.at("version") == 3 || meshOptimized || skinned;
+			const bool toonMaterial = root.at("version") == 3 && root.at("type") == "kt.Material";
+			const bool meshExtended = !toonMaterial && (root.at("version") == 3 || meshOptimized || skinned);
 			const bool extended = root.at("version") != 1;
 			const auto id = AssetId::Parse(root.at("assetId").get<std::string>());
 			const auto name = root.at("name").get<std::string>();
@@ -335,10 +336,29 @@ namespace KT::Content
 			if (type == "kt.Material")
 			{
 				UnlitSettings settings;
+				ToonSettings toon;
 				if (extended)
 				{
-					RequireFields(
-						data, {"model", "baseColor", "baseColorTexture", "uvScale", "uvOffset", "sampler", "alphaMode", "alphaCutoff"});
+					if (toonMaterial)
+					{
+						RequireFields(data,
+							{"model", "baseColor", "baseColorTexture", "uvScale", "uvOffset", "sampler", "alphaMode", "alphaCutoff",
+								"toon"});
+						const auto& value = data.at("toon");
+						RequireFields(value, {"threshold", "smoothness", "shadeColor", "receiveShadows"});
+						const auto& shade = value.at("shadeColor");
+						if (!shade.is_array() || shade.size() != 3)
+						{
+							throw std::invalid_argument("ToonのshadeColorにはRGBの3要素が必要です。");
+						}
+						toon = {ReadFloat(value.at("threshold")), ReadFloat(value.at("smoothness")),
+							{ReadFloat(shade[0]), ReadFloat(shade[1]), ReadFloat(shade[2])}, value.at("receiveShadows").get<bool>()};
+					}
+					else
+					{
+						RequireFields(
+							data, {"model", "baseColor", "baseColorTexture", "uvScale", "uvOffset", "sampler", "alphaMode", "alphaCutoff"});
+					}
 					if (!data.at("baseColorTexture").is_null())
 					{
 						settings.baseColorTexture = TextureAssetId::Parse(data.at("baseColorTexture").get<std::string>());
@@ -357,7 +377,7 @@ namespace KT::Content
 				{
 					RequireFields(data, {"model", "baseColor"});
 				}
-				if (data.at("model") != (extended ? "Unlit" : "UnlitOpaque"))
+				if (data.at("model") != (toonMaterial ? "Toon" : extended ? "Unlit" : "UnlitOpaque"))
 				{
 					throw std::invalid_argument("Material素材のmodelが未対応です。");
 				}
@@ -368,7 +388,7 @@ namespace KT::Content
 				}
 				return {id, name,
 					MaterialAsset({ReadFloat(color[0]), ReadFloat(color[1]), ReadFloat(color[2]), ReadFloat(color[3])},
-						MaterialModel::Unlit, settings)};
+						toonMaterial ? MaterialModel::Toon : MaterialModel::Unlit, settings, toon)};
 			}
 			if (type == "kt.Texture" && !extended)
 			{
@@ -474,7 +494,7 @@ namespace KT::Content
 				root["type"] = "kt.Material";
 				root["data"] = Json{{"model", "UnlitOpaque"}, {"baseColor", material.BaseColor()}};
 				const auto& settings = material.Settings();
-				if (settings != UnlitSettings{})
+				if (settings != UnlitSettings{} || material.Model() == MaterialModel::Toon)
 				{
 					root["version"] = 2;
 					root["data"]["model"] = "Unlit";
@@ -487,6 +507,14 @@ namespace KT::Content
 						{"addressV", settings.addressV == TextureAddress::Wrap ? "Wrap" : "Clamp"}};
 					root["data"]["alphaMode"] = settings.alphaMode == AlphaMode::Mask ? "Mask" : "Opaque";
 					root["data"]["alphaCutoff"] = settings.alphaCutoff;
+					if (material.Model() == MaterialModel::Toon)
+					{
+						root["version"] = 3;
+						root["data"]["model"] = "Toon";
+						const auto& toon = material.Toon();
+						root["data"]["toon"] = Json{{"threshold", toon.threshold}, {"smoothness", toon.smoothness},
+							{"shadeColor", toon.shadeColor}, {"receiveShadows", toon.receiveShadows}};
+					}
 				}
 			}
 			else if (const auto* model = std::get_if<ModelAsset>(&document.data))

@@ -52,3 +52,30 @@ kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unli
 kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unlit3DPS ps_6_0 PSMain)
 
 kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unlit3DTexturedPS ps_6_0 TexturedPSMain)
+
+target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Lighting/SceneLighting.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Lighting/SceneLighting.cpp"
+)
+
+target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Lighting/ToonPipeline.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Lighting/ToonPipeline.cpp"
+)
+kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Toon3D.hlsl" Toon3DVS vs_6_0 VSMain)
+kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Toon3D.hlsl" Toon3DSkinnedVS vs_6_0 SkinnedVSMain)
+kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Toon3D.hlsl" Toon3DPS ps_6_0 PSMain)
+kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Shadow3DPS ps_6_0 ShadowPSMain)
+kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Shadow3DTexturedPS ps_6_0 ShadowTexturedPSMain)
+
+target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Passes/ShadowPass.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Passes/ShadowPass.cpp"
+)
+
+target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Effects/EffectPlayer.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Effects/EffectPlayer.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Passes/EffectPass.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Passes/EffectPass.cpp"
+)

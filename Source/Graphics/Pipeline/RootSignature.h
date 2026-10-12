@@ -34,9 +34,16 @@ namespace KT::Graphics
 			return kinds_;
 		}
 
+		[[nodiscard]] const std::array<UINT, 32>& GetDescriptorCounts() const noexcept
+		{
+			return descriptorCounts_;
+		}
+
 	private:
 		ComPtr<ID3D12RootSignature> signature_;
 		UINT count_ = 0;
 		std::array<RootBindingKind, 32> kinds_{};
+		// tableの個数。CBVでは0、Samplerは1、SRVは1または2。
+		std::array<UINT, 32> descriptorCounts_{};
 	};
 }

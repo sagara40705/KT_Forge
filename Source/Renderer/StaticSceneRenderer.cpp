@@ -4,6 +4,10 @@
 #include <Renderer/Passes/ClearPass.h>
 #include <Renderer/Passes/DepthClearPass.h>
 #include <Renderer/Passes/OpaquePass.h>
+#include <Renderer/Passes/ShadowPass.h>
+#include <Renderer/Passes/EffectPass.h>
+#include <Renderer/Effects/EffectPlayer.h>
+#include <Renderer/RenderConstants.h>
 #include <Graphics/Textures/DepthTargetView.h>
 #include <Graphics/GraphicsValidation.h>
 #include <algorithm>
@@ -83,7 +87,7 @@ namespace KT::Renderer
 		try
 		{
 			const auto texture = source.asset->Settings().baseColorTexture;
-			materials_.AddUnlit(handle, *source.asset, texture ? &ResolveTexture(*texture) : nullptr);
+			materials_.AddSurface(handle, *source.asset, texture ? &ResolveTexture(*texture) : nullptr);
 			entry->second = handle;
 		}
 		catch (...)
@@ -121,7 +125,7 @@ namespace KT::Renderer
 	}
 
 	void StaticSceneRenderer::Submit(const RenderCandidates& candidates, const std::optional<RenderView>& view,
-		const KT::Graphics::ColorTargetView& color, D3D12_RESOURCE_STATES colorState)
+		const KT::Graphics::ColorTargetView& color, D3D12_RESOURCE_STATES colorState, const SceneLighting& lighting, EffectPlayer* effects)
 	{
 		Wait();
 		lastDrawCount_ = 0;
@@ -139,6 +143,7 @@ namespace KT::Renderer
 			throw std::overflow_error("描画の送信番号が上限に達しました。");
 		}
 
+		lighting.Validate();
 		RenderWorld world;
 		if (view)
 		{
@@ -151,11 +156,11 @@ namespace KT::Renderer
 		// Viewと各Drawの定数にSkin palette容量を加え、加算前にUINT上限を確認する。
 		constexpr std::size_t maxCapacity = (std::numeric_limits<UINT>::max)() & ~std::size_t{255};
 		constexpr std::size_t bytesPerDraw = 512 + KT::Content::SkinDefinition::MaxJoints * sizeof(KT::Core::Math::Matrix4);
-		if (world.objects.size() > (maxCapacity - 256) / bytesPerDraw)
+		if (world.objects.size() > (maxCapacity - 768) / bytesPerDraw)
 		{
 			throw std::overflow_error("静的Sceneの描画数が定数領域の上限を超えています。");
 		}
-		std::size_t required = 256;
+		std::size_t required = 768;
 		for (const auto& object : world.objects)
 		{
 			required += 512 + (object.palette ? bytesPerDraw - 512 : 0);
@@ -168,6 +173,17 @@ namespace KT::Renderer
 			auto depth = std::make_unique<KT::Graphics::DepthBuffer>(device_, color.GetWidth(), color.GetHeight());
 			depth_ = std::move(depth);
 		}
+		const bool toon = std::any_of(
+			world.objects.begin(), world.objects.end(), [this](const auto& object) { return materials_.Get(object.materialId).IsToon(); });
+		if (view && (toon || lighting.shadows) && (!shadow_ || shadow_->GetTexture().GetWidth() != lighting.shadowResolution))
+		{
+			// 旧ListとtableのGPU利用を完了させ、失敗した候補では旧画像を維持する。
+			ReleaseFrame();
+			auto pending = std::make_unique<KT::Graphics::DepthBuffer>(
+				device_, lighting.shadowResolution, lighting.shadowResolution, DXGI_FORMAT_D32_FLOAT, true);
+			materials_.BindShadow(KT::Graphics::PixelDepthView(*pending));
+			shadow_ = std::move(pending);
+		}
 		if (!frame_ || constantCapacity_ < required)
 		{
 			const auto grown = (std::min)(maxCapacity, (std::max)(std::size_t{65536}, constantCapacity_ + constantCapacity_ / 2));
@@ -179,6 +195,11 @@ namespace KT::Renderer
 
 		try
 		{
+			if (effects && view)
+			{
+				// 外部描画poolの再利用をGraph外で準備し、記録callback中は待機しない。
+				effects->PrepareFrame(queue_);
+			}
 			KT::Renderer::RenderGraph graph;
 			const auto output = graph.ImportTexture({"SceneColor", color.GetResource(), colorState, colorState, false, true});
 			const auto colorView = graph.AddView({"SceneColorRTV", output, {}, color});
@@ -190,8 +211,32 @@ namespace KT::Renderer
 					D3D12_RESOURCE_STATE_COMMON, false, true});
 				const auto depthView = graph.AddView({"SceneDepthDSV", depth, {}, KT::Graphics::DepthTargetView(*depth_)});
 				AddDepthClearPass(graph, depthView);
-				const auto prepared = PreparedRenderFrame::Prepare(world, *view, meshes_, materials_, frame_->GetConstants());
-				AddOpaquePass(graph, colorView, depthView, prepared);
+				const auto prepared = PreparedRenderFrame::Prepare(world, *view, meshes_, materials_, frame_->GetConstants(), lighting);
+				GraphViewHandle shadowRead;
+				if (toon || lighting.shadows)
+				{
+					const auto resource = graph.ImportTexture({"DirectionalShadow", shadow_->GetTexture().GetResource(),
+						D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COMMON, false, true});
+					const auto shadowDepth = graph.AddView({"ShadowDSV", resource, {}, KT::Graphics::DepthTargetView(*shadow_)});
+					AddDepthClearPass(graph, shadowDepth);
+					if (lighting.shadows)
+					{
+						const ViewConstants shadowView{lighting.constants.shadowViewProjection};
+						const auto slice = frame_->GetConstants().Write(std::as_bytes(std::span{&shadowView, 1}));
+						AddShadowPass(graph, shadowDepth, prepared, slice, lighting.shadowResolution);
+					}
+					if (toon)
+					{
+						shadowRead = graph.AddView({"ShadowSRV", resource, {}, KT::Graphics::PixelDepthView(*shadow_)});
+					}
+				}
+				AddOpaquePass(graph, colorView, depthView, prepared, shadowRead);
+				if (effects && effects->PlayingCount() != 0)
+				{
+					// 同じ深度のreadonly viewで判定し、色だけへエフェクトを重ねる。
+					const auto effectDepth = graph.AddView({"EffectDepthDSV", depth, {}, KT::Graphics::DepthTargetView(*depth_, true)});
+					AddEffectPass(graph, colorView, effectDepth, *effects, *view);
+				}
 			}
 			graph.Compile();
 			graph.Record(*frame_);

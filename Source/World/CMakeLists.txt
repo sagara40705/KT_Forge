@@ -54,3 +54,8 @@ target_sources(KT_Forge PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/World.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/World.h"
 )
+
+target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Lighting/DirectionalLight.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Lighting/DirectionalLight.cpp"
+)

@@ -4,7 +4,7 @@
 
 namespace KT::Graphics
 {
-	Texture::Texture(GraphicsDevice& device, UINT width, UINT height, DXGI_FORMAT format, TextureUsage usage)
+	Texture::Texture(GraphicsDevice& device, UINT width, UINT height, DXGI_FORMAT format, TextureUsage usage, bool shaderReadable)
 		: width_(width),
 		  height_(height),
 		  format_(format)
@@ -14,11 +14,11 @@ namespace KT::Graphics
 		{
 			throw std::invalid_argument("Texture size is out of range.");
 		}
-		if ((usage != TextureUsage::RenderTarget && usage != TextureUsage::Depth) ||
+		if ((usage != TextureUsage::RenderTarget && usage != TextureUsage::Depth) || (shaderReadable && usage != TextureUsage::Depth) ||
 			(usage == TextureUsage::RenderTarget && !IsColorTargetFormat(format)) ||
 			(usage == TextureUsage::Depth && format != DXGI_FORMAT_D32_FLOAT))
 		{
-			throw std::invalid_argument("Texture usage/format is unsupported.");
+			throw std::invalid_argument("Textureの用途・formatが未対応、または深度以外にShader読取を指定しています。");
 		}
 
 		// Deviceが指定した描画用途に対応するか確認する
@@ -39,7 +39,7 @@ namespace KT::Graphics
 		resourceDesc.Height = height;
 		resourceDesc.DepthOrArraySize = 1;
 		resourceDesc.MipLevels = 1;
-		resourceDesc.Format = format;
+		resourceDesc.Format = shaderReadable && usage == TextureUsage::Depth ? DXGI_FORMAT_R32_TYPELESS : format;
 		resourceDesc.SampleDesc.Count = 1;
 		resourceDesc.Flags =
 			usage == TextureUsage::Depth ? D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL : D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;

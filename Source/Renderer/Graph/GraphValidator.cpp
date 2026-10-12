@@ -99,7 +99,9 @@ namespace KT::Renderer
 			{
 				throw std::invalid_argument("Depth Viewの画像が親import画像と一致しません");
 			}
-			if (depth->GetWidth() != image.Width || depth->GetHeight() != image.Height || depth->GetFormat() != image.Format)
+			if (depth->GetWidth() != image.Width || depth->GetHeight() != image.Height ||
+				(depth->GetFormat() != image.Format &&
+					!(depth->GetFormat() == DXGI_FORMAT_D32_FLOAT && image.Format == DXGI_FORMAT_R32_TYPELESS)))
 			{
 				throw std::invalid_argument("Depth Viewの幅・高さ・formatが親画像と一致しません");
 			}
@@ -107,9 +109,19 @@ namespace KT::Renderer
 			{
 				throw std::invalid_argument("Depth ViewのDSVが無効です");
 			}
-			if (image.Format != DXGI_FORMAT_D32_FLOAT || (image.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) == 0)
+			if ((image.Format != DXGI_FORMAT_D32_FLOAT && image.Format != DXGI_FORMAT_R32_TYPELESS) ||
+				(image.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) == 0)
 			{
 				throw std::invalid_argument("Depth Viewの親画像はD32_FLOATとALLOW_DEPTH_STENCILが必要です");
+			}
+		}
+		else if (const auto* sampled = std::get_if<KT::Graphics::PixelDepthView>(&desc.binding))
+		{
+			if (sampled->GetResource() != resource || !sampled->GetHeap() || sampled->GetSrv().ptr == 0 ||
+				image.Format != DXGI_FORMAT_R32_TYPELESS || (image.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) == 0 ||
+				(image.Flags & D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE) != 0)
+			{
+				throw std::invalid_argument("PixelDepthViewの画像・SRV・読取可能な深度formatが親画像と一致しません。");
 			}
 		}
 		else
@@ -152,13 +164,20 @@ namespace KT::Renderer
 				throw std::invalid_argument("画像accessの列挙値が不正です");
 			}
 			if (usage != GraphResourceUsage::Unspecified && usage != GraphResourceUsage::RenderTarget &&
-				usage != GraphResourceUsage::DepthStencil)
+				usage != GraphResourceUsage::DepthStencil && usage != GraphResourceUsage::DepthStencilRead &&
+				usage != GraphResourceUsage::PixelShaderRead)
 			{
 				throw std::invalid_argument("画像usageの列挙値に対応していません");
 			}
-			if (usage != GraphResourceUsage::Unspecified && access == GraphResourceAccess::Read)
+			if ((usage == GraphResourceUsage::RenderTarget || usage == GraphResourceUsage::DepthStencil) &&
+				access == GraphResourceAccess::Read)
 			{
-				throw std::invalid_argument("初版のRTV/DSVはWriteAllまたはReadWriteだけ対応しています");
+				throw std::invalid_argument("RTV/DSVはWriteAllまたはReadWriteだけ対応しています");
+			}
+			if ((usage == GraphResourceUsage::PixelShaderRead || usage == GraphResourceUsage::DepthStencilRead) &&
+				access != GraphResourceAccess::Read)
+			{
+				throw std::invalid_argument("PixelShaderReadとDepthStencilReadはReadだけ対応しています。");
 			}
 		}
 
@@ -199,7 +218,11 @@ namespace KT::Renderer
 				validator.ValidateImportedTexture(*storage.resources[view.resource.index].importedTexture, storage);
 				CheckAccessUsage(use.access, use.usage);
 				if ((std::get_if<KT::Graphics::ColorTargetView>(&view.binding) && use.usage != GraphResourceUsage::RenderTarget) ||
-					(std::get_if<KT::Graphics::DepthTargetView>(&view.binding) && use.usage != GraphResourceUsage::DepthStencil))
+					(std::get_if<KT::Graphics::DepthTargetView>(&view.binding) &&
+						use.usage !=
+							(std::get<KT::Graphics::DepthTargetView>(view.binding).IsReadOnly() ? GraphResourceUsage::DepthStencilRead :
+																								  GraphResourceUsage::DepthStencil)) ||
+					(std::get_if<KT::Graphics::PixelDepthView>(&view.binding) && use.usage != GraphResourceUsage::PixelShaderRead))
 				{
 					throw std::invalid_argument("PassのusageがViewのRTV/DSV種別と一致しません");
 				}
@@ -272,7 +295,8 @@ namespace KT::Renderer
 		// format/flagsからColorまたはDepthとして使える画像かを検査する。
 		const bool isColorTarget =
 			KT::Graphics::IsColorTargetFormat(image.Format) && (image.Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) != 0;
-		const bool isDepthTarget = image.Format == DXGI_FORMAT_D32_FLOAT && (image.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) != 0;
+		const bool isDepthTarget = (image.Format == DXGI_FORMAT_D32_FLOAT || image.Format == DXGI_FORMAT_R32_TYPELESS) &&
+			(image.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) != 0;
 		if (!isColorTarget && !isDepthTarget)
 		{
 			throw std::invalid_argument("Import画像のformat/flagsは初版のRTまたはD32 Depthに対応していません");
@@ -280,8 +304,10 @@ namespace KT::Renderer
 
 		// 初期/最終stateはCOMMONまたは画像種別に対応する書込stateだけを受理する。
 		const auto writeState = isColorTarget ? D3D12_RESOURCE_STATE_RENDER_TARGET : D3D12_RESOURCE_STATE_DEPTH_WRITE;
-		if ((desc.initialState != D3D12_RESOURCE_STATE_COMMON && desc.initialState != writeState) ||
-			(desc.finalState != D3D12_RESOURCE_STATE_COMMON && desc.finalState != writeState))
+		if ((desc.initialState != D3D12_RESOURCE_STATE_COMMON && desc.initialState != writeState && !(isDepthTarget && desc.initialState == D3D12_RESOURCE_STATE_DEPTH_READ) &&
+				!(image.Format == DXGI_FORMAT_R32_TYPELESS && desc.initialState == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)) ||
+			(desc.finalState != D3D12_RESOURCE_STATE_COMMON && desc.finalState != writeState && !(isDepthTarget && desc.finalState == D3D12_RESOURCE_STATE_DEPTH_READ) &&
+				!(image.Format == DXGI_FORMAT_R32_TYPELESS && desc.finalState == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)))
 		{
 			throw std::invalid_argument("Import画像の初期/最終stateが画像種別のCOMMONまたは書込stateと一致しません");
 		}

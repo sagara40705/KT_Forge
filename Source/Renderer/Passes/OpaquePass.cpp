@@ -13,7 +13,8 @@
 namespace KT::Renderer
 {
 	// PreparedFrameを値捕捉し、color/depthのReadWrite宣言とDraw callbackを登録する。
-	void AddOpaquePass(RenderGraph& graph, GraphViewHandle color, GraphViewHandle depth, const PreparedRenderFrame& prepared)
+	void AddOpaquePass(
+		RenderGraph& graph, GraphViewHandle color, GraphViewHandle depth, const PreparedRenderFrame& prepared, GraphViewHandle shadow)
 	{
 		// 前検査
 		if (prepared.GetWidth() == 0 || prepared.GetHeight() == 0)
@@ -37,9 +38,13 @@ namespace KT::Renderer
 		depthUse.usage = GraphResourceUsage::DepthStencil;
 		desc.views.push_back(depthUse);
 
+		if (shadow.IsValid())
+		{
+			desc.views.push_back({shadow, GraphResourceAccess::Read, GraphResourceUsage::PixelShaderRead});
+		}
 		// コールバックと一緒に登録する
 		graph.AddPass(std::move(desc),
-			[color, depth, snapshot = prepared](GraphExecutionContext& context)
+			[color, depth, shadow, snapshot = prepared](GraphExecutionContext& context)
 			{
 				// 次の手順で、snapshot.GetDraws()を走査して描画する
 				for (const auto& draw : snapshot.GetDraws())
@@ -52,17 +57,23 @@ namespace KT::Renderer
 					std::vector<KT::Graphics::RootConstantBinding> bindings{
 						{0, snapshot.GetViewConstants()}, {1, draw.objectConstants}, {2, draw.materialConstants}};
 					const bool skinned = draw.mesh->SkinBindingCount() != 0;
+					const bool toon = draw.material->IsToon();
+					if (toon)
+					{
+						bindings.push_back({5, snapshot.GetLightConstants()});
+					}
 					if (skinned)
 					{
-						bindings.push_back({draw.material->GetTexture() ? 5u : 3u, draw.skinConstants});
+						bindings.push_back({toon ? 6u : draw.material->GetTexture() ? 5u : 3u, draw.skinConstants});
 					}
 					// IndexedDrawPacketを作成して、context.DrawIndexedに渡す
 					KT::Graphics::IndexedDrawPacket packet{};
-					packet.pipeline = &draw.material->GetPipeline(skinned).GetPipeline();
+					packet.pipeline = &draw.material->GetSurfacePipeline(skinned);
 					packet.vertices = &draw.mesh->GetVertices();
 					packet.indices = &draw.mesh->GetIndices();
 					packet.bindings = bindings;
-					packet.texture = draw.material->GetTexture();
+					packet.texture = toon ? nullptr : draw.material->GetTexture();
+					packet.texturePair = draw.texturePair;
 					packet.sampler = draw.material->GetSampler();
 					packet.textureRoot = 3;
 					packet.samplerRoot = 4;
@@ -71,7 +82,14 @@ namespace KT::Renderer
 					packet.range = draw.range;
 
 					// 描画を記録する
-					context.DrawIndexed(color, depth, packet);
+					if (toon)
+					{
+						context.DrawToon(color, depth, shadow, packet);
+					}
+					else
+					{
+						context.DrawIndexed(color, depth, packet);
+					}
 				}
 			});
 	}

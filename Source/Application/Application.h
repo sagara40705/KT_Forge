@@ -13,6 +13,7 @@
 #include <RuntimeIntegration/SceneUpdater.h>
 #include <RuntimeIntegration/ProjectSceneLoader.h>
 #include <Renderer/StaticSceneRenderer.h>
+#include <RuntimeIntegration/Effects/SceneEffects.h>
 #include <functional>
 #include <memory>
 
@@ -89,6 +90,8 @@ namespace KT::Application
 		}
 		// ゲーム処理から終了を予約する。次の更新を始めずにRunから戻る。
 		void RequestStop() noexcept;
+		// 基本エフェクトのゲーム窓口。初回取得でDX12資源を準備し、起動時に素材を読む。
+		KT::RuntimeIntegration::SceneEffects& Effects();
 
 	private:
 		// CPU結果を描画する。寸法変更時は旧CommandListを解放してからResizeする。
@@ -125,6 +128,10 @@ namespace KT::Application
 		FixedStepClock fixedClock_;
 		std::uint64_t simulationTicks_ = 0;
 		// 素材・Device・Queue・Swapchainより先に破棄し、GPUの借用先を保持する。
+		// Effect資源はRendererのFrameより長く、Device/Queueより短く保持する。
+		std::unique_ptr<KT::Renderer::EffectPlayer> effectPlayer_;
+		std::unique_ptr<KT::RuntimeIntegration::SceneEffects> effects_;
+		bool effectsTick_ = false;
 		std::unique_ptr<KT::Renderer::StaticSceneRenderer> renderer_;
 		// Run開始時に計測を再設定し、起動・復旧待ちの時間をdeltaへ含めない。
 		KT::Core::Timer timer_;

@@ -4,6 +4,7 @@
 #include <World/Physics/PhysicsSerialization.h>
 #include <World/Animation/AnimatorSerialization.h>
 #include <numbers>
+#include <World/Lighting/DirectionalLight.h>
 
 namespace KT::World
 {
@@ -27,6 +28,7 @@ namespace KT::World
 	{
 		RegisterPhysicsComponents(registry);
 		RegisterAnimatorComponent(registry);
+		RegisterDirectionalLightComponent(registry);
 		registry.Register<ActiveSelf>(
 			"kt.ActiveSelf", 1, [](const ActiveSelf& input) -> SceneValue { return SceneValue::Object{{"value", input.value}}; },
 			[](const SceneValue& data, const SceneReadContext&) -> ActiveSelf

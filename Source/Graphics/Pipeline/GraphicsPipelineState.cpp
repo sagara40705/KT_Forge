@@ -14,10 +14,10 @@ namespace KT::Graphics
 		  depthFormat_(depthFormat)
 	{
 		// shader stageと描画先のformatを確認する
-		if (!IsColorTargetFormat(targetFormat) || depthFormat != DXGI_FORMAT_D32_FLOAT || vertexShader.GetStage() != ShaderStage::Vertex ||
-			pixelShader.GetStage() != ShaderStage::Pixel)
+		if ((targetFormat != DXGI_FORMAT_UNKNOWN && !IsColorTargetFormat(targetFormat)) || depthFormat != DXGI_FORMAT_D32_FLOAT ||
+			vertexShader.GetStage() != ShaderStage::Vertex || pixelShader.GetStage() != ShaderStage::Pixel)
 		{
-			throw std::invalid_argument("Pipeline shader/target/depth format is invalid.");
+			throw std::invalid_argument("Pipelineのshader stage・color/depth formatが未対応です。");
 		}
 
 		// 頂点レイアウトの要素数とstrideを確認する
@@ -47,6 +47,7 @@ namespace KT::Graphics
 		RequireSameDevice(root_.Get(), device.GetDevice());
 		rootCount_ = rootSignature.GetParameterCount();
 		kinds_ = rootSignature.GetKinds();
+		descriptorCounts_ = rootSignature.GetDescriptorCounts();
 
 		// Shader Model 6.0への対応を確認する
 		D3D12_FEATURE_DATA_SHADER_MODEL shaderModel{D3D_SHADER_MODEL_6_0};
@@ -89,7 +90,7 @@ namespace KT::Graphics
 		// triangle-list・描画先format・sample1を設定する
 		pipelineDesc.SampleMask = (std::numeric_limits<UINT>::max)();
 		pipelineDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-		pipelineDesc.NumRenderTargets = 1;
+		pipelineDesc.NumRenderTargets = targetFormat == DXGI_FORMAT_UNKNOWN ? 0 : 1;
 		pipelineDesc.RTVFormats[0] = targetFormat;
 		pipelineDesc.DSVFormat = depthFormat;
 		pipelineDesc.SampleDesc.Count = 1;

@@ -11,6 +11,7 @@ namespace KT::Graphics
 	class IndexBuffer;
 	class SampledTexture;
 	class Sampler;
+	class ColorDepthTextureTable;
 
 	// IndexはVB全体への絶対参照。BaseVertexは0固定で、加算による範囲の曖昧さを持たせない。
 	struct IndexedDrawRange
@@ -39,5 +40,7 @@ namespace KT::Graphics
 		UINT samplerRoot = 0;
 		// 空は旧APIのIB全体描画。指定時は空でない三角形範囲だけを許す。
 		std::optional<IndexedDrawRange> range;
+		// Toon専用の色+影table。単一texture指定と排他的で、Samplerは併用する。
+		const ColorDepthTextureTable* texturePair = nullptr;
 	};
 }

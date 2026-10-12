@@ -47,12 +47,19 @@ namespace KT::Graphics
 			return kinds_.at(index);
 		}
 
+		[[nodiscard]] UINT GetDescriptorCount(UINT index) const
+		{
+			return descriptorCounts_.at(index);
+		}
+
 	private:
 		ComPtr<ID3D12PipelineState> state_;
 		ComPtr<ID3D12RootSignature> root_; // PSOから借用するRootSignatureの寿命も明示所有で保証。
 		UINT stride_;
 		UINT rootCount_ = 0;
 		std::array<RootBindingKind, 32> kinds_{};
+		// Root tableの範囲長を保持し、Draw前に画像数を検査する。
+		std::array<UINT, 32> descriptorCounts_{};
 		DXGI_FORMAT targetFormat_, depthFormat_;
 	};
 }

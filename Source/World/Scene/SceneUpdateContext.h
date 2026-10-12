@@ -1,6 +1,7 @@
 #pragma once
 #include <World/Scene/SceneData.h>
 #include <World/Animation/Animator.h>
+#include <World/Lighting/DirectionalLight.h>
 
 namespace KT::World
 {
@@ -21,6 +22,8 @@ namespace KT::World
 		std::optional<MeshRenderer> mesh;
 		// この更新で完成した個体の再生値。後続のWorld編集から独立する。
 		std::optional<Animator> animator;
+		// 完成更新の主光源設定。後からWorldを参照しない。
+		std::optional<DirectionalLight> light;
 		// 入力と同時に捕捉した変更世代・借用状態。後からWorldを問い合わせない。
 		CpuChangeState changes;
 	};

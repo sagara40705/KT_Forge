@@ -23,3 +23,8 @@ target_sources(KT_Forge PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/SceneUpdater.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/SceneUpdater.h"
 )
+
+target_sources(KT_Forge PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Effects/SceneEffects.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Effects/SceneEffects.cpp"
+)

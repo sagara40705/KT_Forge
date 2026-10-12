@@ -3,6 +3,7 @@
 #include <Renderer/MeshRenderCandidate.h>
 #include <World/Entity.h>
 #include <optional>
+#include <Renderer/Lighting/SceneLighting.h>
 
 namespace KT::RuntimeIntegration
 {
@@ -13,7 +14,9 @@ namespace KT::RuntimeIntegration
 		AssetTypeMismatch,
 		InvalidWorldBounds,
 		MissingTexcoords,
-		UnknownMaterialSlot
+		UnknownMaterialSlot,
+		MissingNormals,
+		SingularToonTransform
 	};
 
 	// 問題のあるComponent入力または派生値を識別する。
@@ -24,7 +27,9 @@ namespace KT::RuntimeIntegration
 		WorldBounds,
 		BaseColorTexture,
 		Texcoords,
-		MaterialSlot
+		MaterialSlot,
+		Normals,
+		NormalTransform
 	};
 
 	// ログ出力を伴わない診断値。元Entityは当該Snapshotの識別だけに使用する。
@@ -50,5 +55,7 @@ namespace KT::RuntimeIntegration
 		std::uint64_t updateNumber = 0;
 		// Camera未指定またはCamera計算失敗なら空。候補自体はCameraから独立する。
 		std::optional<KT::Renderer::RenderView> view;
+		// activeな主光源を一つだけコピーする。複数指定は曖昧なため拒否する。
+		KT::Renderer::SceneLighting lighting;
 	};
 }

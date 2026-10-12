@@ -4,6 +4,8 @@
 #include <Unlit3DSkinnedVS.h>
 #include <Unlit3DPS.h>
 #include <Unlit3DTexturedPS.h>
+#include <Shadow3DPS.h>
+#include <Shadow3DTexturedPS.h>
 #include <array>
 #include <cstddef>
 #include <vector>
@@ -67,10 +69,13 @@ namespace KT::Renderer
 			  skinned ? std::span<const std::byte>(std::as_bytes(std::span{Unlit3DSkinnedVS})) :
 						std::span<const std::byte>(std::as_bytes(std::span{Unlit3DVS}))),
 		  pixel_(KT::Graphics::ShaderStage::Pixel,
-			  textured ? std::span<const std::byte>(std::as_bytes(std::span{Unlit3DTexturedPS})) :
-						 std::span<const std::byte>(std::as_bytes(std::span{Unlit3DPS}))),
+			  target == DXGI_FORMAT_UNKNOWN ? (textured ? std::span<const std::byte>(std::as_bytes(std::span{Shadow3DTexturedPS})) :
+														  std::span<const std::byte>(std::as_bytes(std::span{Shadow3DPS}))) :
+				  textured					? std::span<const std::byte>(std::as_bytes(std::span{Unlit3DTexturedPS})) :
+											  std::span<const std::byte>(std::as_bytes(std::span{Unlit3DPS}))),
 		  root_(device, Parameters(textured, skinned)),
-		  pipeline_(device, root_, vertex_, pixel_, Layout(skinned), skinned ? sizeof(SkinnedMeshVertex) : sizeof(MeshVertex), target, depth)
+		  pipeline_(
+			  device, root_, vertex_, pixel_, Layout(skinned), skinned ? sizeof(SkinnedMeshVertex) : sizeof(MeshVertex), target, depth)
 	{
 	}
 }

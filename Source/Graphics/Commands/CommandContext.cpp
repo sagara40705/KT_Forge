@@ -1,4 +1,5 @@
 #include <Graphics/Textures/SampledTexture.h>
+#include <Graphics/Textures/ColorDepthTextureTable.h>
 #include <Graphics/Descriptors/Sampler.h>
 #include "CommandContext.h"
 #include <Graphics/Pipeline/GraphicsPipelineState.h>
@@ -217,6 +218,17 @@ namespace KT::Graphics
 	void CommandContext::DrawIndexed(
 		const IndexedDrawPacket& packet, const ColorTargetView& color, const DepthTargetView& depth, const ConstantBufferArena& constants)
 	{
+		RecordIndexed(packet, &color, depth, constants);
+	}
+
+	void CommandContext::DrawDepth(const IndexedDrawPacket& packet, const DepthTargetView& depth, const ConstantBufferArena& constants)
+	{
+		RecordIndexed(packet, nullptr, depth, constants);
+	}
+
+	void CommandContext::RecordIndexed(
+		const IndexedDrawPacket& packet, const ColorTargetView* color, const DepthTargetView& depth, const ConstantBufferArena& constants)
+	{
 		try
 		{
 			// 記録中のListを取得する
@@ -249,25 +261,30 @@ namespace KT::Graphics
 			}
 
 			// 期待する描画サイズと、色・深度両方のサイズを確認する
+			if (depth.IsReadOnly())
+			{
+				throw std::invalid_argument("通常DrawとShadow Drawには書込可能DSVを指定してください。");
+			}
 			if (packet.expectedWidth == 0 || packet.expectedHeight == 0)
 			{
 				throw std::invalid_argument("IndexedDrawPacketのexpectedWidthまたはexpectedHeightが0です");
 			}
-			if (packet.expectedWidth != color.GetWidth() || packet.expectedHeight != color.GetHeight() ||
+			if ((color && (packet.expectedWidth != color->GetWidth() || packet.expectedHeight != color->GetHeight())) ||
 				packet.expectedWidth != depth.GetWidth() || packet.expectedHeight != depth.GetHeight())
 			{
 				throw std::invalid_argument("IndexedDrawPacketの描画サイズが色または深度のサイズと一致しません");
 			}
-			if (color.GetRtv().ptr == 0 || depth.GetDsv().ptr == 0)
+			if ((color && color->GetRtv().ptr == 0) || depth.GetDsv().ptr == 0)
 			{
 				throw std::invalid_argument("描画先のRTVまたはDSVが無効です");
 			}
 
 			// 頂点・index・描画先・定数の組合せを確認する
 			if (vertices.GetView().StrideInBytes != pipeline.GetVertexStride() || indices.GetMaximumIndex() >= vertices.GetCount() ||
-				indices.GetCount() % 3 != 0 || color.GetFormat() != pipeline.GetTargetFormat() ||
+				indices.GetCount() % 3 != 0 || (color ? color->GetFormat() : DXGI_FORMAT_UNKNOWN) != pipeline.GetTargetFormat() ||
 				depth.GetFormat() != pipeline.GetDepthFormat() ||
-				(bindings.size() + (packet.texture ? 2 : 0)) != pipeline.GetRootParameterCount() || bindings.size() > 32)
+				(bindings.size() + (packet.texture || packet.texturePair ? 2 : 0)) != pipeline.GetRootParameterCount() ||
+				bindings.size() > 32)
 			{
 				throw std::invalid_argument("頂点・index・描画先・定数の組合せが一致しません");
 			}
@@ -276,7 +293,7 @@ namespace KT::Graphics
 			ComPtr<ID3D12Device> device;
 			CheckGraphicsResult(commandList->GetDevice(IID_PPV_ARGS(device.GetAddressOf())), "記録先Deviceの取得に失敗");
 			for (auto* object : std::array<ID3D12DeviceChild*, 6>{pipeline.GetState(), vertices.GetResource(), indices.GetResource(),
-					 color.GetResource(), depth.GetResource(), constants.GetResource()})
+					 color ? color->GetResource() : depth.GetResource(), depth.GetResource(), constants.GetResource()})
 			{
 				RequireSameDevice(object, device.Get());
 			}
@@ -301,36 +318,56 @@ namespace KT::Graphics
 			}
 
 			// 不変TextureとSamplerの所有・型・Deviceを命令追加前に確認する。
-			if ((packet.texture == nullptr) != (packet.sampler == nullptr))
+			if (((packet.texture == nullptr && packet.texturePair == nullptr) != (packet.sampler == nullptr)) ||
+				(packet.texture && packet.texturePair))
 			{
 				throw std::invalid_argument("TextureとSamplerは同時に指定してください。");
 			}
 			D3D12_GPU_DESCRIPTOR_HANDLE textureHandle{}, samplerHandle{};
-			if (packet.texture)
+			if (packet.texture || packet.texturePair)
 			{
 				if (packet.textureRoot >= pipeline.GetRootParameterCount() || packet.samplerRoot >= pipeline.GetRootParameterCount() ||
 					pipeline.GetRootBindingKind(packet.textureRoot) != RootBindingKind::Texture ||
-					pipeline.GetRootBindingKind(packet.samplerRoot) != RootBindingKind::Sampler)
+					pipeline.GetRootBindingKind(packet.samplerRoot) != RootBindingKind::Sampler ||
+					pipeline.GetDescriptorCount(packet.textureRoot) != (packet.texturePair ? 2u : 1u) ||
+					pipeline.GetDescriptorCount(packet.samplerRoot) != 1)
 				{
 					throw std::invalid_argument("TextureまたはSamplerのroot parameterが種類・範囲と一致しません。");
 				}
-				RequireSameDevice(packet.texture->GetResource(), device.Get());
-				RequireSameDevice(packet.texture->GetHeap(), device.Get());
+				if (packet.texturePair)
+				{
+					RequireSameDevice(packet.texturePair->GetDepthResource(), device.Get());
+					RequireSameDevice(packet.texturePair->GetHeap(), device.Get());
+					if (const auto* source = packet.texturePair->GetColor())
+					{
+						RequireSameDevice(source->GetResource(), device.Get());
+						if (!source->IsReady())
+						{
+							throw std::invalid_argument("Toon tableの色Texture転送が完了していません。");
+						}
+					}
+					textureHandle = packet.texturePair->GetTable();
+				}
+				else
+				{
+					RequireSameDevice(packet.texture->GetResource(), device.Get());
+					RequireSameDevice(packet.texture->GetHeap(), device.Get());
+					textureHandle = packet.texture->GetSrv();
+				}
 				RequireSameDevice(packet.sampler->GetHeap(), device.Get());
-				textureHandle = packet.texture->GetSrv();
 				samplerHandle = packet.sampler->GetSampler();
 			}
 
 			// 全検査後に、描画範囲と描画先を設定する
-			const D3D12_VIEWPORT viewport{0, 0, static_cast<float>(color.GetWidth()), static_cast<float>(color.GetHeight()), 0, 1};
-			const D3D12_RECT scissor{0, 0, static_cast<LONG>(color.GetWidth()), static_cast<LONG>(color.GetHeight())};
-			const auto rtv = color.GetRtv();
+			const D3D12_VIEWPORT viewport{0, 0, static_cast<float>(depth.GetWidth()), static_cast<float>(depth.GetHeight()), 0, 1};
+			const D3D12_RECT scissor{0, 0, static_cast<LONG>(depth.GetWidth()), static_cast<LONG>(depth.GetHeight())};
+			const auto rtv = color ? color->GetRtv() : D3D12_CPU_DESCRIPTOR_HANDLE{};
 			const auto dsv = depth.GetDsv();
 			commandList->SetGraphicsRootSignature(pipeline.GetRootSignature());
 			commandList->SetPipelineState(pipeline.GetState());
 			commandList->RSSetViewports(1, &viewport);
 			commandList->RSSetScissorRects(1, &scissor);
-			commandList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+			commandList->OMSetRenderTargets(color ? 1 : 0, color ? &rtv : nullptr, FALSE, &dsv);
 
 			// 頂点・index・定数を設定する
 			commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -343,9 +380,10 @@ namespace KT::Graphics
 				commandList->SetGraphicsRootConstantBufferView(bindings[bindingIndex].rootParameter, addresses[bindingIndex]);
 			}
 
-			if (packet.texture)
+			if (packet.texture || packet.texturePair)
 			{
-				ID3D12DescriptorHeap* heaps[]{packet.texture->GetHeap(), packet.sampler->GetHeap()};
+				ID3D12DescriptorHeap* heaps[]{
+					packet.texturePair ? packet.texturePair->GetHeap() : packet.texture->GetHeap(), packet.sampler->GetHeap()};
 				commandList->SetDescriptorHeaps(2, heaps);
 				commandList->SetGraphicsRootDescriptorTable(packet.textureRoot, textureHandle);
 				commandList->SetGraphicsRootDescriptorTable(packet.samplerRoot, samplerHandle);
@@ -367,6 +405,10 @@ namespace KT::Graphics
 	{
 		try
 		{
+			if (depth.IsReadOnly())
+			{
+				throw std::invalid_argument("readonly DSVの深度をClearできません。");
+			}
 			// 記録中のListと借用DSVを取得する
 			auto* commandList = GetRecordingList();
 			const auto dsv = depth.GetDsv();
