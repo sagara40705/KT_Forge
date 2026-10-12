@@ -39,13 +39,25 @@ Clearは更新・値編集・所有交換中に拒否し、active/pendingを両�
 GetScene/GetRenderFrame/UI/Effectsの借用はそれぞれ次の交換・更新またはShutdown/Application破棄まで。終了後の窓口参照は利用しない。
 
 RequestStopはRunから戻る要求で、完成Sceneを保持する。明示的な次Run開始時に時計を初期化する。
-Runの例外は元例外をGetLastRunFailureへ保持し、GPU後始末の失敗で上書きせずRunState::Failedとして返す。
+Runの通常例外は元例外をGetLastRunFailureへ保持し、GPU後始末前に原因をログへ残してRunState::Failedとして返す。
 失敗原因を修正し、SceneがFailedならResetAfterFailureまたは新候補予約を行ってからRunを明示的に再開する。次Run開始時に前回例外を消去する。
 ShutdownはRun外だけで実行し、繰返しは何もしない。GPU Frame/Queue完了→描画候補失効→pending/active Scene・Script→Renderer→GameUi→UiRenderer→SceneEffects→EffectPlayer→Swapchainの順。
 Shader/Graph・World型の依存は増やさない。Device/Queue/PhysicsRuntime/素材/Input/Window/GLFWはApplication破棄まで保持する。
 member宣言順もScene/ScriptがUI/Effectより先に破棄される順とし、部分起動失敗時の巻戻しも同じ借用条件を保つ。
 Shutdown中は公開操作で新しい窓口を生成させない。終了後のRun/Play/Pause/素材窓口/Scene予約を拒否する。
-GPU待機失敗では利用資源を解放せず例外を返す。destructorでも完了を確認できない場合は診断してterminateする。
+FrameResourcesの送信後Signal・完了Wait失敗は、GPU借用資源の安全な解放と再利用を保証できないため、原因をログへ残してterminateする。Deviceの自動再生成は行わない。
+Shutdownの追加Queue待機など、Frame外から返る例外では所有物を保持する。destructorでも完了を確認できない場合は診断してterminateする。
+
+### 失敗の境界（2026-10-12）
+
+- 入力・素材・編集・読込候補・保存の失敗: 各APIの検証と候補公開の契約に従い例外または診断を返す。無効な読込候補では現Scene、保存置換前の失敗では既存保存先を保持する。
+- Scene更新途中の失敗: 現行実装はWorldの構造・値・Scriptと物理候補をrollbackし、旧CPU結果を保持してSceneをFailedにする。自動再試行しない。外部UI・実行制御・ファイル等の副作用は全体rollbackに含まれない。完全復元契約の縮小は親レビューで今回見送りとし、変更していない。
+- GPU記録失敗: 未送信Contextを無効にし、部分記録を送信しない。通常例外を伝播する。
+- GPU送信後の継続不能な失敗: FrameResourcesのSignal/Waitで完了を保証できなければ原因を診断して終了する。通常例外保持や同じSceneの再開を保証しない。
+
+AssetJson/SceneJson/ModelWorkflowJsonは本文の検証と64MiB制限を形式側で完了し、Platform::ReplaceFileWithTextで保存する。
+同じディレクトリの短い一意名をCREATE_NEWで作成し、全本文の書込→FlushFileBuffers→CloseHandle成功後にMoveFileExWで置換する。
+作成に成功した一時ファイルだけを途中失敗時に除去し、名前衝突した既存一時ファイルや既存保存先を先に削除しない。複数ファイルtransactionではない。
 
 
 ## RmlUiのゲーム内UIの採用契約（2026-10-12）
@@ -118,7 +130,11 @@ Content/Animationは骨格TRS・Clip key・Skin bindingと頂点Weightの入力�
 Animation/SkeletonAnimationはozzの不変Skeleton/Animationを共有し、PoseSamplerは個体ごとの可変Contextを所有する。
 World/Animation/Animatorは個体ごとの時計・速度・Clip・ブレンド進行だけを持ち、Content/GPU/ozz実体を持たない。
 SceneのScript/ゲーム後にactive個体の時計を進め、既存更新transactionの成功公開とrollbackへ含める。
-RuntimeIntegration/Animationは完成CPU入力と固定Catalogからpaletteと変形AABBを作り、Rendererへ値所有で渡す。
+RuntimeIntegration/Animationは完成CPU入力と固定Catalogからpaletteを作り、Rendererへ値所有で渡す。
+SceneUpdaterは捕捉ごとに再発行しないCaptureIdで同じ完成snapshotの候補・姿勢・診断を再利用する。Camera/viewportは毎回独立に再計算する。
+CatalogはFreeze後に差替え・削除しない。新しい捕捉、Reset、Scene交換では候補を作り直し、入力の借用pointerをcacheに保持しない。
+Animationの厳密な変形AABBは既定で計算し、ModelImportのプレビュー配置もこの既定を使う。通常Applicationは要求せず、bind境界とboundsMatchPose=falseを渡す。
+通常Rendererは境界でカリングしない。boundsMatchPose=falseのSkin境界は変形後のカリング・配置判断へ使用しない。
 最も近い祖先Animatorを使い、配置rootで一個体の全Skin Meshを制御する。個体のclockとContextは共有しない。
 
 paletteはrow-vectorの`inverseBind * jointModel * modelToMesh`。

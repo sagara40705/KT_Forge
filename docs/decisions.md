@@ -4,6 +4,11 @@
 
 ## 現行判断
 
+2026-10-12の優先修正では、通常失敗の例外伝播と送信後GPU同期不能の診断終了を区別し、原因を後始末前にもログへ残す。Device再生成は追加しない。
+同じ完成CPU捕捉の候補と姿勢を再利用し、Camera/viewportは分けて評価する。Skin厳密境界は既定で維持し、カリングを行わない通常Applicationだけ全Index走査を省く。
+CPU入力の所有を保ったまま中間コピーを除去する。PhysicsのClone/Sealは保持し、復元中の不変checkpoint借用だけでbyteコピーを省く。毎tick完全rollbackの縮小は、Worldの公開・破棄・Script寿命への波及が大きいため親レビューで今回見送り。
+三形式の保存で実重複するWin32書込・flush・置換をPlatform/FileReplacementへ集約する。形式検証とサイズ制限を各形式へ残し、複数ファイルtransactionや汎用filesystemは作らない。
+
 最初に実行制御と寿命管理の基盤を整備する。
 Applicationに小さなExecutionControlを直接所有させ、Runの稼働状態とSceneの時間進行を分ける。
 StopPlaybackは完成Sceneを保持する停止。RequestStopはRun終了、Shutdownは実行窓口の終了とし、意味を混ぜない。
