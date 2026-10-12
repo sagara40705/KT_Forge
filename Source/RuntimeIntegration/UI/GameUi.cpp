@@ -119,9 +119,6 @@ namespace KT::RuntimeIntegration
 		};
 
 		std::unordered_map<std::uint64_t, Document> documents;
-		// 標準画面のhandle。未読込またはClose後はid=0。
-		UiDocument hud, pause;
-		bool paused = false;
 		// ゲームへ渡すclick操作名。TakeActionsで所有を移す。
 		std::vector<std::string> actions;
 
@@ -190,30 +187,6 @@ namespace KT::RuntimeIntegration
 			return *element;
 		}
 
-		void SetPause(bool value)
-		{
-			if (pause.id != 0)
-			{
-				auto& document = Require(pause);
-				if (value)
-				{
-					document.value->Show(Rml::ModalFlag::Modal);
-				}
-				else
-				{
-					document.value->Hide();
-					// 戻り先のHUD buttonへ残るfocusを解除し、ゲームへ操作を返す。
-					if (hud.id != 0)
-					{
-						(void)Require(hud).value->Focus();
-					}
-				}
-				document.visible = value;
-				document.modal = value;
-			}
-			paused = value;
-		}
-
 		void ProcessEvent(Rml::Event& event) override
 		{
 			// DOMをゲームへ渡さず、button祖先の操作名を値として保持する。
@@ -228,10 +201,6 @@ namespace KT::RuntimeIntegration
 						throw std::overflow_error("UI操作イベントが上限256に達しました。ゲーム側でTakeActionsしてください。");
 					}
 					actions.push_back(action);
-					if (action == "pause" || action == "resume")
-					{
-						SetPause(action == "pause");
-					}
 					break;
 				}
 			}
@@ -281,25 +250,11 @@ namespace KT::RuntimeIntegration
 	{
 		impl_->Require(document).value->Close();
 		impl_->documents.erase(document.id);
-		if (document == impl_->hud)
-		{
-			impl_->hud = {};
-		}
-		if (document == impl_->pause)
-		{
-			impl_->pause = {};
-			impl_->paused = false;
-		}
 	}
 
 	void GameUi::Show(UiDocument handle, bool visible, bool modal)
 	{
 		auto& document = impl_->Require(handle);
-		if (handle == impl_->pause)
-		{
-			impl_->SetPause(visible);
-			return;
-		}
 		if (visible)
 		{
 			document.value->Show(modal ? Rml::ModalFlag::Modal : Rml::ModalFlag::None);
@@ -310,6 +265,11 @@ namespace KT::RuntimeIntegration
 		}
 		document.visible = visible;
 		document.modal = visible && modal;
+	}
+
+	void GameUi::Focus(UiDocument document)
+	{
+		(void)impl_->Require(document).value->Focus();
 	}
 
 	void GameUi::SetText(UiDocument document, const std::string& id, const std::string& text)
@@ -360,54 +320,6 @@ namespace KT::RuntimeIntegration
 		impl_->Element(document, id).SetProperty("width", std::to_string(static_cast<double>(current) / maximum * 100) + "%");
 	}
 
-	void GameUi::LoadBuiltin(const std::filesystem::path& directory)
-	{
-		if (impl_->hud.id != 0 || impl_->pause.id != 0)
-		{
-			throw std::logic_error("標準HUDは既に読み込まれています。");
-		}
-		LoadFont(directory / "NotoSansCJKjp-Regular.otf");
-		const auto hud = LoadDocument(directory / "hud.rml");
-		UiDocument pause;
-		try
-		{
-			pause = LoadDocument(directory / "pause.rml");
-			Show(hud, true);
-		}
-		catch (...)
-		{
-			if (pause.id)
-			{
-				Close(pause);
-			}
-			Close(hud);
-			throw;
-		}
-		impl_->hud = hud;
-		impl_->pause = pause;
-		impl_->SetPause(impl_->paused);
-	}
-
-	UiDocument GameUi::HudDocument() const noexcept
-	{
-		return impl_->hud;
-	}
-
-	UiDocument GameUi::PauseDocument() const noexcept
-	{
-		return impl_->pause;
-	}
-
-	void GameUi::SetPaused(bool value)
-	{
-		impl_->SetPause(value);
-	}
-
-	bool GameUi::IsPaused() const noexcept
-	{
-		return impl_->paused;
-	}
-
 	std::vector<std::string> GameUi::TakeActions()
 	{
 		std::vector<std::string> result;
@@ -429,17 +341,22 @@ namespace KT::RuntimeIntegration
 				impl_->context->SetDensityIndependentPixelRatio(static_cast<float>(width) / windowWidth);
 			}
 		}
-		const bool wasModal = impl_->paused ||
-			std::any_of(impl_->documents.begin(), impl_->documents.end(),
-				[](const auto& pair) { return pair.second.visible && pair.second.modal; });
-		if (raw.focused && raw.keyboard.GetKey(KT::Platform::Key::Escape).pressed)
-		{
-			impl_->SetPause(!impl_->paused);
-		}
+		const bool wasModal = std::any_of(
+			impl_->documents.begin(), impl_->documents.end(), [](const auto& pair) { return pair.second.visible && pair.second.modal; });
 		impl_->context->Update();
-		impl_->input.Route(*impl_->context, raw, windowWidth, windowHeight, wasModal || impl_->paused);
+		impl_->input.Route(impl_->context, raw, windowWidth, windowHeight, wasModal);
 		// clickで表示を変えた後のlayoutも、この描画前に完了する。
 		impl_->context->Update();
+	}
+
+	void GameUi::SetFrameKeys(std::span<const KT::Platform::Key> keys)
+	{
+		impl_->input.SetFrameKeys(keys);
+	}
+
+	const KT::Platform::InputSnapshot& GameUi::FrameInput() const noexcept
+	{
+		return impl_->input.FrameInput();
 	}
 
 	const KT::Platform::InputSnapshot& GameUi::GameInput() const noexcept

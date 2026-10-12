@@ -1,8 +1,8 @@
-#include <Application/AnimationDemo.h>
+#include <AnimationDemo.h>
 #include <BuiltinAssets/StaticMeshAssets.h>
 #include <World/Scene/SceneLoader.h>
 
-namespace KT::Application
+namespace KT::Sandbox
 {
 	namespace
 	{

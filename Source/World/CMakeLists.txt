@@ -1,4 +1,4 @@
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Animation/Animator.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Animation/Animator.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Animation/AnimatorSerialization.h"
@@ -55,7 +55,7 @@ target_sources(KT_Forge PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/World.h"
 )
 
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Lighting/DirectionalLight.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Lighting/DirectionalLight.cpp"
 )

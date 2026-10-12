@@ -1,4 +1,4 @@
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Textures/SampledTexture.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Textures/SampledTexture.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Descriptors/Sampler.h"
@@ -47,7 +47,7 @@ target_sources(KT_Forge PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Textures/Texture.h"
 )
 
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Textures/PixelDepthView.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Textures/PixelDepthView.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Textures/ColorDepthTextureTable.h"

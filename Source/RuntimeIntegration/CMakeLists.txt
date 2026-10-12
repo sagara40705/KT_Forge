@@ -1,4 +1,4 @@
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Animation/AnimationExtraction.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Animation/AnimationExtraction.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Physics/JoltScenePhysics.h"
@@ -24,12 +24,12 @@ target_sources(KT_Forge PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/SceneUpdater.h"
 )
 
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Effects/SceneEffects.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Effects/SceneEffects.cpp"
 )
 
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/UI/GameUi.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/UI/GameUi.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/UI/UiInput.h"

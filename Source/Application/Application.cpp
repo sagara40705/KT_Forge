@@ -1,12 +1,11 @@
 #include "Application.h"
-#include <Application/StartupScene.h>
 #include <Core/Log.h>
 #include <Graphics/Textures/ColorTargetView.h>
 #include <RuntimeIntegration/SceneCamera.h>
 #include <RuntimeIntegration/Physics/JoltScenePhysics.h>
+#include <World/Scene/SceneLoader.h>
 #include <BuiltinAssets/StaticMeshAssets.h>
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <exception>
 #include <limits>
@@ -53,8 +52,8 @@ namespace KT::Application
 		}
 		else
 		{
-			// 起動例も同じLoaderと製品描画経路に通し、特別な描画コードを持たない。
-			QueueScene(sceneFactory ? sceneFactory() : CreateStartupScene());
+			// 起動Sceneの方針は呼出側が選ぶ。指定がなければ空Sceneを使う。
+			QueueScene(sceneFactory ? sceneFactory() : KT::World::SceneLoader::Load(KT::World::SceneAsset{}));
 		}
 		assets_.Freeze();
 	}
@@ -131,30 +130,18 @@ namespace KT::Application
 	void Application::Play()
 	{
 		RequireAvailable();
-		if (ui_)
-		{
-			ui_->SetPaused(false);
-		}
 		execution_.Play();
 	}
 
 	void Application::Pause()
 	{
 		RequireAvailable();
-		if (ui_)
-		{
-			ui_->SetPaused(true);
-		}
 		execution_.Pause();
 	}
 
 	void Application::StopPlayback()
 	{
 		RequireAvailable();
-		if (ui_)
-		{
-			ui_->SetPaused(false);
-		}
 		execution_.Stop();
 	}
 
@@ -253,21 +240,34 @@ namespace KT::Application
 			{
 				throw std::logic_error("UIはRun前に取得し、素材を準備してください。");
 			}
-			// exe横の素材を使い、起動カレントディレクトリに依存させない。
-			std::array<wchar_t, 32768> filename{};
-			const auto length = GetModuleFileNameW(nullptr, filename.data(), static_cast<DWORD>(filename.size()));
-			if (length == 0 || length >= filename.size())
-			{
-				throw std::runtime_error("UI素材の基準となる製品exeパスを取得できませんでした。");
-			}
 			auto renderer = std::make_unique<KT::Renderer::UiRenderer>(graphicsDevice_, commandQueue_, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
 			auto ui = std::make_unique<KT::RuntimeIntegration::GameUi>(*renderer);
-			ui->LoadBuiltin(std::filesystem::path(filename.data()).parent_path() / "UI");
-			ui->SetPaused(execution_.State() == ExecutionState::Paused);
+			ui->SetFrameKeys(frameKeys_);
 			uiRenderer_ = std::move(renderer);
 			ui_ = std::move(ui);
 		}
 		return *ui_;
+	}
+
+	void Application::SetFrameKeys(std::span<const KT::Platform::Key> keys)
+	{
+		RequireAvailable();
+		if (runState_ == RunState::Running)
+		{
+			throw std::logic_error("外側フレームの予約キーはRun前に設定してください。");
+		}
+		std::vector<KT::Platform::Key> candidate(keys.begin(), keys.end());
+		frameInput_.SetFrameKeys(candidate);
+		if (ui_)
+		{
+			ui_->SetFrameKeys(candidate);
+		}
+		frameKeys_.swap(candidate);
+	}
+
+	const KT::Platform::InputSnapshot& Application::FrameInput() const noexcept
+	{
+		return ui_ ? ui_->FrameInput() : frameInput_.FrameInput();
 	}
 
 	void Application::RequestStop() noexcept
@@ -303,7 +303,7 @@ namespace KT::Application
 		if (gameUpdate)
 		{
 			update = [this, &gameUpdate](KT::World::Scene& scene, const KT::World::SceneUpdateContext& cpu, double deltaSeconds)
-			{ gameUpdate(scene, cpu, ui_ ? ui_->GameInput() : input_.GetSnapshot(), deltaSeconds); };
+			{ gameUpdate(scene, cpu, ui_ ? ui_->GameInput() : frameInput_.GameInput(), deltaSeconds); };
 		}
 
 		runState_ = RunState::Running;
@@ -329,6 +329,7 @@ namespace KT::Application
 				int width = 0;
 				int height = 0;
 				bool drawable = false;
+				input_.Update();
 				try
 				{
 					if (ui_)
@@ -338,30 +339,16 @@ namespace KT::Application
 						int contentHeight = 0;
 						window_.GetContentSize(contentWidth, contentHeight);
 						window_.GetFramebufferSize(width, height);
-						input_.Update();
 						ui_->Update(input_.GetSnapshot(), contentWidth, contentHeight, static_cast<unsigned>((std::max)(width, 0)),
 							static_cast<unsigned>((std::max)(height, 0)));
 						if (uiUpdate)
 						{
 							uiUpdate(*ui_, elapsed);
 						}
-						// 既存のUI操作も実行制御へ反映する。停止からの再開はPlayで明示する。
-						if (execution_.State() != ExecutionState::Stopped)
-						{
-							if (ui_->IsPaused())
-							{
-								execution_.Pause();
-							}
-							else
-							{
-								execution_.Play();
-							}
-						}
 					}
-					else if (execution_.State() != ExecutionState::Playing)
+					else
 					{
-						// UIなしの停止中も入力を採取し、古い押下edgeを再開へ蓄積しない。
-						input_.Update();
+						frameInput_.Route(nullptr, input_.GetSnapshot(), 0, 0, false);
 					}
 					if (frameUpdate)
 					{
@@ -379,11 +366,6 @@ namespace KT::Application
 					const auto advance = execution_.Advance(elapsed);
 					for (unsigned tick = 0; tick < advance.ticks && !stopRequested_; ++tick)
 					{
-						if (ui_ && ui_->IsPaused() && execution_.State() == ExecutionState::Playing)
-						{
-							// ゲームcallbackからの従来のUIポーズも、追いつき中の次tickを止める。
-							execution_.Pause();
-						}
 						// callback中のポーズ・停止は現在tick完了後、次tickの前に反映する。
 						if (execution_.State() != ExecutionState::Playing &&
 							!(advance.singleStep && tick == 0 && execution_.State() == ExecutionState::Paused))
@@ -393,10 +375,6 @@ namespace KT::Application
 						if (simulationTicks_ == (std::numeric_limits<std::uint64_t>::max)())
 						{
 							throw std::overflow_error("Applicationのsimulation tick数が上限に達しました。");
-						}
-						if (!ui_)
-						{
-							input_.Update();
 						}
 						sceneUpdater_.Reset();
 						// ゲーム中の再生予約はScene成功後だけ公開する。
@@ -428,8 +406,24 @@ namespace KT::Application
 						{
 							ui_->ConsumeGameInput();
 						}
+						else
+						{
+							frameInput_.Consume();
+						}
 					}
 					const auto* scene = sceneHost_.GetScene();
+					// 停止中のゲームedgeを再開へ蓄積しない。予約キーはFrameInputで処理済み。
+					if (execution_.State() != ExecutionState::Playing)
+					{
+						if (ui_)
+						{
+							ui_->ConsumeGameInput();
+						}
+						else
+						{
+							frameInput_.Consume();
+						}
+					}
 					window_.GetFramebufferSize(width, height);
 					drawable = scene && width > 0 && height > 0 && !window_.IsMinimized();
 					// 最小化中もCPU候補を更新する。描画する回だけCameraとviewportを評価する。

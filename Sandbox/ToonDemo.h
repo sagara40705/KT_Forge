@@ -2,7 +2,7 @@
 #include <Content/AssetCatalog.h>
 #include <World/Scene/Scene.h>
 
-namespace KT::Application
+namespace KT::Sandbox
 {
 	// 外部素材なしで静的/Skin・Toon/Unlit・床への影を確認する制作向けの例。
 	void RegisterToonDemoAssets(KT::Content::AssetCatalog& catalog);

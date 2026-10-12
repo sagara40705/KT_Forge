@@ -1,8 +1,8 @@
-#include <Application/StartupScene.h>
+#include <StartupScene.h>
 #include <BuiltinAssets/StaticMeshAssets.h>
 #include <World/Scene/SceneLoader.h>
 
-namespace KT::Application
+namespace KT::Sandbox
 {
 	std::unique_ptr<KT::World::Scene> CreateStartupScene()
 	{

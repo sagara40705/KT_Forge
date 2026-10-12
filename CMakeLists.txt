@@ -96,35 +96,36 @@ function(kt_forge_meshoptimizer)
 endfunction()
 kt_forge_meshoptimizer()
 
-# 製品ターゲットは1つとし、各モジュールのディレクトリではソースを明示的に登録する。
-add_executable(KT_Forge)
+# Engineの公開ヘッダーはSourceを基準にする。別ゲームからも同じAPIを利用する。
+add_library(Engine STATIC)
+add_library(KT::Engine ALIAS Engine)
 include(cmake/OzzAnimation.cmake)
 include(cmake/Effekseer.cmake)
 include(cmake/RmlUi.cmake)
 include(cmake/JoltPhysics.cmake)
 include(cmake/ShaderBuild.cmake)
+include(cmake/RuntimeAssets.cmake)
 add_subdirectory(Source)
-target_compile_features(KT_Forge PRIVATE cxx_std_20)
-target_include_directories(KT_Forge PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source")
-# SDK版d3d12.hより先に、d3dx12.hと同じ版のD3D12ヘッダーを解決する。
-target_include_directories(KT_Forge BEFORE PRIVATE "${directx_headers_SOURCE_DIR}/include/directx")
-target_compile_options(KT_Forge PRIVATE /W4 /utf-8)
-target_compile_definitions(KT_Forge PRIVATE GLFW_INCLUDE_NONE)
-target_link_libraries(KT_Forge PRIVATE glfw Microsoft::DirectX-Headers d3d12 dxgi)
-target_link_libraries(KT_Forge PRIVATE nlohmann_json::nlohmann_json)
-target_link_libraries(KT_Forge PRIVATE DirectXTex windowscodecs ole32)
-target_link_libraries(KT_Forge PRIVATE assimp::assimp)
-target_link_libraries(KT_Forge PRIVATE meshoptimizer)
-target_link_libraries(KT_Forge PRIVATE bcrypt)
+target_compile_features(Engine PUBLIC cxx_std_20)
+target_include_directories(Engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Source")
+# 公開GraphicsヘッダーでもSDKより先に同じDirectX-Headersを探索する。
+target_include_directories(Engine BEFORE PUBLIC "${directx_headers_SOURCE_DIR}/include/directx")
+target_compile_options(Engine PRIVATE /W4 /utf-8)
+target_compile_definitions(Engine PUBLIC GLFW_INCLUDE_NONE)
+target_link_libraries(Engine PUBLIC Microsoft::DirectX-Headers)
+target_link_libraries(Engine PRIVATE glfw d3d12 dxgi nlohmann_json::nlohmann_json
+    DirectXTex windowscodecs ole32 assimp::assimp meshoptimizer bcrypt)
+set_target_properties(Engine PROPERTIES CXX_EXTENSIONS OFF)
 
-set_target_properties(KT_Forge PROPERTIES
-    CXX_EXTENSIONS OFF
-    # 既存のビルド先ディレクトリ内で、DebugとReleaseの出力を分ける。
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>"
-)
+get_target_property(_engine_sources Engine SOURCES)
+list(FILTER _engine_sources INCLUDE REGEX "${CMAKE_CURRENT_SOURCE_DIR}/Source/")
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/Source" PREFIX "Source" FILES ${_engine_sources})
+kt_forge_shader_groups(Engine)
 
-get_target_property(_forge_sources KT_Forge SOURCES)
-list(FILTER _forge_sources INCLUDE REGEX "${CMAKE_CURRENT_SOURCE_DIR}/Source/")
-source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/Source" PREFIX "Source" FILES ${_forge_sources})
-kt_forge_shader_groups(KT_Forge)
-set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT KT_Forge)
+# 別ゲームから取り込む場合はEngineだけを作り、必要なときだけSandboxを選ぶ。
+option(KT_FORGE_BUILD_SANDBOX "Build the first Engine application" ${PROJECT_IS_TOP_LEVEL})
+if(KT_FORGE_BUILD_SANDBOX)
+    add_subdirectory(Tools)
+    add_subdirectory(Sandbox)
+    set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Sandbox)
+endif()

@@ -16,6 +16,7 @@
 #include <RuntimeIntegration/Effects/SceneEffects.h>
 #include <RuntimeIntegration/UI/GameUi.h>
 #include <Renderer/UI/UiRenderer.h>
+#include <RuntimeIntegration/UI/UiInput.h>
 #include <functional>
 #include <memory>
 #include <exception>
@@ -118,11 +119,16 @@ namespace KT::Application
 		{
 			return execution_.DroppedSeconds();
 		}
+
 		// ゲーム処理から終了を予約する。次の更新を始めずにRunから戻る。
 		void RequestStop() noexcept;
+		// Run前に予約するキー。FrameUpdate/UiUpdateで停止中も扱え、固定tickへ渡さない。
+		// FrameInputは今の外側loopだけの値。UI文字編集focus中は予約キーも遮断する。
+		void SetFrameKeys(std::span<const KT::Platform::Key> keys);
+		[[nodiscard]] const KT::Platform::InputSnapshot& FrameInput() const noexcept;
 		// 基本エフェクトのゲーム窓口。初回取得でDX12資源を準備し、起動時に素材を読む。
 		KT::RuntimeIntegration::SceneEffects& Effects();
-		// Run前に取得し、標準日本語HUD/ポーズを準備する。RML/画像はexe横のUIから読む。
+		// Run前に空のUIを取得する。フォント・document・操作の意味は呼出側が選ぶ。
 		KT::RuntimeIntegration::GameUi& UI();
 
 	private:
@@ -138,6 +144,9 @@ namespace KT::Application
 		KT::Platform::Window window_;
 		// Windowを借用する。宣言順によりWindowより先に破棄する。
 		KT::Platform::Input input_;
+		// UIなしでも0tickの入力edgeを保持し、予約キーを外側loopへ配送する。
+		KT::RuntimeIntegration::UiInput frameInput_;
+		std::vector<KT::Platform::Key> frameKeys_;
 
 		// GraphicsDevice
 		KT::Graphics::GraphicsDevice graphicsDevice_{};

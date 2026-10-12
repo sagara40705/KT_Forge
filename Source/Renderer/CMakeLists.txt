@@ -1,4 +1,4 @@
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/StaticSceneRenderer.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/StaticSceneRenderer.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/MeshRenderCandidate.h"
@@ -46,47 +46,47 @@ target_sources(KT_Forge PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Passes/OpaquePass.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Passes/OpaquePass.h"
 )
-set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" TARGET_DIRECTORY KT_Forge PROPERTIES HEADER_FILE_ONLY TRUE)
-kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unlit3DVS vs_6_0 VSMain)
-kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unlit3DSkinnedVS vs_6_0 SkinnedVSMain)
-kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unlit3DPS ps_6_0 PSMain)
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" TARGET_DIRECTORY Engine PROPERTIES HEADER_FILE_ONLY TRUE)
+kt_forge_shader(Engine "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unlit3DVS vs_6_0 VSMain)
+kt_forge_shader(Engine "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unlit3DSkinnedVS vs_6_0 SkinnedVSMain)
+kt_forge_shader(Engine "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unlit3DPS ps_6_0 PSMain)
 
-kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unlit3DTexturedPS ps_6_0 TexturedPSMain)
+kt_forge_shader(Engine "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Unlit3DTexturedPS ps_6_0 TexturedPSMain)
 
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Lighting/SceneLighting.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Lighting/SceneLighting.cpp"
 )
 
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Lighting/ToonPipeline.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Lighting/ToonPipeline.cpp"
 )
-kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Toon3D.hlsl" Toon3DVS vs_6_0 VSMain)
-kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Toon3D.hlsl" Toon3DSkinnedVS vs_6_0 SkinnedVSMain)
-kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Toon3D.hlsl" Toon3DPS ps_6_0 PSMain)
-kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Shadow3DPS ps_6_0 ShadowPSMain)
-kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Shadow3DTexturedPS ps_6_0 ShadowTexturedPSMain)
+kt_forge_shader(Engine "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Toon3D.hlsl" Toon3DVS vs_6_0 VSMain)
+kt_forge_shader(Engine "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Toon3D.hlsl" Toon3DSkinnedVS vs_6_0 SkinnedVSMain)
+kt_forge_shader(Engine "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Toon3D.hlsl" Toon3DPS ps_6_0 PSMain)
+kt_forge_shader(Engine "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Shadow3DPS ps_6_0 ShadowPSMain)
+kt_forge_shader(Engine "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Unlit3D.hlsl" Shadow3DTexturedPS ps_6_0 ShadowTexturedPSMain)
 
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Passes/ShadowPass.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Passes/ShadowPass.cpp"
 )
 
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Effects/EffectPlayer.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Effects/EffectPlayer.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Passes/EffectPass.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Passes/EffectPass.cpp"
 )
 
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/UI/UiRenderer.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/UI/UiRenderer.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Passes/UiPass.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Passes/UiPass.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Ui2D.hlsl"
 )
-set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Ui2D.hlsl" TARGET_DIRECTORY KT_Forge PROPERTIES HEADER_FILE_ONLY TRUE)
-kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Ui2D.hlsl" Ui2DVS vs_6_0 VSMain)
-kt_forge_shader(KT_Forge "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Ui2D.hlsl" Ui2DPS ps_6_0 PSMain)
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Ui2D.hlsl" TARGET_DIRECTORY Engine PROPERTIES HEADER_FILE_ONLY TRUE)
+kt_forge_shader(Engine "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Ui2D.hlsl" Ui2DVS vs_6_0 VSMain)
+kt_forge_shader(Engine "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Ui2D.hlsl" Ui2DPS ps_6_0 PSMain)

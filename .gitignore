@@ -3,5 +3,16 @@
 /.vs/
 /local-tests/
 CMakeUserPresets.json
-
 *.md
+
+
+
+# 設計資料と外部依存資料をGit掲載対象にする
+!/docs/
+/docs/*
+!/docs/README.md
+!/docs/architecture.md
+!/docs/render-graph.md
+!/docs/decisions.md
+!/docs/project-goals.md
+!/ThirdParty/**/*.md

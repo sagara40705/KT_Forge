@@ -2,6 +2,7 @@
 #include <RmlUi/Core.h>
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace KT::RuntimeIntegration
 {
@@ -73,9 +74,32 @@ namespace KT::RuntimeIntegration
 		}
 	}
 
-	void UiInput::Route(Rml::Context& context, const P::InputSnapshot& raw, int windowWidth, int windowHeight, bool modal)
+	void UiInput::SetFrameKeys(std::span<const P::Key> keys)
 	{
-		const auto dimensions = context.GetDimensions();
+		std::array<bool, P::KeyCount> candidate{};
+		for (const auto key : keys)
+		{
+			const auto index = static_cast<std::size_t>(key);
+			if (index == 0 || index >= candidate.size())
+			{
+				throw std::invalid_argument("外側フレームへ予約するKeyが不正です。");
+			}
+			candidate[index] = true;
+		}
+		frameKeys_ = candidate;
+	}
+
+	const P::InputSnapshot& UiInput::FrameInput() const noexcept
+	{
+		return frame_;
+	}
+
+	void UiInput::Route(Rml::Context* context, const P::InputSnapshot& raw, int windowWidth, int windowHeight, bool modal)
+	{
+		const auto dimensions = context ? context->GetDimensions() : Rml::Vector2i{1, 1};
+		frame_ = {};
+		frame_.focused = raw.focused;
+		frame_.cursorMode = raw.cursorMode;
 		int modifiers = 0;
 		if (raw.keyboard.GetKey(P::Key::LeftShift).down || raw.keyboard.GetKey(P::Key::RightShift).down)
 		{
@@ -92,18 +116,47 @@ namespace KT::RuntimeIntegration
 
 		// Content座標をFramebufferへ変換する。focusを失った回はUI hoverも解除する。
 		bool mouseCaptured = modal;
-		if (raw.focused && raw.cursorMode == P::CursorMode::Normal && windowWidth > 0 && windowHeight > 0)
+		if (context && raw.focused && raw.cursorMode == P::CursorMode::Normal && windowWidth > 0 && windowHeight > 0)
 		{
 			const auto x = (std::clamp)(raw.mouse.x * dimensions.x / windowWidth, -32768.0, 32767.0);
 			const auto y = (std::clamp)(raw.mouse.y * dimensions.y / windowHeight, -32768.0, 32767.0);
-			mouseCaptured = !context.ProcessMouseMove(static_cast<int>(x), static_cast<int>(y), modifiers) || modal;
+			mouseCaptured = !context->ProcessMouseMove(static_cast<int>(x), static_cast<int>(y), modifiers) || modal;
 		}
-		else
+		else if (context)
 		{
-			context.ProcessMouseLeave();
+			context->ProcessMouseLeave();
 		}
-		auto* focus = context.GetFocusElement();
-		const bool keyboardCaptured = modal || (focus && focus != context.GetRootElement() && focus->GetTagName() != "body");
+		for (std::size_t index = 0; index < P::MouseButtonCount; ++index)
+		{
+			const auto& state = raw.mouse.buttons[index];
+			bool consumed = mouseCaptured;
+			if (context && state.pressed)
+			{
+				consumed = !context->ProcessMouseButtonDown(static_cast<int>(index), modifiers) || consumed;
+			}
+			if (context && state.released)
+			{
+				consumed = !context->ProcessMouseButtonUp(static_cast<int>(index), modifiers) || consumed;
+			}
+			if (consumed || blockedMouse_[index] || !raw.focused)
+			{
+				pending_.mouse.buttons[index] = {};
+				blockedMouse_[index] = state.down;
+			}
+			else
+			{
+				Merge(pending_.mouse.buttons[index], state);
+			}
+		}
+		// 同じ入力回のmouse押下で変わったfocusを確定してから、文字キーを配送する。
+		auto* focus = context ? context->GetFocusElement() : nullptr;
+		const bool keyboardCaptured = modal || (focus && focus != context->GetRootElement() && focus->GetTagName() != "body");
+		// input/textarea内の編集キーを、アプリの予約キーとして横取りしない。
+		bool textEditing = false;
+		for (auto* element = focus; element && element != context->GetRootElement(); element = element->GetParentNode())
+		{
+			textEditing = textEditing || element->GetTagName() == "input" || element->GetTagName() == "textarea";
+		}
 		pending_.focused = raw.focused;
 		pending_.cursorMode = raw.cursorMode;
 
@@ -111,17 +164,27 @@ namespace KT::RuntimeIntegration
 		{
 			const auto key = static_cast<P::Key>(index);
 			const auto& state = raw.keyboard.keys[index];
-			bool consumed = keyboardCaptured || key == P::Key::Escape;
+			if (frameKeys_[index] && !textEditing)
+			{
+				if (raw.focused)
+				{
+					frame_.keyboard.keys[index] = state;
+				}
+				pending_.keyboard.keys[index] = {};
+				blockedKeys_[index] = state.down;
+				continue;
+			}
+			bool consumed = keyboardCaptured;
 			const auto mapped = UiKey(key);
-			if (mapped != Rml::Input::KI_UNKNOWN)
+			if (context && mapped != Rml::Input::KI_UNKNOWN)
 			{
 				if (state.pressed)
 				{
-					consumed = !context.ProcessKeyDown(mapped, modifiers) || consumed;
+					consumed = !context->ProcessKeyDown(mapped, modifiers) || consumed;
 				}
 				if (state.released)
 				{
-					consumed = !context.ProcessKeyUp(mapped, modifiers) || consumed;
+					consumed = !context->ProcessKeyUp(mapped, modifiers) || consumed;
 				}
 			}
 			if (consumed || blockedKeys_[index] || !raw.focused)
@@ -134,32 +197,10 @@ namespace KT::RuntimeIntegration
 				Merge(pending_.keyboard.keys[index], state);
 			}
 		}
-		for (std::size_t index = 0; index < P::MouseButtonCount; ++index)
-		{
-			const auto& state = raw.mouse.buttons[index];
-			bool consumed = mouseCaptured;
-			if (state.pressed)
-			{
-				consumed = !context.ProcessMouseButtonDown(static_cast<int>(index), modifiers) || consumed;
-			}
-			if (state.released)
-			{
-				consumed = !context.ProcessMouseButtonUp(static_cast<int>(index), modifiers) || consumed;
-			}
-			if (consumed || blockedMouse_[index] || !raw.focused)
-			{
-				pending_.mouse.buttons[index] = {};
-				blockedMouse_[index] = state.down;
-			}
-			else
-			{
-				Merge(pending_.mouse.buttons[index], state);
-			}
-		}
-		if (raw.mouse.scrollX != 0 || raw.mouse.scrollY != 0)
+		if (context && (raw.mouse.scrollX != 0 || raw.mouse.scrollY != 0))
 		{
 			mouseCaptured =
-				!context.ProcessMouseWheel({static_cast<float>(raw.mouse.scrollX), static_cast<float>(-raw.mouse.scrollY)}, modifiers) ||
+				!context->ProcessMouseWheel({static_cast<float>(raw.mouse.scrollX), static_cast<float>(-raw.mouse.scrollY)}, modifiers) ||
 				mouseCaptured;
 		}
 		pending_.mouse.x = raw.mouse.x;

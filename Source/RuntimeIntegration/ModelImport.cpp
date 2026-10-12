@@ -387,23 +387,7 @@ namespace KT::RuntimeIntegration
 		const KT::Content::ImportedModel& model, const std::map<std::string, KT::World::ObjectUuid>& previousIds)
 	{
 		auto scene = ModelPlacement::CreateScene(std::get<KT::Content::ModelAsset>(model.ModelDocument().data), previousIds);
-		// 取込直後のSceneも最初のClipを再生する。配置個体はAppend側のrootを使う。
-		for (const auto& asset : model.assets)
-		{
-			if (const auto mesh = std::get_if<KT::Content::MeshAsset>(&asset.data);
-				mesh && mesh->Skin() && !mesh->Skin()->clips.empty())
-			{
-				for (auto& object : scene.objects)
-				{
-					if (!object.parent)
-					{
-						object.components.push_back({"kt.Animator", 1, KT::World::SceneValue::Object{
-							{"clip", mesh->Skin()->clips.front().name}, {"speed", 1.0}, {"loop", true}, {"playing", true}, {"enabled", true}}});
-					}
-				}
-				break;
-			}
-		}
+		// 取込は骨格と素材を保存し、初期Clipや再生状態を選ばない。
 		return scene;
 	}
 

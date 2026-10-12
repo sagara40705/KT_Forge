@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <span>
 
 namespace KT::Renderer
 {
@@ -32,19 +33,18 @@ namespace KT::RuntimeIntegration
 		UiDocument LoadDocument(const std::filesystem::path& path);
 		void Close(UiDocument document);
 		void Show(UiDocument document, bool visible, bool modal = false);
+		// アプリが選ぶ戻り先へfocusを移す。閉じたmodalのbuttonへfocusを残さない。
+		void Focus(UiDocument document);
 		// UTF-8のplain text。RMLとして解釈せず、markup文字をescapeする。
 		void SetText(UiDocument document, const std::string& elementId, const std::string& text);
 		void SetImage(UiDocument document, const std::string& elementId, const std::filesystem::path& path);
 		// width百分率を変更する。currentは0..maximum、maximumは正の有限値。
 		void SetHealth(UiDocument document, const std::string& barId, float current, float maximum);
-		// 標準HUD/ポーズを読み込む。各画面はRML/RCSS側で編集できる。
-		void LoadBuiltin(const std::filesystem::path& directory);
-		[[nodiscard]] UiDocument HudDocument() const noexcept;
-		[[nodiscard]] UiDocument PauseDocument() const noexcept;
-		void SetPaused(bool paused);
-		[[nodiscard]] bool IsPaused() const noexcept;
-		// data-game-actionのclickを値で返す。pause/resumeは同時に内部へ反映する。
+		// data-game-actionのclickを値として返す。意味はアプリが決める。
 		std::vector<std::string> TakeActions();
+		// 予約キーは外側loopだけへ配送し、文字編集focus中はUIへ渡す。
+		void SetFrameKeys(std::span<const KT::Platform::Key> keys);
+		[[nodiscard]] const KT::Platform::InputSnapshot& FrameInput() const noexcept;
 		// ApplicationのUI更新。FramebufferとContent寸法を分け、最小化中も入力を扱う。
 		void Update(const KT::Platform::InputSnapshot& raw, int windowWidth, int windowHeight, unsigned width, unsigned height);
 		[[nodiscard]] const KT::Platform::InputSnapshot& GameInput() const noexcept;

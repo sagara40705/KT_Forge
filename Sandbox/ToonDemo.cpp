@@ -1,10 +1,10 @@
-#include <Application/ToonDemo.h>
-#include <Application/AnimationDemo.h>
+#include <ToonDemo.h>
+#include <AnimationDemo.h>
 #include <BuiltinAssets/StaticMeshAssets.h>
 #include <World/Lighting/DirectionalLight.h>
 #include <World/Animation/Animator.h>
 
-namespace KT::Application
+namespace KT::Sandbox
 {
 	namespace
 	{

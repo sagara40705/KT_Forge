@@ -1,5 +1,6 @@
 #pragma once
 #include <Platform/Input/InputSnapshot.h>
+#include <span>
 
 namespace Rml
 {
@@ -13,13 +14,19 @@ namespace KT::RuntimeIntegration
 	class UiInput
 	{
 	public:
-		void Route(Rml::Context& context, const KT::Platform::InputSnapshot& raw, int windowWidth, int windowHeight, bool modal);
+		// 予約キーはFrameInputだけへ配送し、固定tickへ二重に渡さない。
+		void SetFrameKeys(std::span<const KT::Platform::Key> keys);
+		void Route(Rml::Context* context, const KT::Platform::InputSnapshot& raw, int windowWidth, int windowHeight, bool modal);
+		[[nodiscard]] const KT::Platform::InputSnapshot& FrameInput() const noexcept;
 		void Consume() noexcept;
 		[[nodiscard]] const KT::Platform::InputSnapshot& GameInput() const noexcept;
 
 	private:
 		// 最初の成功simulation tickまで、未消費のedgeとmouse差分を蓄積する。
 		KT::Platform::InputSnapshot pending_;
+		// この外側loopだけの予約キー。文字編集focus中はUIへ渡し、ここでは遮断する。
+		KT::Platform::InputSnapshot frame_;
+		std::array<bool, KT::Platform::KeyCount> frameKeys_{};
 		// UIで押した操作は、画面を閉じても物理releaseまで遮断する。
 		std::array<bool, KT::Platform::KeyCount> blockedKeys_{};
 		std::array<bool, KT::Platform::MouseButtonCount> blockedMouse_{};

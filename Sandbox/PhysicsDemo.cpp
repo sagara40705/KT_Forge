@@ -1,9 +1,9 @@
-#include <Application/PhysicsDemo.h>
+#include <PhysicsDemo.h>
 #include <World/Physics/PhysicsSerialization.h>
 #include <World/Scene/SceneLoader.h>
 #include <BuiltinAssets/StaticMeshAssets.h>
 
-namespace KT::Application
+namespace KT::Sandbox
 {
 	std::unique_ptr<KT::World::Scene> CreatePhysicsDemoScene()
 	{

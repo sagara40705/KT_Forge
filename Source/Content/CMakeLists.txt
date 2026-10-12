@@ -1,4 +1,4 @@
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Animation/SkinDefinition.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Animation/SkinDefinition.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Animation/SkinJson.h"

@@ -3,7 +3,7 @@
 #include <World/Scene/Scene.h>
 #include <memory>
 
-namespace KT::Application
+namespace KT::Sandbox
 {
 	// 同じ骨格素材を共有する四個体と静的Cubeの製品描画例。
 	void RegisterAnimationDemoAssets(KT::Content::AssetCatalog& catalog);

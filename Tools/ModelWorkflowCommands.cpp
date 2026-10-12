@@ -1,4 +1,4 @@
-#include <Application/ModelWorkflowCommands.h>
+#include <ModelWorkflowCommands.h>
 #include <RuntimeIntegration/ModelWorkflowJson.h>
 #include <RuntimeIntegration/ModelReconcileJson.h>
 #include <Content/AssetTransfer.h>
@@ -7,7 +7,7 @@
 #include <Core/Log.h>
 #include <algorithm>
 
-namespace KT::Application
+namespace KT::Tools
 {
 	std::optional<int> RunModelWorkflowCommand(int argc, wchar_t* argv[])
 	{

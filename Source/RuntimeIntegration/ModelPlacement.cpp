@@ -9,8 +9,8 @@ namespace KT::RuntimeIntegration
 {
 	namespace
 	{
-		KT::World::SceneComponentDefinition TransformDefinition(KT::Core::Math::Vector3 position,
-			KT::Core::Math::Quaternion rotation, KT::Core::Math::Vector3 scale)
+		KT::World::SceneComponentDefinition TransformDefinition(
+			KT::Core::Math::Vector3 position, KT::Core::Math::Quaternion rotation, KT::Core::Math::Vector3 scale)
 		{
 			using Value = KT::World::SceneValue;
 			return {"kt.LocalTransform", 1,
@@ -20,8 +20,8 @@ namespace KT::RuntimeIntegration
 		}
 	}
 
-	KT::World::SceneAsset ModelPlacement::CreateScene(const KT::Content::ModelAsset& model,
-		const std::map<std::string, KT::World::ObjectUuid>& previousIds)
+	KT::World::SceneAsset ModelPlacement::CreateScene(
+		const KT::Content::ModelAsset& model, const std::map<std::string, KT::World::ObjectUuid>& previousIds)
 	{
 		model.Validate();
 		KT::World::SceneAsset scene;
@@ -61,8 +61,8 @@ namespace KT::RuntimeIntegration
 	}
 
 	ModelPlacementResult ModelPlacement::Append(KT::World::SceneAsset& scene, const KT::Content::AssetCatalog& catalog,
-		KT::Content::ModelAssetId id, const KT::World::ComponentRegistry& components,
-		const KT::World::ScriptRegistry& scripts, ModelPlacementOptions options)
+		KT::Content::ModelAssetId id, const KT::World::ComponentRegistry& components, const KT::World::ScriptRegistry& scripts,
+		ModelPlacementOptions options)
 	{
 		// 参照検査と定義生成を先に終え、既存Sceneへの部分追加を防ぐ。
 		const auto model = catalog.Resolve(std::optional(id));
@@ -73,8 +73,8 @@ namespace KT::RuntimeIntegration
 		model.asset->ValidateReferences(catalog);
 		KT::World::SceneLoader::Validate(scene, components, scripts);
 		(void)KT::Core::Math::LocalMatrix(options.transform.position, options.transform.rotation, options.transform.scale);
-		if (options.parent && std::none_of(scene.objects.begin(), scene.objects.end(),
-			[&](const auto& object) { return object.uuid == *options.parent; }))
+		if (options.parent &&
+			std::none_of(scene.objects.begin(), scene.objects.end(), [&](const auto& object) { return object.uuid == *options.parent; }))
 		{
 			throw std::invalid_argument("Modelの配置先の親ObjectUuidがScene内にありません。");
 		}
@@ -82,20 +82,7 @@ namespace KT::RuntimeIntegration
 		ModelPlacementResult result{KT::World::ObjectUuid::Generate(), {}};
 		KT::World::SceneObjectDefinition root{result.root, std::move(options.name), options.parent,
 			{TransformDefinition(options.transform.position, options.transform.rotation, options.transform.scale)}};
-		// 個体rootの再生値を子のSkin Meshへ継承する。素材と時刻を個体間で共有しない。
-		for (const auto& node : model.asset->Nodes())
-		{
-			if (node.mesh)
-			{
-				const auto mesh = catalog.Resolve(node.mesh);
-				if (mesh.asset && mesh.asset->Skin() && !mesh.asset->Skin()->clips.empty())
-				{
-					root.components.push_back({"kt.Animator", 1, KT::World::SceneValue::Object{
-						{"clip", mesh.asset->Skin()->clips.front().name}, {"speed", 1.0}, {"loop", true}, {"playing", true}, {"enabled", true}}});
-					break;
-				}
-			}
-		}
+		// Animatorはアプリが明示する。Skinのみの配置はbind poseで表示する。
 		auto candidate = scene;
 		candidate.objects.reserve(candidate.objects.size() + instance.objects.size() + 1);
 		candidate.objects.push_back(std::move(root));

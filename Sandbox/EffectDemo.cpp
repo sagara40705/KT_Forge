@@ -1,11 +1,13 @@
-#include <Application/EffectDemo.h>
+#include <EffectDemo.h>
 #include <Application/Application.h>
-#include <Application/ToonDemo.h>
+#include <ToonDemo.h>
 #include <Core/Log.h>
 #include <cmath>
 
-namespace KT::Application
+namespace KT::Sandbox
 {
+	using KT::Application::Application;
+
 	void RunEffectDemo(const std::filesystem::path& path, unsigned tickLimit)
 	{
 		Application app(1280, 720, "KT_Forge - Effekseer", RegisterToonDemoAssets, {}, CreateToonDemoScene);

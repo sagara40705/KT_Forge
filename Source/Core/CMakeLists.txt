@@ -1,4 +1,4 @@
-target_sources(KT_Forge PRIVATE
+target_sources(Engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Assert.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Assert.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/File.cpp"
