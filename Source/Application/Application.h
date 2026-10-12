@@ -1,7 +1,7 @@
 #pragma once
 #include <Core/Utility/NonCopyable.h>
 #include <Core/Timer.h>
-#include <Application/FixedStepClock.h>
+#include <Application/ExecutionControl.h>
 #include <Physics/PhysicsRuntime.h>
 #include <Platform/GlfwContext.h>
 #include <Platform/Window.h>
@@ -18,6 +18,7 @@
 #include <Renderer/UI/UiRenderer.h>
 #include <functional>
 #include <memory>
+#include <exception>
 
 namespace KT::Application
 {
@@ -30,6 +31,17 @@ namespace KT::Application
 			std::function<void(KT::World::Scene&, const KT::World::SceneUpdateContext&, const KT::Platform::InputSnapshot&, double)>;
 		// ポーズ中も呼ぶUI処理。ゲームのScene更新と分離して操作イベントを受け取る。
 		using UiUpdate = std::function<void(KT::RuntimeIntegration::GameUi&, double)>;
+		// UIがなくても停止中に実行制御を操作できる、非固定時間の外側loop処理。
+		using FrameUpdate = std::function<void(Application&, double)>;
+
+		// Runの稼働・失敗と、再利用できない終了済み状態を区別する。
+		enum class RunState
+		{
+			Idle,
+			Running,
+			Failed,
+			Shutdown
+		};
 		// 組込み素材登録後、初回Scene使用前に独自CPU素材を追加する起動処理。
 		using AssetSetup = std::function<void(KT::Content::AssetCatalog&)>;
 		// ファイル起動を使わない場合に、検証済みの起動Sceneを生成する。
@@ -63,9 +75,23 @@ namespace KT::Application
 		// Presentを含むQueueの完了後にGPU所有物を破棄する。完了待ちの失敗は継続不能とする。
 		~Application();
 
-		// Script・ゲーム・物理を1/60秒で更新する。最大4tick、最小化中も継続し、UIポーズ中は停止する。
+		// Script・ゲーム・物理を1/60秒で更新する。最大4tick、最小化中も再生する。
+		// UI/FrameUpdateと描画は停止中も継続する。時間進行は実行制御に従う。
 		// Run終了後の完成CPU結果はGetScene()->GetSnapshot()で取得する。callbackとRunへ再入しない。
-		void Run(GameUpdate gameUpdate = {}, UiUpdate uiUpdate = {});
+		void Run(GameUpdate gameUpdate = {}, UiUpdate uiUpdate = {}, FrameUpdate frameUpdate = {});
+		// 完成Sceneを保持して時間進行を切り替える。StopPlaybackはRunから戻らない。
+		// 編集Sceneの巻戻しは行わない。一コマ更新はPause後に一回だけ予約する。
+		void Play();
+		void Pause();
+		void StopPlayback();
+		void RequestSingleStep();
+		[[nodiscard]] ExecutionState GetExecutionState() const noexcept;
+		[[nodiscard]] RunState GetRunState() const noexcept;
+		// 元のRun/Shutdown失敗を保持する。明示的な次Run開始時に消去する。
+		[[nodiscard]] std::exception_ptr GetLastRunFailure() const noexcept;
+		// Run外だけで終了する。GPU完了→Scene/Script→描画/UI/Effect資源の順に解放する。
+		// 繰り返しは何もしない。GPU待機失敗では資源を保持して例外を返す。
+		void Shutdown();
 
 		// Loaderで検証した候補を所有し、次のCPU更新開始時に切り替える。
 		void QueueScene(std::unique_ptr<KT::World::Scene> scene);
@@ -90,7 +116,7 @@ namespace KT::Application
 
 		[[nodiscard]] double DroppedSimulationSeconds() const noexcept
 		{
-			return fixedClock_.DroppedSeconds();
+			return execution_.DroppedSeconds();
 		}
 		// ゲーム処理から終了を予約する。次の更新を始めずにRunから戻る。
 		void RequestStop() noexcept;
@@ -102,6 +128,8 @@ namespace KT::Application
 	private:
 		// CPU結果を描画する。寸法変更時は旧CommandListを解放してからResizeする。
 		void PresentScene(std::uint32_t width, std::uint32_t height);
+		// 終了処理中・終了後の操作で新しい所有物を作らせない。
+		void RequireAvailable() const;
 
 		// GlfwContextの所有
 		KT::Platform::GlfwContext glfwContext_{};
@@ -125,13 +153,9 @@ namespace KT::Application
 		std::vector<KT::RuntimeIntegration::SceneAssetDiagnostic> assetDiagnostics_;
 		// Sceneの物理worldより長くJoltの登録・実行資源を保持する。
 		KT::Physics::PhysicsRuntime physicsRuntime_;
-		// Sceneを入力・Graphics基盤より先に破棄し、Script側の借用先を保持する。
-		KT::World::SceneHost sceneHost_;
-		// 完成SceneからCameraに依存しないMesh候補と個体別Skin paletteを保持する。
-		KT::RuntimeIntegration::SceneUpdater sceneUpdater_;
 		std::optional<KT::World::ObjectUuid> renderCamera_;
 		PresentationStatistics presentation_;
-		FixedStepClock fixedClock_;
+		ExecutionControl execution_;
 		std::uint64_t simulationTicks_ = 0;
 		// 素材・Device・Queue・Swapchainより先に破棄し、GPUの借用先を保持する。
 		// Effect資源はRendererのFrameより長く、Device/Queueより短く保持する。
@@ -142,10 +166,17 @@ namespace KT::Application
 		std::unique_ptr<KT::Renderer::UiRenderer> uiRenderer_;
 		std::unique_ptr<KT::RuntimeIntegration::GameUi> ui_;
 		std::unique_ptr<KT::Renderer::StaticSceneRenderer> renderer_;
+		// Scriptが借りるUI/Effect窓口より先に破棄する。部分起動の失敗時も宣言順で保証する。
+		KT::World::SceneHost sceneHost_;
+		// Scene切替・破棄前に候補を失効させ、素材Catalogより先に解放する。
+		KT::RuntimeIntegration::SceneUpdater sceneUpdater_;
 		// Run開始時に計測を再設定し、起動・復旧待ちの時間をdeltaへ含めない。
 		KT::Core::Timer timer_;
-		// 同じApplicationのRunへの再入を拒否する。
-		bool running_ = false;
+		RunState runState_ = RunState::Idle;
+		// GPU後始末が失敗しても、先に発生した例外を上書きしない。
+		std::exception_ptr lastRunFailure_;
+		// Script破棄中にも公開操作を拒否し、終了中の再生成を防ぐ。
+		bool shuttingDown_ = false;
 		// CPU更新中の終了要求を、次の更新開始前に反映する。
 		bool stopRequested_ = false;
 	};

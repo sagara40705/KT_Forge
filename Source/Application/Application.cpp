@@ -61,18 +61,127 @@ namespace KT::Application
 
 	Application::~Application()
 	{
-		if (renderer_)
+		try
 		{
-			renderer_->ReleaseFrame();
+			Shutdown();
 		}
-		if (swapchain_)
+		catch (...)
 		{
-			commandQueue_.Wait(commandQueue_.Signal());
+			// GPU完了を確認できないまま借用資源を解放することはできない。
+			KT_LOG_ERROR("Applicationの終了処理に失敗しました。安全に資源を破棄できないため終了します。");
+			std::terminate();
 		}
+	}
+
+	void Application::RequireAvailable() const
+	{
+		if (shuttingDown_ || runState_ == RunState::Shutdown)
+		{
+			throw std::logic_error("Applicationは終了処理中または終了済みのため、操作できません。");
+		}
+	}
+
+	void Application::Shutdown()
+	{
+		if (runState_ == RunState::Shutdown)
+		{
+			return;
+		}
+		RequireAvailable();
+		if (runState_ == RunState::Running)
+		{
+			throw std::logic_error("Run中はApplicationを終了できません。RequestStop後、Runから戻って終了してください。");
+		}
+
+		// GPU借用を解消するまではSceneも公開窓口も保持する。
+		shuttingDown_ = true;
+		try
+		{
+			if (renderer_)
+			{
+				renderer_->ReleaseFrame();
+			}
+			if (swapchain_ || effectPlayer_ || uiRenderer_)
+			{
+				commandQueue_.Wait(commandQueue_.Signal());
+			}
+			sceneUpdater_.Reset();
+			sceneHost_.Clear();
+		}
+		catch (...)
+		{
+			lastRunFailure_ = std::current_exception();
+			runState_ = RunState::Failed;
+			shuttingDown_ = false;
+			throw;
+		}
+
+		// Scriptの破棄を終えてから窓口とその借用先を順に解放する。
+		renderer_.reset();
+		ui_.reset();
+		uiRenderer_.reset();
+		effects_.reset();
+		effectPlayer_.reset();
+		swapchain_.reset();
+		execution_.Stop();
+		runState_ = RunState::Shutdown;
+		shuttingDown_ = false;
+	}
+
+	void Application::Play()
+	{
+		RequireAvailable();
+		if (ui_)
+		{
+			ui_->SetPaused(false);
+		}
+		execution_.Play();
+	}
+
+	void Application::Pause()
+	{
+		RequireAvailable();
+		if (ui_)
+		{
+			ui_->SetPaused(true);
+		}
+		execution_.Pause();
+	}
+
+	void Application::StopPlayback()
+	{
+		RequireAvailable();
+		if (ui_)
+		{
+			ui_->SetPaused(false);
+		}
+		execution_.Stop();
+	}
+
+	void Application::RequestSingleStep()
+	{
+		RequireAvailable();
+		execution_.RequestSingleStep();
+	}
+
+	ExecutionState Application::GetExecutionState() const noexcept
+	{
+		return execution_.State();
+	}
+
+	Application::RunState Application::GetRunState() const noexcept
+	{
+		return runState_;
+	}
+
+	std::exception_ptr Application::GetLastRunFailure() const noexcept
+	{
+		return lastRunFailure_;
 	}
 
 	void Application::QueueScene(std::unique_ptr<KT::World::Scene> scene)
 	{
+		RequireAvailable();
 		if (!scene)
 		{
 			throw std::invalid_argument("Applicationへ空のSceneを予約できません。");
@@ -120,6 +229,7 @@ namespace KT::Application
 
 	KT::RuntimeIntegration::SceneEffects& Application::Effects()
 	{
+		RequireAvailable();
 		if (!effects_)
 		{
 			auto player = std::make_unique<KT::Renderer::EffectPlayer>(graphicsDevice_, commandQueue_, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
@@ -136,9 +246,10 @@ namespace KT::Application
 
 	KT::RuntimeIntegration::GameUi& Application::UI()
 	{
+		RequireAvailable();
 		if (!ui_)
 		{
-			if (running_)
+			if (runState_ == RunState::Running)
 			{
 				throw std::logic_error("UIはRun前に取得し、素材を準備してください。");
 			}
@@ -152,6 +263,7 @@ namespace KT::Application
 			auto renderer = std::make_unique<KT::Renderer::UiRenderer>(graphicsDevice_, commandQueue_, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
 			auto ui = std::make_unique<KT::RuntimeIntegration::GameUi>(*renderer);
 			ui->LoadBuiltin(std::filesystem::path(filename.data()).parent_path() / "UI");
+			ui->SetPaused(execution_.State() == ExecutionState::Paused);
 			uiRenderer_ = std::move(renderer);
 			ui_ = std::move(ui);
 		}
@@ -165,6 +277,7 @@ namespace KT::Application
 
 	void Application::SetRenderCamera(std::optional<KT::World::ObjectUuid> camera)
 	{
+		RequireAvailable();
 		if (camera && !camera->IsValid())
 		{
 			throw std::invalid_argument("描画Cameraには有効なUUIDを指定してください。");
@@ -177,9 +290,10 @@ namespace KT::Application
 		return presentation_;
 	}
 
-	void Application::Run(GameUpdate gameUpdate, UiUpdate uiUpdate)
+	void Application::Run(GameUpdate gameUpdate, UiUpdate uiUpdate, FrameUpdate frameUpdate)
 	{
-		if (running_)
+		RequireAvailable();
+		if (runState_ == RunState::Running)
 		{
 			throw std::logic_error("ApplicationのRunが実行中のため、再入できません。");
 		}
@@ -192,10 +306,11 @@ namespace KT::Application
 			{ gameUpdate(scene, cpu, ui_ ? ui_->GameInput() : input_.GetSnapshot(), deltaSeconds); };
 		}
 
-		running_ = true;
+		runState_ = RunState::Running;
+		lastRunFailure_ = {};
 		stopRequested_ = false;
 		timer_.Reset();
-		fixedClock_.Reset();
+		execution_.ResetClock();
 		try
 		{
 			while (!stopRequested_ && !window_.ShouldClose())
@@ -211,7 +326,6 @@ namespace KT::Application
 
 				// 0tickの回は入力edgeを保留し、追いつき中は最初のtickだけで消費する。
 				const auto elapsed = timer_.Tick();
-				const auto ticks = fixedClock_.Advance(elapsed);
 				int width = 0;
 				int height = 0;
 				bool drawable = false;
@@ -220,7 +334,8 @@ namespace KT::Application
 					if (ui_)
 					{
 						// UIは描画ごとに入力を処理し、ポーズ中も操作とanimationを継続する。
-						int contentWidth = 0, contentHeight = 0;
+						int contentWidth = 0;
+						int contentHeight = 0;
 						window_.GetContentSize(contentWidth, contentHeight);
 						window_.GetFramebufferSize(width, height);
 						input_.Update();
@@ -230,15 +345,48 @@ namespace KT::Application
 						{
 							uiUpdate(*ui_, elapsed);
 						}
-						// 最初からポーズでも、起動Sceneの完成snapshotを一度用意する。
-						if (ui_->IsPaused() && !sceneHost_.GetScene())
+						// 既存のUI操作も実行制御へ反映する。停止からの再開はPlayで明示する。
+						if (execution_.State() != ExecutionState::Stopped)
 						{
-							sceneHost_.ActivateQueuedScene();
+							if (ui_->IsPaused())
+							{
+								execution_.Pause();
+							}
+							else
+							{
+								execution_.Play();
+							}
 						}
 					}
-					for (unsigned tick = 0; tick < ticks && !stopRequested_; ++tick)
+					else if (execution_.State() != ExecutionState::Playing)
 					{
-						if (ui_ && ui_->IsPaused())
+						// UIなしの停止中も入力を採取し、古い押下edgeを再開へ蓄積しない。
+						input_.Update();
+					}
+					if (frameUpdate)
+					{
+						frameUpdate(*this, elapsed);
+					}
+					if (stopRequested_ || window_.ShouldClose())
+					{
+						break;
+					}
+					// 初回表示は時間を進めずに所有だけを交換する。停止中の通常切替は保留する。
+					if (!sceneHost_.GetScene() && sceneHost_.HasQueuedScene())
+					{
+						sceneHost_.ActivateQueuedScene();
+					}
+					const auto advance = execution_.Advance(elapsed);
+					for (unsigned tick = 0; tick < advance.ticks && !stopRequested_; ++tick)
+					{
+						if (ui_ && ui_->IsPaused() && execution_.State() == ExecutionState::Playing)
+						{
+							// ゲームcallbackからの従来のUIポーズも、追いつき中の次tickを止める。
+							execution_.Pause();
+						}
+						// callback中のポーズ・停止は現在tick完了後、次tickの前に反映する。
+						if (execution_.State() != ExecutionState::Playing &&
+							!(advance.singleStep && tick == 0 && execution_.State() == ExecutionState::Paused))
 						{
 							break;
 						}
@@ -317,15 +465,24 @@ namespace KT::Application
 		}
 		catch (...)
 		{
+			// 元の失敗を先に保持し、後始末の失敗でもRun中という状態を残さない。
+			lastRunFailure_ = std::current_exception();
+			runState_ = RunState::Failed;
 			// GPUの借用を解消し、完成済みCPU状態を保持して呼出側へ失敗を返す。
-			if (renderer_)
+			try
 			{
-				renderer_->ReleaseFrame();
+				if (renderer_)
+				{
+					renderer_->ReleaseFrame();
+				}
 			}
-			running_ = false;
-			throw;
+			catch (...)
+			{
+				KT_LOG_ERROR("Run失敗後のGPU完了待機にも失敗しました。元のRun例外を呼出側へ返します。");
+			}
+			std::rethrow_exception(lastRunFailure_);
 		}
-		running_ = false;
+		runState_ = RunState::Idle;
 	}
 
 	void Application::PresentScene(std::uint32_t width, std::uint32_t height)
@@ -370,7 +527,7 @@ namespace KT::Application
 		{
 			// 初回GPU生成やResizeの待ち時間を次のゲームdeltaへ持ち越さない。
 			timer_.Reset();
-			fixedClock_.Reset();
+			execution_.ResetClock();
 		}
 	}
 }
